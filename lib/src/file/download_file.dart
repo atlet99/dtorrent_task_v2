@@ -3,9 +3,9 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
-import 'package:dtorrent_task/src/file/download_file_requests.dart';
-import 'package:dtorrent_task/src/file/utils.dart';
-import 'package:dtorrent_task/src/piece/piece_base.dart';
+import 'package:dtorrent_task_v2/src/file/download_file_requests.dart';
+import 'package:dtorrent_task_v2/src/file/utils.dart';
+import 'package:dtorrent_task_v2/src/piece/piece_base.dart';
 import 'package:logging/logging.dart';
 
 var _log = Logger("DownloadFile");

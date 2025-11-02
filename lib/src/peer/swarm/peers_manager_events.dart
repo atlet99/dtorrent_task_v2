@@ -1,5 +1,5 @@
-import 'package:dtorrent_task/src/peer/protocol/peer.dart';
-import 'package:dtorrent_task/src/peer/protocol/peer_events.dart';
+import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
+import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
 
 abstract class PeersManagerEvent extends PeerEvent {}
 

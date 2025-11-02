@@ -1,5 +1,5 @@
 import 'package:dtorrent_common/dtorrent_common.dart';
-import 'package:dtorrent_task/src/peer/protocol/peer.dart';
+import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
 
 import 'piece.dart';
 import 'piece_provider.dart';

@@ -9,8 +9,8 @@ import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';
-import 'package:dtorrent_task/src/metadata/metadata_downloader_events.dart';
-import 'package:dtorrent_task/src/peer/protocol/peer_events.dart';
+import 'package:dtorrent_task_v2/src/metadata/metadata_downloader_events.dart';
+import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
 import 'package:dtorrent_tracker/dtorrent_tracker.dart' hide PeerEvent;
 import 'package:events_emitter2/events_emitter2.dart';
 

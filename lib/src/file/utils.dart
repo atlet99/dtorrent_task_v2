@@ -1,4 +1,4 @@
-import 'package:dtorrent_task/src/file/download_file.dart';
+import 'package:dtorrent_task_v2/src/file/download_file.dart';
 
 class FileBlockPosition {
   int position;

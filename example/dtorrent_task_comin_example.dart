@@ -3,9 +3,9 @@ import 'dart:io';
 
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
-import 'package:dtorrent_task/src/peer/protocol/peer.dart';
-import 'package:dtorrent_task/src/task.dart';
-import 'package:dtorrent_task/src/task_events.dart';
+import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
+import 'package:dtorrent_task_v2/src/task.dart';
+import 'package:dtorrent_task_v2/src/task_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:path/path.dart' as path;
 

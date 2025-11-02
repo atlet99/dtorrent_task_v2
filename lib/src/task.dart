@@ -3,17 +3,17 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dtorrent_parser/dtorrent_parser.dart';
-import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
-import 'package:dtorrent_task/src/httpserver/server.dart';
-import 'package:dtorrent_task/src/lsd/lsd_events.dart';
-import 'package:dtorrent_task/src/peer/protocol/peer_events.dart';
-import 'package:dtorrent_task/src/peer/swarm/peers_manager_events.dart';
-import 'package:dtorrent_task/src/piece/piece_base.dart';
-import 'package:dtorrent_task/src/piece/piece_manager_events.dart';
-import 'package:dtorrent_task/src/peer/protocol/peer_events.dart'
+import 'package:dtorrent_task_v2/src/file/download_file_manager_events.dart';
+import 'package:dtorrent_task_v2/src/httpserver/server.dart';
+import 'package:dtorrent_task_v2/src/lsd/lsd_events.dart';
+import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
+import 'package:dtorrent_task_v2/src/peer/swarm/peers_manager_events.dart';
+import 'package:dtorrent_task_v2/src/piece/piece_base.dart';
+import 'package:dtorrent_task_v2/src/piece/piece_manager_events.dart';
+import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart'
     as peer_events;
-import 'package:dtorrent_task/src/piece/sequential_piece_selector.dart';
-import 'package:dtorrent_task/src/task_events.dart';
+import 'package:dtorrent_task_v2/src/piece/sequential_piece_selector.dart';
+import 'package:dtorrent_task_v2/src/task_events.dart';
 import 'package:dtorrent_tracker/dtorrent_tracker.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';

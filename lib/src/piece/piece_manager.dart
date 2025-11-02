@@ -1,6 +1,6 @@
 import 'package:dtorrent_parser/dtorrent_parser.dart';
-import 'package:dtorrent_task/src/peer/protocol/peer.dart';
-import 'package:dtorrent_task/src/piece/piece_manager_events.dart';
+import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
+import 'package:dtorrent_task_v2/src/piece/piece_manager_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:logging/logging.dart';
 import '../peer/bitfield.dart';

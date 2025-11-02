@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:dtorrent_task/dtorrent_task.dart';
+import 'package:dtorrent_task_v2/dtorrent_task.dart';
 
 class StreamingServerStarted extends TaskEvent {
   final int port;

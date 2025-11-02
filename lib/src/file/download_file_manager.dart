@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dtorrent_parser/dtorrent_parser.dart';
-import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
-import 'package:dtorrent_task/src/file/utils.dart';
-import 'package:dtorrent_task/src/task_events.dart';
+import 'package:dtorrent_task_v2/src/file/download_file_manager_events.dart';
+import 'package:dtorrent_task_v2/src/file/utils.dart';
+import 'package:dtorrent_task_v2/src/task_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:logging/logging.dart';
 import '../peer/peer_base.dart';

@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:dtorrent_task/src/peer/peer_base.dart';
-import 'package:dtorrent_task/src/peer/protocol/peer_events.dart';
+import 'package:dtorrent_task_v2/src/peer/peer_base.dart';
+import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 
 import '../utils.dart';
