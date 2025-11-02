@@ -24,7 +24,9 @@ import 'metadata_messenger.dart';
 final _log = Logger('MetadataDownloader');
 
 /// Downloads metadata (torrent info dictionary) using the ut_metadata extension.
-/// Implements BEP 9 (Metadata Exchange) and integrates with PEX and DHT for peer discovery.
+///
+/// Implements [BEP 0009](http://www.bittorrent.org/beps/bep_0009.html) (Metadata Exchange)
+/// and integrates with PEX and DHT for peer discovery.
 class MetadataDownloader
     with
         Holepunch,

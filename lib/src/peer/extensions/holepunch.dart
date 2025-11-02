@@ -35,15 +35,15 @@ mixin Holepunch {
     return message;
   }
 
-  /// msg_type (1 byte): <type of holepunch message>
+  /// msg_type (1 byte): `type of holepunch message`
   ///
-  /// addr_type (1 byte): <0x00 for ipv4, 0x01 for ipv6>
+  /// addr_type (1 byte): `0x00 for ipv4, 0x01 for ipv6`
   ///
-  /// addr (either 4 or 16 bytes): <big-endian ipv4 or ipv6 address, as determined by addr_type>
+  /// addr (either 4 or 16 bytes): `big-endian ipv4 or ipv6 address, as determined by addr_type`
   ///
-  /// port (2 bytes): <big-endian port number>
+  /// port (2 bytes): `big-endian port number`
   ///
-  /// err_code (4 bytes): <error code as a big-endian 4-byte integer; 0 in non-error messages>
+  /// err_code (4 bytes): `error code as a big-endian 4-byte integer; 0 in non-error messages`
   void parseHolepunchMessage(List<int> data) {
     _log.fine('Parsing holepunch message');
     var type = data[0];

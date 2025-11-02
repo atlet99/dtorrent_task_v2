@@ -146,7 +146,7 @@ class DownloadFile {
     return math.min(totalLastByte, end);
   }
 
-  Future<void> _processBytes(_) async {
+  Future<void> _processBytes(dynamic _) async {
     _bytesRequestSubscription?.pause();
     await _pushBytes();
     _bytesRequestSubscription?.resume();
