@@ -33,7 +33,12 @@ This package requires dependency [`dtorrent_parser`](https://pub.dev/packages/dt
 ```yaml
 dependencies:
   dtorrent_parser: ^1.0.8
-  dtorrent_task: ^0.4.1
+  dtorrent_task_v2: ^0.4.1
+```
+
+Import the library:
+```dart
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 ```
 
 First , create a `Torrent` model via .torrent file:
