@@ -31,9 +31,9 @@ class StateFile {
 
   File? _bitfieldFile;
 
-  StreamSubscription? _streamSubscription;
+  StreamSubscription<Map<String, dynamic>>? _streamSubscription;
 
-  StreamController? _streamController;
+  StreamController<Map<String, dynamic>>? _streamController;
 
   bool get isClosed => _closed;
 
@@ -111,7 +111,7 @@ class StateFile {
     return completer.future;
   }
 
-  Future<void> _update(event) async {
+  Future<void> _update(Map<String, dynamic> event) async {
     int index = event['index'];
     int uploaded = event['uploaded'];
     bool have = event['have'];
@@ -162,7 +162,7 @@ class StateFile {
     return update(-1, uploaded: uploaded);
   }
 
-  void _processRequest(event) async {
+  void _processRequest(Map<String, dynamic> event) async {
     _streamSubscription?.pause();
     // if (event['type'] == 'all') {
     //   await _updateAll(event);
@@ -176,7 +176,7 @@ class StateFile {
   Future<RandomAccessFile?> getAccess() async {
     if (_access == null) {
       _access = await _bitfieldFile?.open(mode: FileMode.writeOnlyAppend);
-      _streamController = StreamController();
+      _streamController = StreamController<Map<String, dynamic>>();
       _streamSubscription = _streamController?.stream
           .listen(_processRequest, onError: (e) => print(e));
     }

@@ -111,13 +111,13 @@ class LSD with EventsEmittable<LSDEvent> {
 
   /// BT-SEARCH * HTTP/1.1\r\n
   ///
-  ///Host: <host>\r\n
+  ///Host: `host`\r\n
   ///
-  ///Port: <port>\r\n
+  ///Port: `port`\r\n
   ///
-  ///Infohash: <ihash>\r\n
+  ///Infohash: `ihash`\r\n
   ///
-  ///cookie: <cookie (optional)>\r\n
+  ///cookie: `cookie (optional)`\r\n
   ///
   ///\r\n
   ///

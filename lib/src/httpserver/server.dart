@@ -135,10 +135,12 @@ class StreamingServer {
       return;
     }
     if (request.uri.path == "/.m3u" || request.uri.path == "/") {
-      var files = _fileManager.metainfo.files.where((element) =>
-          lookupMimeType(element.name)?.startsWith('video') ??
-          lookupMimeType(element.name)?.startsWith('audio') ??
-          false);
+      var files = _fileManager.metainfo.files.where((element) {
+        var mimeType = lookupMimeType(element.name);
+        return mimeType?.startsWith('video') ??
+            mimeType?.startsWith('audio') ??
+            false;
+      });
 
       var buffer = toPlaylist(files).codeUnits;
 

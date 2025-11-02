@@ -1,5 +1,3 @@
-library dtorrent_task_v2;
-
 import 'dart:io';
 
 export 'src/torrent_task_base.dart';

@@ -17,7 +17,7 @@ import '../extensions/extended_processor.dart';
 
 const KEEP_ALIVE_MESSAGE = [0, 0, 0, 0];
 
-// BEP0003 states:
+// [BEP 0003](http://www.bittorrent.org/beps/bep_0003.html) states:
 // All later integers sent in the protocol are encoded as four bytes big-endian
 const MESSAGE_INTEGER = 4;
 
@@ -73,6 +73,23 @@ const OP_SUGGEST_PIECE = 0x0d;
 const OP_REJECT_REQUEST = 0x10;
 const OP_ALLOW_FAST = 0x11;
 
+/// Maximum message size in bytes (2MB)
+///
+/// Messages larger than this size will be rejected to prevent buffer overflows
+/// and excessive memory usage. This limit applies to both sending and receiving.
+const MAX_MESSAGE_SIZE = 1024 * 1024 * 2;
+
+/// Buffer size threshold for warnings (10MB)
+///
+/// When the total buffer size (cache buffer + incoming data) exceeds this threshold,
+/// a warning is logged to help identify potential memory issues or buffer buildup.
+const BUFFER_SIZE_WARNING_THRESHOLD = 10 * 1024 * 1024;
+
+/// Maximum signed 32-bit integer value (2^31 - 1)
+///
+/// Used to prevent integer overflow in buffer offset calculations.
+const MAX_INT32 = 0x7FFFFFFF;
+
 enum PeerType { TCP, UTP }
 
 /// 30 Seconds
@@ -87,6 +104,62 @@ abstract class Peer
         CongestionControl,
         SpeedCalculator {
   late final Logger _log = Logger(runtimeType.toString());
+
+  /// Metrics for tracking RangeError patterns (for uTP crash monitoring)
+  ///
+  /// These metrics help monitor and debug RangeError crashes in uTP protocol,
+  /// particularly those related to selective ACK processing and buffer handling.
+  ///
+  /// Example usage:
+  /// ```dart
+  /// // Check if any RangeErrors occurred
+  /// if (Peer.rangeErrorCount > 0) {
+  ///   print('Total RangeErrors: ${Peer.rangeErrorCount}');
+  ///   print('uTP RangeErrors: ${Peer.utpRangeErrorCount}');
+  ///   print('Errors by reason: ${Peer.rangeErrorByReason}');
+  /// }
+  ///
+  /// // Reset metrics for new test/session
+  /// Peer.resetRangeErrorMetrics();
+  /// ```
+  ///
+  /// Error reasons tracked:
+  /// - `PROCESS_RECEIVE_DATA`: RangeError in message parsing/receiving
+  /// - `VALIDATE_INFO_HASH`: RangeError in infohash validation
+  /// - `CONNECT_REMOTE`: RangeError during uTP connection
+  /// - `SEND_BYTE_MESSAGE`: RangeError when sending messages
+  /// - `UINT8LIST_CONVERSION`: RangeError converting bytes to Uint8List
+  /// - `STREAM_ERROR`: RangeError in stream error handler
+  static int _rangeErrorCount = 0;
+  static int _utpRangeErrorCount = 0;
+  static final Map<String, int> _rangeErrorByReason = {};
+
+  /// Total number of RangeErrors recorded across all peers
+  static int get rangeErrorCount => _rangeErrorCount;
+
+  /// Number of RangeErrors specific to uTP peers
+  static int get utpRangeErrorCount => _utpRangeErrorCount;
+
+  /// Map of error reasons to their occurrence counts
+  static Map<String, int> get rangeErrorByReason =>
+      Map.unmodifiable(_rangeErrorByReason);
+
+  static void _recordRangeError(String reason, {bool isUtp = false}) {
+    _rangeErrorCount++;
+    if (isUtp) {
+      _utpRangeErrorCount++;
+    }
+    _rangeErrorByReason[reason] = (_rangeErrorByReason[reason] ?? 0) + 1;
+  }
+
+  /// Reset all RangeError metrics
+  ///
+  /// Useful for starting a new monitoring period or test session.
+  static void resetRangeErrorMetrics() {
+    _rangeErrorCount = 0;
+    _utpRangeErrorCount = 0;
+    _rangeErrorByReason.clear();
+  }
 
   /// Countdown time , when peer don't receive or send any message from/to remote ,
   /// this class will invoke close.
@@ -278,8 +351,17 @@ abstract class Peer
         _log.info('Connection is closed $address');
         dispose(BadException('The remote peer closed the connection'));
       }, onError: (e) {
-        _log.warning('Error happen: $address', e);
-        dispose(e);
+        if (e is RangeError) {
+          var reason = 'STREAM_ERROR';
+          Peer._recordRangeError(reason, isUtp: type == PeerType.UTP);
+          _log.severe(
+              'RangeError in peer stream: peer=$address, type=$type, error=${e.message}',
+              e);
+          dispose('STREAM_RANGE_ERROR');
+        } else {
+          _log.warning('Error happen: $address', e);
+          dispose(e);
+        }
       });
       events.emit(PeerConnected(this));
     } catch (e) {
@@ -345,88 +427,195 @@ abstract class Peer
   }
 
   void _processReceiveData(Uint8List data) {
-    // Regardless of what message is received, as long as it is not empty, reset the countdown timer.
-    if (data.isNotEmpty) _startToCountdown();
-    // if (data.isNotEmpty) log('Received data: $data');
+    try {
+      // Regardless of what message is received, as long as it is not empty, reset the countdown timer.
+      if (data.isNotEmpty) _startToCountdown();
 
-    // Accept data sent by the remote peer and buffer it in one place.
-    _cacheBuffer.addAll(data);
+      // Log incoming data details for uTP debugging with buffer size tracking
+      if (type == PeerType.UTP && data.isNotEmpty) {
+        var totalBufferSize = _cacheBuffer.length + data.length;
+        _log.fine(
+            'uTP received data: peer=$address, dataLength=${data.length}, '
+            'cacheBufferLength=${_cacheBuffer.length}, totalBufferSize=$totalBufferSize');
 
-    if (_cacheBuffer.isEmpty) return;
-    // Check if it's a handshake header.
-    if (_cacheBuffer[0] == 19 &&
-        _cacheBuffer.length >= HAND_SHAKE_MESSAGE_LENGTH) {
-      if (_isHandShakeHead(_cacheBuffer)) {
-        if (_validateInfoHash(_cacheBuffer)) {
-          var handshakeBuffer = Uint8List(HAND_SHAKE_MESSAGE_LENGTH);
-          handshakeBuffer.setRange(0, HAND_SHAKE_MESSAGE_LENGTH, _cacheBuffer);
-          // clear the buffer to only the handshake
-          _cacheBuffer = _cacheBuffer.sublist(HAND_SHAKE_MESSAGE_LENGTH);
-          Timer.run(() => _processHandShake(handshakeBuffer));
-          if (_cacheBuffer.isNotEmpty) {
-            Timer.run(() => _processReceiveData(Uint8List(0)));
-          }
-          return;
-        } else {
-          // If infohash buffer is incorrect , dispose this peer
-          dispose('Infohash is incorrect');
-          return;
+        // Warn if buffer is getting too large (potential memory issue)
+        if (totalBufferSize > BUFFER_SIZE_WARNING_THRESHOLD) {
+          _log.warning(
+              'uTP buffer size warning: peer=$address, totalBufferSize=$totalBufferSize bytes');
         }
       }
-    }
-    if (_cacheBuffer.length >= MESSAGE_INTEGER) {
-      var start = 0;
-      var lengthBuffer = Uint8List(MESSAGE_INTEGER);
-      lengthBuffer.setRange(0, MESSAGE_INTEGER, _cacheBuffer, start);
-      var length = ByteData.view(lengthBuffer.buffer).getInt32(0, Endian.big);
-      List<Uint8List>? piecesMessage;
-      List<Uint8List>? haveMessages;
-      while (_cacheBuffer.length - start - MESSAGE_INTEGER >= length) {
-        if (length == 0) {
-          // keep alive
-          Timer.run(() => _processMessage(null, null));
-        } else {
-          // skip the message length to read the id
-          // the id is a single byte
-          var id = _cacheBuffer[start + MESSAGE_INTEGER];
 
-          // the message type id is not needed anymore
-          var messageBuffer = Uint8List(length - 1);
+      // Accept data sent by the remote peer and buffer it in one place.
+      _cacheBuffer.addAll(data);
 
-          messageBuffer.setRange(
-            0,
-            messageBuffer.length,
-            _cacheBuffer,
-            start + MESSAGE_INTEGER + 1,
-          );
-
-          switch (id) {
-            case ID_PIECE:
-              piecesMessage ??= <Uint8List>[];
-              piecesMessage.add(messageBuffer);
-              break;
-            case ID_HAVE:
-              haveMessages ??= <Uint8List>[];
-              haveMessages.add(messageBuffer);
-              break;
-            default:
-              Timer.run(() => _processMessage(id, messageBuffer));
+      if (_cacheBuffer.isEmpty) return;
+      // Check if it's a handshake header.
+      if (_cacheBuffer[0] == 19 &&
+          _cacheBuffer.length >= HAND_SHAKE_MESSAGE_LENGTH) {
+        if (_isHandShakeHead(_cacheBuffer)) {
+          if (_validateInfoHash(_cacheBuffer)) {
+            var handshakeBuffer = Uint8List(HAND_SHAKE_MESSAGE_LENGTH);
+            handshakeBuffer.setRange(
+                0, HAND_SHAKE_MESSAGE_LENGTH, _cacheBuffer);
+            // clear the buffer to only the handshake
+            _cacheBuffer = _cacheBuffer.sublist(HAND_SHAKE_MESSAGE_LENGTH);
+            Timer.run(() => _processHandShake(handshakeBuffer));
+            if (_cacheBuffer.isNotEmpty) {
+              Timer.run(() => _processReceiveData(Uint8List(0)));
+            }
+            return;
+          } else {
+            // If infohash buffer is incorrect , dispose this peer
+            dispose('Infohash is incorrect');
+            return;
           }
         }
-        // set to the start of the next message
-        start += (MESSAGE_INTEGER + length);
-        if (_cacheBuffer.length - start < MESSAGE_INTEGER) break;
+      }
+      if (_cacheBuffer.length >= MESSAGE_INTEGER) {
+        var start = 0;
+        var lengthBuffer = Uint8List(MESSAGE_INTEGER);
+
+        // Validate buffer bounds before setRange
+        if (start + MESSAGE_INTEGER > _cacheBuffer.length) {
+          _log.warning(
+              'Invalid buffer bounds: start=$start, bufferLength=${_cacheBuffer.length}, peer=$address');
+          return;
+        }
+
         lengthBuffer.setRange(0, MESSAGE_INTEGER, _cacheBuffer, start);
-        length = ByteData.view(lengthBuffer.buffer).getInt32(0, Endian.big);
+        var length = ByteData.view(lengthBuffer.buffer).getInt32(0, Endian.big);
+
+        // Log message parsing details for uTP debugging
+        if (type == PeerType.UTP) {
+          _log.fine(
+              'uTP parsing message: peer=$address, start=$start, length=$length, bufferLength=${_cacheBuffer.length}');
+        }
+
+        // Validate length value - protect against negative or extremely large values
+        // Also protect against potential integer overflow in calculations
+        if (length < 0 || length > MAX_MESSAGE_SIZE) {
+          _log.warning(
+              'Invalid message length: $length, peer=$address, bufferLength=${_cacheBuffer.length}, type=$type');
+          dispose('Invalid message length: $length');
+          return;
+        }
+
+        // Additional validation: check if length would cause overflow in subsequent calculations
+        if (start + MESSAGE_INTEGER + length > MAX_INT32) {
+          _log.warning(
+              'Message length would cause integer overflow: start=$start, length=$length, peer=$address');
+          dispose('Message length overflow: $length');
+          return;
+        }
+
+        List<Uint8List>? piecesMessage;
+        List<Uint8List>? haveMessages;
+        while (_cacheBuffer.length - start - MESSAGE_INTEGER >= length) {
+          if (length == 0) {
+            // keep alive
+            Timer.run(() => _processMessage(null, null));
+          } else {
+            // Validate bounds before accessing message ID
+            if (start + MESSAGE_INTEGER >= _cacheBuffer.length) {
+              _log.warning(
+                  'Buffer bounds exceeded when reading message ID: start=$start, bufferLength=${_cacheBuffer.length}, peer=$address');
+              break;
+            }
+
+            // skip the message length to read the id
+            // the id is a single byte
+            var id = _cacheBuffer[start + MESSAGE_INTEGER];
+
+            // Validate message buffer size before creating
+            if (length - 1 <= 0) {
+              _log.warning(
+                  'Invalid message buffer size: length=$length, peer=$address');
+              break;
+            }
+
+            // Validate bounds before setRange for message buffer
+            var messageStart = start + MESSAGE_INTEGER + 1;
+            var messageEnd = messageStart + (length - 1);
+            if (messageEnd > _cacheBuffer.length) {
+              _log.warning(
+                  'Message buffer bounds exceeded: messageEnd=$messageEnd, bufferLength=${_cacheBuffer.length}, length=$length, start=$start, peer=$address');
+              break;
+            }
+
+            // the message type id is not needed anymore
+            var messageBuffer = Uint8List(length - 1);
+
+            messageBuffer.setRange(
+              0,
+              messageBuffer.length,
+              _cacheBuffer,
+              messageStart,
+            );
+
+            switch (id) {
+              case ID_PIECE:
+                piecesMessage ??= <Uint8List>[];
+                piecesMessage.add(messageBuffer);
+                break;
+              case ID_HAVE:
+                haveMessages ??= <Uint8List>[];
+                haveMessages.add(messageBuffer);
+                break;
+              default:
+                Timer.run(() => _processMessage(id, messageBuffer));
+            }
+          }
+          // set to the start of the next message
+          start += (MESSAGE_INTEGER + length);
+          if (_cacheBuffer.length - start < MESSAGE_INTEGER) break;
+
+          // Validate bounds before reading next message length
+          if (start + MESSAGE_INTEGER > _cacheBuffer.length) {
+            _log.warning(
+                'Buffer bounds exceeded when reading next message: start=$start, bufferLength=${_cacheBuffer.length}, peer=$address');
+            break;
+          }
+
+          lengthBuffer.setRange(0, MESSAGE_INTEGER, _cacheBuffer, start);
+          var nextLength =
+              ByteData.view(lengthBuffer.buffer).getInt32(0, Endian.big);
+
+          // Validate next length value
+          if (nextLength < 0 || nextLength > MAX_MESSAGE_SIZE) {
+            _log.warning(
+                'Invalid next message length: $nextLength, peer=$address');
+            break;
+          }
+
+          length = nextLength;
+        }
+        if (piecesMessage != null && piecesMessage.isNotEmpty) {
+          // we shoud validate that the subpiece length is valid/same as what we requested
+          Timer.run(() => _processReceivePieces(piecesMessage!));
+        }
+        if (haveMessages != null && haveMessages.isNotEmpty) {
+          Timer.run(() => _processHave(haveMessages!));
+        }
+        if (start != 0 && start < _cacheBuffer.length) {
+          _cacheBuffer = _cacheBuffer.sublist(start);
+        } else if (start >= _cacheBuffer.length) {
+          // If we processed all data, clear the buffer
+          _cacheBuffer.clear();
+        }
       }
-      if (piecesMessage != null && piecesMessage.isNotEmpty) {
-        // we shoud validate that the subpiece length is valid/same as what we requested
-        Timer.run(() => _processReceivePieces(piecesMessage!));
-      }
-      if (haveMessages != null && haveMessages.isNotEmpty) {
-        Timer.run(() => _processHave(haveMessages!));
-      }
-      if (start != 0) _cacheBuffer = _cacheBuffer.sublist(start);
+    } on RangeError catch (e, stackTrace) {
+      var reason = 'PROCESS_RECEIVE_DATA';
+      Peer._recordRangeError(reason, isUtp: type == PeerType.UTP);
+      _log.severe(
+          'RangeError in _processReceiveData: peer=$address, type=$type, '
+          'bufferLength=${_cacheBuffer.length}, dataLength=${data.length}, '
+          'error=${e.message}',
+          e,
+          stackTrace);
+      dispose('UTP_RANGE_ERROR');
+    } catch (e, stackTrace) {
+      _log.severe('Error in _processReceiveData: peer=$address', e, stackTrace);
+      dispose('PROCESS_DATA_ERROR');
     }
   }
 
@@ -439,10 +628,35 @@ abstract class Peer
   }
 
   bool _validateInfoHash(List<int> buffer) {
-    for (var i = INFO_HASH_START; i < PEER_ID_START; i++) {
-      if (buffer[i] != _infoHashBuffer[i - INFO_HASH_START]) return false;
+    try {
+      // Validate buffer has enough length before accessing
+      if (buffer.length < PEER_ID_START) {
+        _log.warning(
+            'Buffer too short for infohash validation: length=${buffer.length}, required=$PEER_ID_START, peer=$address');
+        return false;
+      }
+
+      // Validate _infoHashBuffer has correct length
+      var expectedInfoHashLength = PEER_ID_START - INFO_HASH_START;
+      if (_infoHashBuffer.length < expectedInfoHashLength) {
+        _log.warning(
+            'InfoHash buffer too short: length=${_infoHashBuffer.length}, required=$expectedInfoHashLength, peer=$address');
+        return false;
+      }
+
+      for (var i = INFO_HASH_START; i < PEER_ID_START; i++) {
+        if (buffer[i] != _infoHashBuffer[i - INFO_HASH_START]) return false;
+      }
+      return true;
+    } on RangeError catch (e, stackTrace) {
+      var reason = 'VALIDATE_INFO_HASH';
+      Peer._recordRangeError(reason, isUtp: type == PeerType.UTP);
+      _log.severe(
+          'RangeError in _validateInfoHash: peer=$address, type=$type, bufferLength=${buffer.length}, error=${e.message}',
+          e,
+          stackTrace);
+      return false;
     }
-    return true;
   }
 
   void _processMessage(int? id, Uint8List? message) {
@@ -593,7 +807,7 @@ abstract class Peer
 
   void _processHaveAll() {
     if (!remoteEnableFastPeer) {
-      // persuent to BEP 0006,
+      // Per [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html):
       // "When the fast extension is disabled, if a peer receives a Suggest Piece message, the peer MUST close the connection."
 
       // TODO: Is this correct? or should we close the connection when the "local peer" has the extension disabled?
@@ -615,7 +829,7 @@ abstract class Peer
 
   void _processHaveNone() {
     if (!remoteEnableFastPeer) {
-      // persuent to BEP 0006,
+      // Per [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html):
 
       // TODO: Is this correct? or should we close the connection when the "local peer" has the extension disabled?
       dispose('Remote disabled fast extension but receive \'have none\'');
@@ -630,7 +844,7 @@ abstract class Peer
   /// the peer MUST close the connection.
   void _processSuggestPiece(Uint8List message) {
     if (!remoteEnableFastPeer) {
-      // persuent to BEP 0006,
+      // Per [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html):
       // "When the fast extension is disabled, if a peer receives a Suggest Piece message, the peer MUST close the connection."
       // TODO: Is this correct? or should we close the connection when the "local peer" has the extension disabled?
       dispose('Remote disabled fast extension but receive \'suggest piece\'');
@@ -645,7 +859,7 @@ abstract class Peer
 
   void _processRejectRequest(Uint8List message) {
     if (!remoteEnableFastPeer) {
-      // persuent to BEP 0006,
+      // Per [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html):
       // "When the fast extension is disabled, if a peer receives a Reject Request message, the peer MUST close the connection."
       // TODO: Is this correct? or should we close the connection when the "local peer" has the extension disabled?
       dispose('Remote disabled fast extension but receive \'reject request\'');
@@ -668,7 +882,7 @@ abstract class Peer
 
   void _processAllowFast(Uint8List message) {
     if (!remoteEnableFastPeer) {
-      // persuent to BEP 0006,
+      // Per [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html):
       // "When the fast extension is disabled, if a peer receives an Allow Fast message, the peer MUST close the connection."
       // TODO: Is this correct? or should we close the connection when the "local peer" has the extension disabled?
       dispose('Remote disabled fast extension but receive \'allow fast\'');
@@ -1096,7 +1310,7 @@ abstract class Peer
     sendMessage(ID_PORT, bytes);
   }
 
-  /// BEP 0006
+  /// [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html)
   ///
   /// Have all message
   void sendHaveAll() {
@@ -1105,7 +1319,7 @@ abstract class Peer
     }
   }
 
-  /// BEP 0006
+  /// [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html)
   ///
   /// Have none message
   void sendHaveNone() {
@@ -1114,7 +1328,7 @@ abstract class Peer
     }
   }
 
-  /// BEP 0006
+  /// [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html)
   /// `*Suggest Piece*: <len=0x0005><op=0x0D><index>`
   ///
   /// `Suggest Piece` is an advisory message meaning "you might like to download this piece."
@@ -1136,7 +1350,7 @@ abstract class Peer
     }
   }
 
-  /// BEP 0006
+  /// [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html)
   ///
   /// `*Reject Request*: <len=0x000D><op=0x10><index><begin><length>`
   ///
@@ -1153,7 +1367,7 @@ abstract class Peer
     }
   }
 
-  /// BEP 0006
+  /// [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html)
   ///
   /// `*Allowed Fast*: <len=0x0005><op=0x11><index>`
   ///
@@ -1308,15 +1522,75 @@ class _UTPPeer extends Peer {
 
   @override
   Future<Stream<Uint8List>?> connectRemote(int timeout) async {
-    if (_socket != null) return _socket;
-    _client ??= UTPSocketClient();
-    _socket = await _client?.connect(address.address, address.port);
-    return _socket;
+    try {
+      if (_socket != null) return _socket;
+      _client ??= UTPSocketClient();
+      _socket = await _client?.connect(address.address, address.port);
+      // Note: Errors from socket stream are handled in Peer.connect() via onError callback
+      return _socket;
+    } on RangeError catch (e, stackTrace) {
+      var reason = 'CONNECT_REMOTE';
+      Peer._recordRangeError(reason, isUtp: true);
+      _log.severe(
+          'RangeError in _UTPPeer.connectRemote: peer=$address, error=${e.message}',
+          e,
+          stackTrace);
+      dispose('UTP_CONNECT_RANGE_ERROR');
+      return null;
+    } catch (e, stackTrace) {
+      _log.warning(
+          'Error in _UTPPeer.connectRemote: peer=$address', e, stackTrace);
+      dispose('UTP_CONNECT_ERROR');
+      return null;
+    }
   }
 
   @override
   void sendByteMessage(List<int> bytes) {
-    _socket?.add(bytes);
+    try {
+      if (bytes.isEmpty) {
+        _log.warning('Attempting to send empty message to peer $address');
+        return;
+      }
+
+      // Validate bytes list bounds
+      if (bytes.length > MAX_MESSAGE_SIZE) {
+        _log.warning('Message too large: ${bytes.length} bytes, peer=$address');
+        return;
+      }
+
+      try {
+        _socket?.add(Uint8List.fromList(bytes));
+
+        // Log successful send for uTP debugging (only in fine mode to avoid spam)
+        if (type == PeerType.UTP) {
+          _log.fine(
+              'uTP sent message: peer=$address, bytesLength=${bytes.length}');
+        }
+      } on RangeError catch (e, stackTrace) {
+        // Catch RangeError from Uint8List.fromList if bytes has invalid range
+        var reason = 'UINT8LIST_CONVERSION';
+        Peer._recordRangeError(reason, isUtp: true);
+        _log.severe(
+            'RangeError converting bytes to Uint8List: peer=$address, bytesLength=${bytes.length}, error=${e.message}',
+            e,
+            stackTrace);
+        dispose('UTP_CONVERSION_RANGE_ERROR');
+        return;
+      }
+    } on RangeError catch (e, stackTrace) {
+      var reason = 'SEND_BYTE_MESSAGE';
+      Peer._recordRangeError(reason, isUtp: true);
+      _log.severe(
+          'RangeError in _UTPPeer.sendByteMessage: peer=$address, bytesLength=${bytes.length}, error=${e.message}',
+          e,
+          stackTrace);
+      dispose('UTP_SEND_RANGE_ERROR');
+    } catch (e, stackTrace) {
+      _log.severe(
+          'Error in _UTPPeer.sendByteMessage: peer=$address', e, stackTrace);
+      dispose('UTP_SEND_ERROR');
+    }
   }
 
   @override
