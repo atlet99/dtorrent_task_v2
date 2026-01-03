@@ -11,25 +11,25 @@ import 'package:path/path.dart' as path;
 ///
 /// If no torrent file is provided, it will use tmp/test.torrent
 void main(List<String> args) async {
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('Sequential Download - Seek Example');
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('');
 
   String torrentFile;
-  
+
   if (args.isNotEmpty) {
     torrentFile = args[0];
   } else {
     torrentFile = 'tmp/test.torrent';
   }
-  
+
   if (!await File(torrentFile).exists()) {
     print('Error: Torrent file not found: $torrentFile');
     print('Please provide a torrent file or place one at: tmp/test.torrent');
     exit(1);
   }
-  
+
   print('Using torrent file: $torrentFile');
   print('');
 
@@ -65,7 +65,7 @@ void main(List<String> args) async {
 
   Timer? seekSimulationTimer;
   final listener = task.createListener();
-  
+
   listener
     ..on<TaskStarted>((event) {
       print('Task started');
@@ -83,11 +83,11 @@ void main(List<String> args) async {
 
         final seekIndex = timer.tick % seekPositions.length;
         final seekPosition = seekPositions[seekIndex];
-        
+
         print('');
         print('SEEK: ${(seekPosition / 1024 / 1024).toStringAsFixed(2)} MB '
             '(${((seekPosition / fileSize) * 100).toStringAsFixed(1)}%)');
-        
+
         task.setPlaybackPosition(seekPosition);
 
         Timer(Duration(seconds: 2), () {
@@ -114,10 +114,11 @@ void main(List<String> args) async {
       final downloaded = task.downloaded ?? 0;
       final progress = task.progress * 100;
       final peers = task.connectedPeersNumber;
-      final speed = ((task.currentDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
+      final speed =
+          ((task.currentDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
       final stats = task.getSequentialStats();
       final bufferHealth = stats?.bufferHealth.toStringAsFixed(1) ?? 'N/A';
-      
+
       print('Progress: ${progress.toStringAsFixed(1)}% | '
           'Downloaded: ${(downloaded / 1024 / 1024).toStringAsFixed(2)} MB | '
           'Peers: $peers | Speed: $speed KB/s | Buffer: $bufferHealth%');

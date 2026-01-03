@@ -19,25 +19,25 @@ void main(List<String> args) async {
     }
   });
 
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('Sequential Download - Real Torrent Example');
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('');
 
   String torrentFile;
-  
+
   if (args.isNotEmpty) {
     torrentFile = args[0];
   } else {
     torrentFile = 'tmp/test.torrent';
   }
-  
+
   if (!await File(torrentFile).exists()) {
     print('Error: Torrent file not found: $torrentFile');
     print('Please provide a torrent file or place one at: tmp/test.torrent');
     exit(1);
   }
-  
+
   print('Using torrent file: $torrentFile');
   print('');
 
@@ -47,13 +47,14 @@ void main(List<String> args) async {
   print('  Size: ${(torrent.length / 1024 / 1024).toStringAsFixed(2)} MB');
   print('  Pieces: ${torrent.pieces.length}');
   print('  Files: ${torrent.files.length}');
-  
+
   if (torrent.files.length <= 10) {
     print('');
     print('  Files:');
     for (var i = 0; i < torrent.files.length; i++) {
       final file = torrent.files[i];
-      print('    [$i] ${file.name} (${(file.length / 1024 / 1024).toStringAsFixed(2)} MB)');
+      print(
+          '    [$i] ${file.name} (${(file.length / 1024 / 1024).toStringAsFixed(2)} MB)');
     }
   }
   print('');
@@ -61,7 +62,8 @@ void main(List<String> args) async {
   final config = SequentialConfig.forVideoStreaming();
   print('Sequential configuration:');
   print('  Look-ahead buffer: ${config.lookAheadSize} pieces');
-  print('  Critical zone: ${(config.criticalZoneSize / 1024 / 1024).toStringAsFixed(1)} MB');
+  print(
+      '  Critical zone: ${(config.criticalZoneSize / 1024 / 1024).toStringAsFixed(1)} MB');
   print('  Adaptive strategy: ${config.adaptiveStrategy}');
   print('');
 
@@ -78,25 +80,26 @@ void main(List<String> args) async {
   double maxSpeed = 0;
 
   final listener = task.createListener();
-  
+
   listener
     ..on<TaskStarted>((event) {
       print('Download started');
       print('');
-      
+
       statsTimer = Timer.periodic(Duration(seconds: 10), (timer) {
         final stats = task.getSequentialStats();
         if (stats != null) {
           print('');
           print('Sequential Statistics:');
           print('  Buffer health: ${stats.bufferHealth.toStringAsFixed(1)}%');
-          print('  Buffered pieces: ${stats.bufferedPieces}/${config.lookAheadSize}');
+          print(
+              '  Buffered pieces: ${stats.bufferedPieces}/${config.lookAheadSize}');
           print('  Strategy: ${stats.currentStrategy.name}');
-          
+
           if (stats.timeToFirstByte != null) {
             print('  Time to first byte: ${stats.timeToFirstByte}ms');
           }
-          
+
           if (stats.moovAtomDownloaded != null) {
             print('  Moov atom ready: ${stats.moovAtomDownloaded}');
           }
@@ -106,15 +109,16 @@ void main(List<String> args) async {
     })
     ..on<TaskCompleted>((event) {
       final elapsed = DateTime.now().difference(downloadStartTime);
-      
+
       print('');
-      print('=' * 60);
+      print(List.filled(60, '=').join());
       print('Download completed!');
-      print('=' * 60);
-      print('Time: ${elapsed.inHours}h ${elapsed.inMinutes % 60}m ${elapsed.inSeconds % 60}s');
+      print(List.filled(60, '=').join());
+      print(
+          'Time: ${elapsed.inHours}h ${elapsed.inMinutes % 60}m ${elapsed.inSeconds % 60}s');
       print('Max peers: $maxPeers');
       print('Max speed: ${(maxSpeed / 1024).toStringAsFixed(2)} KB/s');
-      
+
       final stats = task.getSequentialStats();
       if (stats != null) {
         print('');
@@ -127,7 +131,7 @@ void main(List<String> args) async {
           print('  Time to first byte: ${stats.timeToFirstByte}ms');
         }
       }
-      
+
       statsTimer?.cancel();
       exit(0);
     })
@@ -136,14 +140,14 @@ void main(List<String> args) async {
       final progress = task.progress * 100;
       final peers = task.connectedPeersNumber;
       final speed = (task.currentDownloadSpeed) * 1000;
-      
+
       if (peers > maxPeers) maxPeers = peers;
       if (speed > maxSpeed) maxSpeed = speed;
-      
+
       final stats = task.getSequentialStats();
       final bufferHealth = stats?.bufferHealth.toStringAsFixed(1) ?? 'N/A';
       final strategy = stats?.currentStrategy.name ?? 'N/A';
-      
+
       print('Progress: ${progress.toStringAsFixed(1)}% | '
           'Downloaded: ${(downloaded / 1024 / 1024).toStringAsFixed(2)} MB | '
           'Peers: $peers | '
@@ -155,7 +159,7 @@ void main(List<String> args) async {
   print('Starting sequential download...');
   print('Press Ctrl+C to stop');
   print('');
-  
+
   await task.start();
   await Future.delayed(Duration(hours: 24));
 }

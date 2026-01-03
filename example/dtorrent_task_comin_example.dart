@@ -42,7 +42,7 @@ Future<void> main() async {
   timer = Timer.periodic(Duration(seconds: 2), (timer) {
     try {
       print(
-          'Downloaded: ${task.downloaded ?? 0 / (1024 * 1024)} mb , ${((task.downloaded ?? 0 / model.length) * 100).toStringAsFixed(2)}%');
+          'Downloaded: ${(task.downloaded ?? 0) / (1024 * 1024)} mb , ${(((task.downloaded ?? 0) / model.length) * 100).toStringAsFixed(2)}%');
     } finally {}
   });
 

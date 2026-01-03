@@ -32,9 +32,9 @@ void main(List<String> args) async {
         'magnet:?xt=urn:btih:6BE701C4B7B0C5F5F36799342DFF1250DE936BE2&dn=Nineteen+Eighty-Four';
   }
 
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('Sequential Download - Magnet Test');
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('Magnet: ${magnetUri.substring(0, 60)}...');
   print('');
 
