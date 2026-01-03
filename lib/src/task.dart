@@ -33,6 +33,7 @@ import 'piece/web_seed_downloader.dart';
 import 'utils.dart';
 import 'utils/debouncer.dart';
 import 'torrent/torrent_version.dart';
+import 'tracker/scrape_client.dart' as scrape;
 
 const MAX_PEERS = 50;
 const MAX_IN_PEERS = 10;
@@ -167,6 +168,25 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   /// Returns metrics including buffer health, time to first byte,
   /// download strategy, and seek statistics.
   SequentialStats? getSequentialStats();
+
+  /// Scrape tracker for torrent statistics (BEP 48)
+  ///
+  /// Performs a scrape request to get torrent statistics (seeders, leechers, downloads)
+  /// without performing a full announce.
+  ///
+  /// [trackerUrl] - Optional tracker URL. If not provided, uses first tracker from torrent.
+  ///
+  /// Returns [scrape.ScrapeResult] with statistics for the torrent's info hash.
+  ///
+  /// Example:
+  /// ```dart
+  /// final result = await task.scrapeTracker();
+  /// if (result.isSuccess) {
+  ///   final stats = result.getStatsForInfoHash(task.metaInfo.infoHash);
+  ///   print('Seeders: ${stats?.complete}, Leechers: ${stats?.incomplete}');
+  /// }
+  /// ```
+  Future<scrape.ScrapeResult> scrapeTracker([Uri? trackerUrl]);
 }
 
 class _TorrentTask
@@ -176,6 +196,8 @@ class _TorrentTask
       InternetAddress.fromRawAddress(Uint8List.fromList([127, 0, 0, 1]));
 
   TorrentAnnounceTracker? _tracker;
+
+  scrape.ScrapeClient? _scrapeClient;
 
   DHT? _dht = DHT();
 
@@ -1180,5 +1202,29 @@ class _TorrentTask
   @override
   void requestPeersFromDHT() {
     _dht?.requestPeers(String.fromCharCodes(_metaInfo.infoHashBuffer));
+  }
+
+  @override
+  Future<scrape.ScrapeResult> scrapeTracker([Uri? trackerUrl]) async {
+    _scrapeClient ??= scrape.ScrapeClient();
+
+    // Use provided tracker URL or first tracker from torrent
+    Uri? url = trackerUrl;
+    if (url == null && _metaInfo.announces.isNotEmpty) {
+      // Get first tracker
+      url = _metaInfo.announces.first;
+    }
+
+    if (url == null) {
+      return scrape.ScrapeResult(
+        trackerUrl: Uri(),
+        stats: {},
+        error: 'No tracker URL provided and no trackers in torrent',
+      );
+    }
+
+    // Perform scrape with torrent's info hash
+    final infoHash = Uint8List.fromList(_metaInfo.infoHashBuffer);
+    return await _scrapeClient!.scrape(url, [infoHash]);
   }
 }
