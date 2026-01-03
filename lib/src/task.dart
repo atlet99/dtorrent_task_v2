@@ -38,6 +38,7 @@ import 'nat/port_forwarding_manager.dart';
 import 'filter/ip_filter.dart';
 import 'proxy/proxy_config.dart';
 import 'proxy/proxy_manager.dart';
+import 'seeding/superseeder.dart';
 
 const MAX_PEERS = 50;
 const MAX_IN_PEERS = 10;
@@ -225,6 +226,34 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   /// task.setProxyConfig(proxy);
   /// ```
   void setProxyConfig(ProxyConfig? config);
+
+  /// Enable superseeding mode (BEP 16)
+  ///
+  /// Superseeding is a seeding algorithm designed to help a torrent initiator
+  /// with limited bandwidth "pump up" a large torrent, reducing the amount of
+  /// data it needs to upload in order to spawn new seeds.
+  ///
+  /// **Important**: Superseeding is NOT recommended for general use. It should
+  /// only be used for initial seeding when you are the only or primary seeder.
+  ///
+  /// The mode will only be active when the client is a seeder (has all pieces).
+  ///
+  /// Example:
+  /// ```dart
+  /// task.enableSuperseeding();
+  /// ```
+  void enableSuperseeding();
+
+  /// Disable superseeding mode
+  ///
+  /// Example:
+  /// ```dart
+  /// task.disableSuperseeding();
+  /// ```
+  void disableSuperseeding();
+
+  /// Check if superseeding is enabled
+  bool get isSuperseedingEnabled;
 }
 
 class _TorrentTask
@@ -289,6 +318,12 @@ class _TorrentTask
 
   /// Advanced sequential piece selector (when streaming with config)
   AdvancedSequentialPieceSelector? _advancedSelector;
+
+  /// SuperSeeder for BEP 16 Superseeding mode
+  SuperSeeder? _superseeder;
+
+  /// Whether superseeding is enabled
+  bool _superseedingEnabled = false;
 
   /// The maximum size of the disk write cache.
   final int maxWriteBufferSize = MAX_WRITE_BUFFER_SIZE;
@@ -440,6 +475,20 @@ class _TorrentTask
     _fileManager ??= await DownloadFileManager.createFileManager(
         model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
     _peersManager ??= PeersManager(_peerId, model, ipFilter: _ipFilter);
+
+    // Initialize SuperSeeder if superseeding is enabled
+    if (_superseedingEnabled && _superseeder == null) {
+      _superseeder = SuperSeeder(model.pieces.length);
+      // Only enable if we're already a seeder
+      if (_fileManager != null && _fileManager!.isAllComplete) {
+        _superseeder!.enable();
+        _log.info(
+            'SuperSeeder initialized and enabled for ${model.pieces.length} pieces (client is a seeder)');
+      } else {
+        _log.info(
+            'SuperSeeder initialized for ${model.pieces.length} pieces (will be enabled when download completes)');
+      }
+    }
     // Set torrent version for v2/hybrid support in peer handshakes
     if (_peersManager != null) {
       final torrentVersion = TorrentVersionHelper.detectVersion(model);
@@ -849,13 +898,42 @@ class _TorrentTask
     if (!written) return;
     _pieceManager!.processPieceWriteComplete(index);
     await _fileManager!.updateBitfield(index);
-    _peersManager?.sendHaveToAll(index);
+
+    // In superseeding mode, send HAVE only to specific peers for specific pieces
+    if (_superseeder != null && _fileManager!.isAllComplete) {
+      _sendHaveSuperseeding(index);
+    } else {
+      _peersManager?.sendHaveToAll(index);
+    }
     _flushIndicesBuffer.add(index);
     await _flushFiles(_flushIndicesBuffer);
     if (_fileManager!.isAllComplete) {
       events.emit(AllComplete());
       _whenTaskDownloadComplete();
+
+      // Enable superseeding if it was requested but we weren't a seeder yet
+      if (_superseedingEnabled &&
+          _superseeder != null &&
+          !_superseeder!.enabled) {
+        _superseeder!.enable();
+        _log.info(
+            'Superseeding activated (download completed, client is now a seeder)');
+      }
     }
+  }
+
+  /// Send HAVE messages in superseeding mode
+  /// Only sends HAVE for pieces that should be announced to specific peers
+  void _sendHaveSuperseeding(int pieceIndex) {
+    if (_superseeder == null || _peersManager == null) return;
+
+    // In superseeding mode, we don't send HAVE for completed pieces
+    // Instead, we only send HAVE for pieces that SuperSeeder selects
+    // This method is called when a piece is completed, but in superseeding mode
+    // we're already a seeder, so this shouldn't normally be called
+    // However, we handle it gracefully by not sending HAVE
+    _log.fine(
+        'Superseeding: Not sending HAVE for piece $pieceIndex (superseeding mode)');
   }
 
   Future _flushFiles(Set<int> indices) async {
@@ -887,6 +965,11 @@ class _TorrentTask
 
   void _processPeerDispose(PeerDisposeEvent event) {
     if (_pieceManager == null) return;
+
+    // Clean up superseeding tracking for this peer
+    if (_superseeder != null) {
+      _superseeder!.onPeerDisconnected(event.peer);
+    }
     var bufferRequests = event.peer.requestBuffer;
 
     _pushSubPiecesBack(bufferRequests);
@@ -934,6 +1017,28 @@ class _TorrentTask
 
   void _processPeerHandshake(PeerHandshakeEvent event) {
     if (_fileManager == null) return;
+
+    // In superseeding mode, don't send bitfield (masquerade as peer with no data)
+    // Instead, send HAVE for a selected rare piece
+    if (_superseeder != null &&
+        _superseeder!.enabled &&
+        _fileManager!.isAllComplete) {
+      _log.fine(
+          'Superseeding: Not sending bitfield to peer ${event.peer.address}');
+
+      // Select a piece to offer to this peer
+      final pieceToOffer = _superseeder!.selectPieceToOffer(event.peer);
+      if (pieceToOffer != null) {
+        // Send HAVE for the selected piece
+        Timer.run(() {
+          event.peer.sendHave(pieceToOffer);
+          _log.fine(
+              'Superseeding: Sent HAVE for piece $pieceToOffer to peer ${event.peer.address}');
+        });
+      }
+      return;
+    }
+
     event.peer.sendBitfield(_fileManager!.localBitfield);
   }
 
@@ -1007,6 +1112,13 @@ class _TorrentTask
   void _processHaveUpdate(PeerHaveEvent event) {
     if (pieceManager == null || _fileManager == null || _peersManager == null) {
       return;
+    }
+
+    // Track piece distribution for superseeding
+    if (_superseeder != null && _fileManager!.isAllComplete) {
+      for (var index in event.indices) {
+        _superseeder!.onPeerHave(event.peer, index);
+      }
     }
     var canRequest = false;
     for (var index in event.indices) {
@@ -1311,6 +1423,47 @@ class _TorrentTask
     _peersManager?.setProxyManager(_proxyManager);
     _log.info('Proxy ${config != null ? "enabled" : "disabled"}');
   }
+
+  @override
+  void enableSuperseeding() {
+    if (_superseedingEnabled) {
+      _log.warning('Superseeding is already enabled');
+      return;
+    }
+
+    _superseedingEnabled = true;
+
+    // Initialize SuperSeeder if not already initialized
+    if (_superseeder == null) {
+      _superseeder = SuperSeeder(_metaInfo.pieces.length);
+      _log.info(
+          'SuperSeeder initialized for ${_metaInfo.pieces.length} pieces');
+    }
+
+    // Enable superseeding only if we're a seeder
+    if (_fileManager != null && _fileManager!.isAllComplete) {
+      _superseeder?.enable();
+      _log.info('Superseeding enabled (client is a seeder)');
+    } else {
+      _log.info(
+          'Superseeding will be enabled when download completes (client is not yet a seeder)');
+    }
+  }
+
+  @override
+  void disableSuperseeding() {
+    if (!_superseedingEnabled) {
+      _log.warning('Superseeding is not enabled');
+      return;
+    }
+
+    _superseedingEnabled = false;
+    _superseeder?.disable();
+    _log.info('Superseeding disabled');
+  }
+
+  @override
+  bool get isSuperseedingEnabled => _superseedingEnabled;
 
   @override
   Future<scrape.ScrapeResult> scrapeTracker([Uri? trackerUrl]) async {
