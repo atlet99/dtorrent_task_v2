@@ -17,6 +17,9 @@ export 'src/torrent/merkle_tree.dart';
 export 'src/piece/sequential_config.dart';
 export 'src/piece/sequential_stats.dart';
 export 'src/piece/advanced_sequential_selector.dart';
+export 'src/filter/ip_filter.dart';
+export 'src/filter/emule_dat_parser.dart';
+export 'src/filter/peer_guardian_parser.dart';
 
 /// Peer ID prefix
 const ID_PREFIX = '-DT0201-';

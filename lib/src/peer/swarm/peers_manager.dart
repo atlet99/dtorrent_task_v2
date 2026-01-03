@@ -13,6 +13,7 @@ import '../protocol/peer.dart';
 import '../extensions/pex.dart';
 import '../extensions/holepunch.dart';
 import '../../torrent/torrent_version.dart';
+import '../../filter/ip_filter.dart';
 
 const MAX_ACTIVE_PEERS = 50;
 
@@ -45,6 +46,8 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   InternetAddress? localExternalIP;
 
+  IPFilter? _ipFilter;
+
   final Torrent _metaInfo;
 
   int _uploaded = 0;
@@ -73,8 +76,10 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   PeersManager(
     this._localPeerId,
-    this._metaInfo,
-  ) {
+    this._metaInfo, {
+    IPFilter? ipFilter,
+  }) {
+    _ipFilter = ipFilter;
     _init();
     // Start pex interval
     startPEX();
@@ -88,6 +93,15 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
       peer.setTorrentVersion(version);
     }
   }
+
+  /// Set IP filter for blocking/allowing peers
+  void setIPFilter(IPFilter? filter) {
+    _ipFilter = filter;
+    _log.info('IP filter ${filter != null ? "enabled" : "disabled"}');
+  }
+
+  /// Get current IP filter
+  IPFilter? get ipFilter => _ipFilter;
 
   Future<void> _init() async {
     try {
@@ -243,6 +257,12 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     if (address == null) return;
     if (IGNORE_IPS.contains(address.address)) return;
     if (address.address == localExternalIP) return;
+
+    // Check IP filter
+    if (_ipFilter != null && _ipFilter!.isBlocked(address.address)) {
+      _log.fine('Peer ${address.address} blocked by IP filter');
+      return;
+    }
     if (socket != null) {
       // Indicates that it is an actively connected peer, and currently, only one IP address is allowed to connect at a time.
       if (!_incomingAddress.add(address.address)) {

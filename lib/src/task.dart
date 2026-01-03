@@ -35,6 +35,7 @@ import 'utils/debouncer.dart';
 import 'torrent/torrent_version.dart';
 import 'tracker/scrape_client.dart' as scrape;
 import 'nat/port_forwarding_manager.dart';
+import 'filter/ip_filter.dart';
 
 const MAX_PEERS = 50;
 const MAX_IN_PEERS = 10;
@@ -188,6 +189,19 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   /// }
   /// ```
   Future<scrape.ScrapeResult> scrapeTracker([Uri? trackerUrl]);
+
+  /// Set IP filter for blocking/allowing peer connections
+  ///
+  /// [filter] - IP filter instance. Set to null to disable filtering.
+  ///
+  /// Example:
+  /// ```dart
+  /// final filter = IPFilter();
+  /// filter.addCIDRFromString('192.168.1.0/24');
+  /// filter.setMode(IPFilterMode.blacklist);
+  /// task.setIPFilter(filter);
+  /// ```
+  void setIPFilter(IPFilter? filter);
 }
 
 class _TorrentTask
@@ -201,6 +215,8 @@ class _TorrentTask
   scrape.ScrapeClient? _scrapeClient;
 
   PortForwardingManager? _portForwardingManager;
+
+  IPFilter? _ipFilter;
 
   DHT? _dht = DHT();
 
@@ -394,7 +410,7 @@ class _TorrentTask
 
     _fileManager ??= await DownloadFileManager.createFileManager(
         model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
-    _peersManager ??= PeersManager(_peerId, model);
+    _peersManager ??= PeersManager(_peerId, model, ipFilter: _ipFilter);
     // Set torrent version for v2/hybrid support in peer handshakes
     if (_peersManager != null) {
       final torrentVersion = TorrentVersionHelper.detectVersion(model);
@@ -1251,6 +1267,13 @@ class _TorrentTask
   @override
   void requestPeersFromDHT() {
     _dht?.requestPeers(String.fromCharCodes(_metaInfo.infoHashBuffer));
+  }
+
+  @override
+  void setIPFilter(IPFilter? filter) {
+    _ipFilter = filter;
+    _peersManager?.setIPFilter(filter);
+    _log.info('IP filter ${filter != null ? "enabled" : "disabled"}');
   }
 
   @override
