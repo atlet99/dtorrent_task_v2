@@ -28,6 +28,9 @@ export 'src/queue/torrent_queue_item.dart';
 export 'src/queue/torrent_queue.dart';
 export 'src/queue/queue_manager.dart';
 export 'src/queue/queue_events.dart';
+export 'src/file/state_file_v2.dart';
+export 'src/file/file_validator.dart';
+export 'src/file/state_recovery.dart';
 
 /// Peer ID prefix
 const ID_PREFIX = '-DT0201-';
