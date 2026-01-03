@@ -66,6 +66,10 @@ const ID_PIECE = 7;
 const ID_CANCEL = 8;
 const ID_PORT = 9;
 const ID_EXTENDED = 20;
+// BEP 52 v2 protocol messages
+const ID_HASH_REQUEST = 21;
+const ID_HASHES = 22;
+const ID_HASH_REJECT = 23;
 
 const OP_HAVE_ALL = 0x0e;
 const OP_HAVE_NONE = 0x0f;
@@ -251,6 +255,16 @@ abstract class Peer
   int reqq;
 
   int? remoteReqq;
+
+  /// Torrent version support (v1, v2, or hybrid)
+  /// Used to set handshake reserved bits for v2 support
+  TorrentVersion? _torrentVersion;
+
+  /// Set torrent version for this peer connection
+  /// This affects handshake reserved bits for v2/hybrid support
+  void setTorrentVersion(TorrentVersion version) {
+    _torrentVersion = version;
+  }
 
   /// [_id] is used to differentiate between different peers. It is different from
   ///  [_localPeerId], which is the Peer_id in the BitTorrent protocol.
@@ -649,14 +663,21 @@ abstract class Peer
         return false;
       }
 
-      // Validate _infoHashBuffer has correct length
-      var expectedInfoHashLength = PEER_ID_START - INFO_HASH_START;
+      // Standard handshake always uses 20 bytes for info hash (v1)
+      // v2 info hash (32 bytes) is communicated via Extension Protocol (BEP 10)
+      // For hybrid torrents, v1 info hash is used in handshake
+      var expectedInfoHashLength =
+          PEER_ID_START - INFO_HASH_START; // Always 20 bytes
+
+      // Support both v1 (20 bytes) and v2 (32 bytes) info hash buffers
+      // But in handshake, we only validate the first 20 bytes
       if (_infoHashBuffer.length < expectedInfoHashLength) {
         _log.warning(
             'InfoHash buffer too short: length=${_infoHashBuffer.length}, required=$expectedInfoHashLength, peer=$address');
         return false;
       }
 
+      // Validate first 20 bytes (standard handshake format)
       for (var i = INFO_HASH_START; i < PEER_ID_START; i++) {
         if (buffer[i] != _infoHashBuffer[i - INFO_HASH_START]) return false;
       }
@@ -749,6 +770,18 @@ abstract class Peer
             message = message.sublist(1);
             processExtendMessage(extensionId, message);
           }
+          return;
+        case ID_HASH_REQUEST:
+          _log.fine('process hash request from $address');
+          if (message != null) _processHashRequest(message);
+          return;
+        case ID_HASHES:
+          _log.fine('process hashes from $address');
+          if (message != null) _processHashes(message);
+          return;
+        case ID_HASH_REJECT:
+          _log.fine('process hash reject from $address');
+          if (message != null) _processHashReject(message);
           return;
       }
     }
@@ -908,6 +941,117 @@ abstract class Peer
     }
   }
 
+  /// Process hash request message (BEP 52)
+  ///
+  /// Hash request contains: pieces root (32 bytes), base layer (1 byte),
+  /// index (4 bytes), length (4 bytes), proof layers (1 byte)
+  void _processHashRequest(Uint8List message) {
+    // Minimum size: 32 (pieces root) + 1 (base layer) + 4 (index) + 4 (length) + 1 (proof layers) = 42
+    if (message.length < 42) {
+      _log.warning('Hash request message too short: ${message.length} bytes');
+      return;
+    }
+
+    try {
+      var offset = 0;
+      var piecesRoot = message.sublist(offset, offset + 32);
+      offset += 32;
+      var baseLayer = message[offset];
+      offset += 1;
+      var view = ByteData.view(message.buffer, offset);
+      var index = view.getUint32(0, Endian.big);
+      offset += 4;
+      var length = view.getUint32(4, Endian.big);
+      offset += 4;
+      var proofLayers = message[offset];
+
+      _log.fine(
+          'Hash request: piecesRoot=${_bytesToHex(piecesRoot)}, baseLayer=$baseLayer, index=$index, length=$length, proofLayers=$proofLayers');
+
+      // Emit event for handling by task/manager
+      events.emit(PeerHashRequestEvent(
+          this, piecesRoot, baseLayer, index, length, proofLayers));
+    } catch (e, stackTrace) {
+      _log.warning('Failed to process hash request', e, stackTrace);
+    }
+  }
+
+  /// Process hashes message (BEP 52)
+  ///
+  /// Hashes message contains: pieces root (32 bytes), base layer (1 byte),
+  /// index (4 bytes), length (4 bytes), proof layers (1 byte), hashes (variable)
+  void _processHashes(Uint8List message) {
+    // Minimum size: 42 bytes (same as hash request) + at least some hashes
+    if (message.length < 42) {
+      _log.warning('Hashes message too short: ${message.length} bytes');
+      return;
+    }
+
+    try {
+      var offset = 0;
+      var piecesRoot = message.sublist(offset, offset + 32);
+      offset += 32;
+      var baseLayer = message[offset];
+      offset += 1;
+      var view = ByteData.view(message.buffer, offset);
+      var index = view.getUint32(0, Endian.big);
+      offset += 4;
+      var length = view.getUint32(4, Endian.big);
+      offset += 4;
+      var proofLayers = message[offset];
+      offset += 1;
+      var hashes = message.sublist(offset);
+
+      _log.fine(
+          'Hashes: piecesRoot=${_bytesToHex(piecesRoot)}, baseLayer=$baseLayer, index=$index, length=$length, proofLayers=$proofLayers, hashesLength=${hashes.length}');
+
+      // Emit event for handling by task/manager
+      events.emit(PeerHashesEvent(
+          this, piecesRoot, baseLayer, index, length, proofLayers, hashes));
+    } catch (e, stackTrace) {
+      _log.warning('Failed to process hashes', e, stackTrace);
+    }
+  }
+
+  /// Process hash reject message (BEP 52)
+  ///
+  /// Hash reject has the same format as hash request
+  void _processHashReject(Uint8List message) {
+    // Same format as hash request
+    if (message.length < 42) {
+      _log.warning('Hash reject message too short: ${message.length} bytes');
+      return;
+    }
+
+    try {
+      var offset = 0;
+      var piecesRoot = message.sublist(offset, offset + 32);
+      offset += 32;
+      var baseLayer = message[offset];
+      offset += 1;
+      var view = ByteData.view(message.buffer, offset);
+      var index = view.getUint32(0, Endian.big);
+      offset += 4;
+      var length = view.getUint32(4, Endian.big);
+      offset += 4;
+      var proofLayers = message[offset];
+
+      _log.fine(
+          'Hash reject: piecesRoot=${_bytesToHex(piecesRoot)}, baseLayer=$baseLayer, index=$index, length=$length, proofLayers=$proofLayers');
+
+      // Emit event for handling by task/manager
+      events.emit(PeerHashRejectEvent(
+          this, piecesRoot, baseLayer, index, length, proofLayers));
+    } catch (e, stackTrace) {
+      _log.warning('Failed to process hash reject', e, stackTrace);
+    }
+  }
+
+  /// Helper to convert bytes to hex string
+  String _bytesToHex(Uint8List bytes) {
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
   /// When the fast extension is enabled:
   ///
   /// - If a peer receives a request from a peer its choking, the peer receiving the
@@ -1016,6 +1160,12 @@ abstract class Peer
     remoteEnableFastPeer = (fast == 0x04);
     var extended = reserved.elementAt(5);
     remoteEnableExtended = ((extended & 0x10) == 0x10);
+    // BEP 52: Check 4th bit (0x10) in reserved[7] for v2 support
+    var v2Support = reserved.elementAt(7) & 0x10;
+    if (v2Support == 0x10) {
+      _log.fine('Remote peer supports v2 protocol');
+      // TODO: Handle v2 info hash upgrade if we're in hybrid mode
+    }
     _sendExtendedHandshake();
     events.emit(PeerHandshakeEvent(this, _remotePeerId!, data));
   }
@@ -1079,6 +1229,8 @@ abstract class Peer
   /// Send a handshake message.
   ///
   /// After sending the handshake message, this method will also proactively send the bitfield and have messages to the remote peer.
+  /// For v2/hybrid torrents, uses v1 info hash (first 20 bytes) in handshake for compatibility.
+  /// Sets 4th bit (0x10) in reserved[7] for hybrid/v2 torrents to indicate v2 support (BEP 52).
   void sendHandShake(String localPeerId) {
     if (_handShaked) return;
     var message = <int>[];
@@ -1090,8 +1242,21 @@ abstract class Peer
     if (localEnableExtended) {
       reserved[5] |= 0x10;
     }
+    // BEP 52: Set 4th bit (0x10) in reserved[7] for hybrid/v2 torrents
+    // This indicates that we support v2 protocol
+    if (_torrentVersion == TorrentVersion.v2 ||
+        _torrentVersion == TorrentVersion.hybrid) {
+      reserved[7] |= 0x10;
+      _log.fine(
+          'Setting v2 support bit in handshake for version: $_torrentVersion');
+    }
     message.addAll(reserved);
-    message.addAll(_infoHashBuffer);
+    // Standard handshake always uses 20 bytes for info hash
+    // For v2/hybrid torrents, use v1 info hash (first 20 bytes) for compatibility
+    var handshakeInfoHash = _infoHashBuffer.length >= 20
+        ? _infoHashBuffer.sublist(0, 20)
+        : _infoHashBuffer;
+    message.addAll(handshakeInfoHash);
     message.addAll(utf8.encode(localPeerId));
     sendByteMessage(message);
     _startToCountdown();
@@ -1305,6 +1470,88 @@ abstract class Peer
     _log.fine(
         'iam interested: $iamInterested, send id: $id to remote peer $address');
     sendMessage(id);
+  }
+
+  /// Send hash request message (BEP 52)
+  ///
+  /// Hash request format: pieces root (32 bytes), base layer (1 byte),
+  /// index (4 bytes), length (4 bytes), proof layers (1 byte)
+  void sendHashRequest(Uint8List piecesRoot, int baseLayer, int index,
+      int length, int proofLayers) {
+    if (piecesRoot.length != 32) {
+      _log.warning('Invalid pieces root length: ${piecesRoot.length}');
+      return;
+    }
+
+    var bytes = Uint8List(42);
+    var offset = 0;
+    bytes.setRange(offset, offset + 32, piecesRoot);
+    offset += 32;
+    bytes[offset] = baseLayer;
+    offset += 1;
+    var view = ByteData.view(bytes.buffer, offset);
+    view.setUint32(0, index, Endian.big);
+    offset += 4;
+    view.setUint32(4, length, Endian.big);
+    offset += 4;
+    bytes[offset] = proofLayers;
+
+    sendMessage(ID_HASH_REQUEST, bytes);
+  }
+
+  /// Send hashes message (BEP 52)
+  ///
+  /// Hashes format: pieces root (32 bytes), base layer (1 byte),
+  /// index (4 bytes), length (4 bytes), proof layers (1 byte), hashes (variable)
+  void sendHashes(Uint8List piecesRoot, int baseLayer, int index, int length,
+      int proofLayers, Uint8List hashes) {
+    if (piecesRoot.length != 32) {
+      _log.warning('Invalid pieces root length: ${piecesRoot.length}');
+      return;
+    }
+
+    var bytes = Uint8List(42 + hashes.length);
+    var offset = 0;
+    bytes.setRange(offset, offset + 32, piecesRoot);
+    offset += 32;
+    bytes[offset] = baseLayer;
+    offset += 1;
+    var view = ByteData.view(bytes.buffer, offset);
+    view.setUint32(0, index, Endian.big);
+    offset += 4;
+    view.setUint32(4, length, Endian.big);
+    offset += 4;
+    bytes[offset] = proofLayers;
+    offset += 1;
+    bytes.setRange(offset, offset + hashes.length, hashes);
+
+    sendMessage(ID_HASHES, bytes);
+  }
+
+  /// Send hash reject message (BEP 52)
+  ///
+  /// Hash reject has the same format as hash request
+  void sendHashReject(Uint8List piecesRoot, int baseLayer, int index,
+      int length, int proofLayers) {
+    if (piecesRoot.length != 32) {
+      _log.warning('Invalid pieces root length: ${piecesRoot.length}');
+      return;
+    }
+
+    var bytes = Uint8List(42);
+    var offset = 0;
+    bytes.setRange(offset, offset + 32, piecesRoot);
+    offset += 32;
+    bytes[offset] = baseLayer;
+    offset += 1;
+    var view = ByteData.view(bytes.buffer, offset);
+    view.setUint32(0, index, Endian.big);
+    offset += 4;
+    view.setUint32(4, length, Endian.big);
+    offset += 4;
+    bytes[offset] = proofLayers;
+
+    sendMessage(ID_HASH_REJECT, bytes);
   }
 
   /// `cancel: <len=0013><id=8><index><begin><length>`

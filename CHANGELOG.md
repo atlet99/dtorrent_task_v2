@@ -1,21 +1,3 @@
-## 0.4.5
-- add advanced sequential download support for streaming
-- add `SequentialConfig` class for flexible streaming configuration
-- add `AdvancedSequentialPieceSelector` with look-ahead buffer
-- add `SequentialStats` for download metrics and health monitoring
-- add look-ahead buffer for smooth playback (configurable size)
-- add critical piece prioritization (moov atom for MP4 files)
-- add adaptive strategy (automatic switching between sequential and rarest-first)
-- add seek operation support with fast priority rebuilding
-- add auto-detection of moov atom for MP4 files
-- add peer priority optimization (BEP 40 - Canonical Peer Priority)
-- add fast piece resumption support (BEP 53 - Partial data)
-- add sequential statistics API (`getSequentialStats()`)
-- add playback position tracking (`setPlaybackPosition()`)
-- add factory methods for common use cases (`forVideoStreaming()`, `forAudioStreaming()`)
-- add comprehensive streaming examples
-- export sequential download classes in public API
-
 ## 0.0.1
 
 - Initial version
@@ -169,3 +151,41 @@
 - add trackers from magnet link to TorrentTask to ensure all trackers are used even if not in metadata
 - improve bitfield handling: properly support messages without payload according to BEP 0003
 - enhance test example with comprehensive diagnostics and automatic completion detection
+
+## 0.4.5
+- add advanced sequential download support for streaming
+- add `SequentialConfig` class for flexible streaming configuration
+- add `AdvancedSequentialPieceSelector` with look-ahead buffer
+- add `SequentialStats` for download metrics and health monitoring
+- add look-ahead buffer for smooth playback (configurable size)
+- add critical piece prioritization (moov atom for MP4 files)
+- add adaptive strategy (automatic switching between sequential and rarest-first)
+- add seek operation support with fast priority rebuilding
+- add auto-detection of moov atom for MP4 files
+- add peer priority optimization (BEP 40 - Canonical Peer Priority)
+- add fast piece resumption support (BEP 53 - Partial data)
+- add sequential statistics API (`getSequentialStats()`)
+- add playback position tracking (`setPlaybackPosition()`)
+- add factory methods for common use cases (`forVideoStreaming()`, `forAudioStreaming()`)
+- add comprehensive streaming examples
+- export sequential download classes in public API
+
+## 0.4.6
+- add BitTorrent Protocol v2 (BEP 52) support
+- add v2 info hash support (32 bytes SHA-256 instead of 20 bytes SHA-1)
+- add v2 piece hashing with SHA-256 algorithm
+- add hybrid torrent support (v1 + v2 compatibility)
+- add torrent version detection via meta version field
+- add file tree structure support (BEP 52) with `FileTreeHelper` class
+- add piece layers support with `PieceLayersHelper` class
+- add Merkle tree validation for v2 files with `MerkleTreeHelper` class
+- add hash request/hashes/hash reject messages (ID 21, 22, 23) for v2 protocol
+- add hybrid torrent handshake upgrade (4th bit in reserved bytes)
+- add v2 info hash calculation (SHA-256 from bencoded info dict)
+- add `TorrentVersionHelper` for version detection and hash algorithm selection
+- update handshake protocol to support v2 extension bit
+- update piece validation to support both SHA-1 (v1) and SHA-256 (v2)
+- update `PieceManager` to handle piece layers for v2 torrents
+- update `DownloadFileManager` to support file tree structure
+- add comprehensive test suite for BEP 52 features (33 new tests)
+- export BEP 52 helper classes in public API (`FileTreeHelper`, `PieceLayersHelper`, `MerkleTreeHelper`)

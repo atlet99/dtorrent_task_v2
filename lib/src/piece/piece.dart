@@ -1,13 +1,16 @@
 import 'dart:collection';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
-
 import '../peer/protocol/peer.dart';
 import '../utils.dart';
+import '../torrent/torrent_version.dart';
+import '../torrent/merkle_tree.dart';
 
 class Piece {
   final String hashString;
+
+  /// Torrent version for this piece (v1 uses SHA-1, v2 uses SHA-256)
+  final TorrentVersion? version;
 
   final int byteLength;
 
@@ -45,8 +48,11 @@ class Piece {
   bool get flushed => _flushed;
 
   Piece(this.hashString, this.index, this.byteLength, this.offset,
-      {int requestLength = DEFAULT_REQUEST_LENGTH, bool isComplete = false})
-      : _subPieceSize = requestLength,
+      {int requestLength = DEFAULT_REQUEST_LENGTH,
+      bool isComplete = false,
+      TorrentVersion? version})
+      : version = version ?? TorrentVersion.v1,
+        _subPieceSize = requestLength,
         _subPiecesCount = (byteLength + requestLength - 1) ~/ requestLength {
     if (requestLength <= 0) {
       throw Exception('Request length should bigger than zero');
@@ -235,13 +241,38 @@ class Piece {
     return true;
   }
 
+  /// Expected piece hash from piece layers (for v2)
+  Uint8List? _expectedPieceHash;
+
+  /// Set expected piece hash from piece layers (for v2 validation)
+  void setExpectedPieceHash(Uint8List hash) {
+    if (hash.length == 32) {
+      _expectedPieceHash = hash;
+    }
+  }
+
   bool validatePiece() {
     if (_block == null ||
         _block!.length < byteLength ||
         !isCompletelyDownloaded) {
       throw Exception("Piece is cleared");
     }
-    var digest = sha1.convert(_block!);
+
+    // For v2, use Merkle tree validation if piece hash is available
+    if (version == TorrentVersion.v2 && _expectedPieceHash != null) {
+      final valid =
+          MerkleTreeHelper.validatePiece(_block!, _expectedPieceHash!);
+      if (!valid) {
+        for (var subPiece in {..._inMemorySubPieces}) {
+          pushSubPieceBack(subPiece);
+        }
+      }
+      return valid;
+    }
+
+    // Use appropriate hash algorithm based on version (v1 or fallback)
+    final hashAlgo = TorrentVersionHelper.getHashAlgorithm(version!);
+    var digest = hashAlgo.convert(_block!);
     var valid = digest.toString() == hashString;
     if (!valid) {
       for (var subPiece in {..._inMemorySubPieces}) {

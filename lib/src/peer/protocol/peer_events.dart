@@ -151,3 +151,42 @@ class RequestTimeoutEvent implements PeerEvent {
     this.peer,
   );
 }
+
+// BEP 52 v2 protocol hash messages
+
+class PeerHashRequestEvent implements PeerEvent {
+  final Peer peer;
+  final Uint8List piecesRoot; // 32 bytes
+  final int baseLayer;
+  final int index;
+  final int length;
+  final int proofLayers;
+
+  PeerHashRequestEvent(this.peer, this.piecesRoot, this.baseLayer, this.index,
+      this.length, this.proofLayers);
+}
+
+class PeerHashesEvent implements PeerEvent {
+  final Peer peer;
+  final Uint8List piecesRoot; // 32 bytes
+  final int baseLayer;
+  final int index;
+  final int length;
+  final int proofLayers;
+  final Uint8List hashes;
+
+  PeerHashesEvent(this.peer, this.piecesRoot, this.baseLayer, this.index,
+      this.length, this.proofLayers, this.hashes);
+}
+
+class PeerHashRejectEvent implements PeerEvent {
+  final Peer peer;
+  final Uint8List piecesRoot; // 32 bytes
+  final int baseLayer;
+  final int index;
+  final int length;
+  final int proofLayers;
+
+  PeerHashRejectEvent(this.peer, this.piecesRoot, this.baseLayer, this.index,
+      this.length, this.proofLayers);
+}

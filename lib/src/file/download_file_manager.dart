@@ -12,6 +12,8 @@ import '../peer/peer_base.dart';
 import '../piece/piece.dart';
 import 'download_file.dart';
 import 'state_file.dart';
+import '../torrent/file_tree.dart';
+import '../torrent/torrent_version.dart';
 
 var _log = Logger("DownloadFileManager");
 
@@ -117,6 +119,18 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   }
 
   void _initFileMap(String directory) {
+    // Check if this is a v2 torrent with file tree
+    final torrentVersion = TorrentVersionHelper.detectVersion(metainfo);
+
+    if (torrentVersion == TorrentVersion.v2 ||
+        torrentVersion == TorrentVersion.hybrid) {
+      // For v2, we would use file tree structure
+      // But since dtorrent_parser doesn't expose it, we fall back to v1 structure
+      _log.info(
+          'v2/hybrid torrent detected, but using v1 file structure (file tree not accessible)');
+    }
+
+    // Use v1 file structure (files array)
     for (var i = 0; i < metainfo.files.length; i++) {
       var file = metainfo.files[i];
       var startPiece = file.offset ~/ metainfo.pieceLength;
@@ -142,6 +156,48 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       }
 
       _files.add(downloadFile);
+    }
+  }
+
+  /// Initialize file map from file tree (v2 format)
+  ///
+  /// This method would be used when file tree is available from torrent
+  // ignore: unused_element
+  void _initFileMapFromTree(
+      String directory, Map<String, FileTreeEntry> fileTree) {
+    final files = FileTreeHelper.extractFiles(fileTree, '');
+    var currentOffset = 0;
+
+    for (var fileInfo in files) {
+      // Calculate which pieces this file spans
+      var startPiece = currentOffset ~/ metainfo.pieceLength;
+      var fileEnd = currentOffset + fileInfo.length;
+      var endPiece = fileEnd ~/ metainfo.pieceLength;
+      if (fileEnd.remainder(metainfo.pieceLength) == 0) endPiece--;
+
+      var pieces = _file2pieceMap[fileInfo.path];
+      if (pieces == null) {
+        pieces = <Piece>[];
+        _file2pieceMap[fileInfo.path] = pieces;
+      }
+
+      var downloadFile = DownloadFile(directory + fileInfo.path, currentOffset,
+          fileInfo.length, fileInfo.path, pieces);
+
+      for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
+        var downloadFileList = _piece2fileMap?[pieceIndex];
+        if (downloadFileList == null) {
+          downloadFileList = <DownloadFile>[];
+          _piece2fileMap?[pieceIndex] = downloadFileList;
+        }
+        if (pieceIndex < _pieces.length) {
+          pieces.add(_pieces[pieceIndex]);
+          downloadFileList.add(downloadFile);
+        }
+      }
+
+      _files.add(downloadFile);
+      currentOffset = fileEnd;
     }
   }
 

@@ -32,6 +32,7 @@ import 'peer/swarm/peers_manager.dart';
 import 'piece/web_seed_downloader.dart';
 import 'utils.dart';
 import 'utils/debouncer.dart';
+import 'torrent/torrent_version.dart';
 
 const MAX_PEERS = 50;
 const MAX_IN_PEERS = 10;
@@ -354,16 +355,26 @@ class _TorrentTask
         _log.info('Using BasePieceSelector (rarest-first)');
       }
 
+      // Detect torrent version (v1, v2, or hybrid)
+      final torrentVersion = TorrentVersionHelper.detectVersion(model);
+      _log.info('Detected torrent version: $torrentVersion');
+
       _pieceManager = PieceManager.createPieceManager(
         selector,
         model,
         _stateFile!.bitfield,
+        version: torrentVersion,
       );
     }
 
     _fileManager ??= await DownloadFileManager.createFileManager(
         model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
     _peersManager ??= PeersManager(_peerId, model);
+    // Set torrent version for v2/hybrid support in peer handshakes
+    if (_peersManager != null) {
+      final torrentVersion = TorrentVersionHelper.detectVersion(model);
+      _peersManager!.setTorrentVersion(torrentVersion);
+    }
 
     // Initialize web seed downloader if web seeds are available (BEP 0019)
     if ((_webSeeds.isNotEmpty || _acceptableSources.isNotEmpty) &&

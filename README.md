@@ -25,6 +25,7 @@ This package implements the regular BitTorrent Protocol and manages the above pa
 - [BEP 0027 Private Torrents](https://www.bittorrent.org/beps/bep_0027.html)
 - [BEP 0029 uTorrent transport protocol](https://www.bittorrent.org/beps/bep_0029.html)
 - [BEP 0040 Canonical Peer Priority](https://www.bittorrent.org/beps/bep_0040.html)
+- [BEP 0052 BitTorrent v2](https://www.bittorrent.org/beps/bep_0052.html)
 - [BEP 0053 Magnet URI extension - Select specific file indices](https://www.bittorrent.org/beps/bep_0053.html)
 - [BEP 0055 Holepunch extension](https://www.bittorrent.org/beps/bep_0055.html)
 
@@ -34,7 +35,7 @@ This package requires dependency [`dtorrent_parser`](https://pub.dev/packages/dt
 ```yaml
 dependencies:
   dtorrent_parser: ^1.0.8
-  dtorrent_task_v2: ^0.4.5
+  dtorrent_task_v2: ^0.4.6
 ```
 
 Download from: [DTORRENT_TASK_V2](https://pub.dev/packages/dtorrent_task_v2)
@@ -184,6 +185,51 @@ task.applySelectedFiles([0, 2, 5]); // Only download files at indices 0, 2, and 
 // This is especially useful with magnet links:
 // magnet:?xt=urn:btih:...&so=0&so=2&so=5
 ```
+
+### BitTorrent Protocol v2 Support (NEW in 0.4.6)
+
+The library now supports BitTorrent Protocol v2 (BEP 52) with full backward compatibility:
+
+```dart
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+
+// Automatic version detection
+var model = await Torrent.parse('torrent_v2.torrent');
+var task = TorrentTask.newTask(model, 'savepath');
+
+// The library automatically detects v1, v2, or hybrid torrents
+// and uses appropriate hash algorithms (SHA-1 for v1, SHA-256 for v2)
+
+await task.start();
+```
+
+**BEP 52 Features:**
+- **Automatic version detection**: Detects v1, v2, or hybrid torrents via `meta version` field
+- **v2 info hash**: 32-byte SHA-256 info hash support (backward compatible with 20-byte v1)
+- **SHA-256 piece hashing**: Automatic piece validation with SHA-256 for v2 torrents
+- **File tree structure**: Support for v2 file tree organization
+- **Piece layers**: Merkle tree layer support for efficient piece validation
+- **Merkle tree validation**: Full Merkle tree validation for v2 files
+- **Hash messages**: Support for hash request/hashes/hash reject messages (ID 21, 22, 23)
+- **Hybrid torrents**: Seamless support for torrents with both v1 and v2 structures
+
+**Helper Classes:**
+```dart
+// File tree operations
+final fileTree = FileTreeHelper.parseFileTree(torrentData);
+final files = FileTreeHelper.extractFiles(fileTree, '');
+final totalSize = FileTreeHelper.calculateTotalSize(fileTree);
+
+// Piece layers operations
+final pieceLayers = PieceLayersHelper.parsePieceLayers(torrentData);
+final pieceHashes = PieceLayersHelper.getPieceHashesForFile(pieceLayers, piecesRoot);
+
+// Merkle tree validation
+final isValid = MerkleTreeHelper.validateFile(fileData, piecesRoot);
+final pieceValid = MerkleTreeHelper.validatePiece(pieceData, expectedHash);
+```
+
+See `example/bittorrent_v2_example.dart` for complete examples.
 
 ### Sequential Download for Streaming (NEW in 0.4.5)
 
@@ -344,6 +390,7 @@ These metrics help monitor uTP protocol stability and debug RangeError crashes, 
 
 ### Protocol Support
 - Full BitTorrent protocol implementation
+- **BitTorrent Protocol v2 (BEP 52)** with automatic version detection
 - uTP (uTorrent transport protocol) support with enhanced stability
 - TCP fallback support
 - Multiple extension protocols (PEX, LSD, Holepunch, Metadata Exchange)
@@ -352,6 +399,7 @@ These metrics help monitor uTP protocol stability and debug RangeError crashes, 
 - Web seeding (HTTP/FTP) support (BEP 0019)
 - Selected file download (BEP 0053)
 - Private torrent support (BEP 0027) with automatic DHT/PEX disabling
+- Hybrid torrent support (v1 + v2 compatibility)
 
 ### Performance
 - Efficient piece management and selection
