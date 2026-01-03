@@ -28,8 +28,12 @@ Future<Torrent> createTestTorrent({
   final torrent = await TorrentCreator.createTorrent(tempFile.path, options);
 
   // Clean up temp file
-  if (await tempFile.exists()) {
-    await tempFile.delete();
+  try {
+    if (await tempFile.exists()) {
+      await tempFile.delete();
+    }
+  } catch (e) {
+    // Ignore errors when deleting temp file (may already be deleted)
   }
 
   return torrent;

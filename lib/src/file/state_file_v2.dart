@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:logging/logging.dart';
 import '../peer/bitfield.dart';
+import 'file_priority.dart';
 
 var _log = Logger('StateFileV2');
 
@@ -61,6 +62,21 @@ class StateFileV2 {
   bool _compressed = false;
   bool _sparse = false;
   int _compressionLevel = 6; // Default zlib compression level
+
+  /// File priorities (only non-normal priorities are stored)
+  Map<int, FilePriority> _filePriorities = {};
+
+  /// Get file priorities
+  Map<int, FilePriority> get filePriorities =>
+      Map.unmodifiable(_filePriorities);
+
+  /// Set file priorities
+  void setFilePriorities(Map<int, FilePriority> priorities) {
+    _filePriorities = Map.from(priorities);
+    // Remove normal priorities (they're default)
+    _filePriorities
+        .removeWhere((index, priority) => priority == FilePriority.normal);
+  }
 
   bool get isClosed => _closed;
   bool get isValid => _isValid;
@@ -218,7 +234,7 @@ class StateFileV2 {
     if (_bitfield.buffer.length >= COMPRESSION_THRESHOLD) {
       try {
         // Use gzip compression
-        final compressed = gzip.encode(_bitfield.buffer);
+        final compressed = gzip.encoder.convert(_bitfield.buffer);
         // Only use compression if it actually reduces size
         if (compressed.length < _bitfield.buffer.length) {
           _compressed = true;
@@ -266,11 +282,100 @@ class StateFileV2 {
         'Bitfield stored in sparse format: ${completedPieces.length} pieces');
   }
 
+  /// Write file priorities section
+  /// Format: count (4 bytes) + for each file: index (4 bytes) + priority (1 byte)
+  Future<void> _writeFilePriorities(RandomAccessFile access) async {
+    // Only write non-normal priorities
+    final nonNormalPriorities = _filePriorities.entries
+        .where((e) => e.value != FilePriority.normal)
+        .toList();
+
+    // Write count
+    final countData = ByteData(4);
+    countData.setUint32(0, nonNormalPriorities.length, Endian.little);
+    await access.writeFrom(countData.buffer.asUint8List());
+
+    // Write priorities
+    for (var entry in nonNormalPriorities) {
+      final fileData = ByteData(5);
+      fileData.setUint32(0, entry.key, Endian.little);
+      fileData.setUint8(4, entry.value.value);
+      await access.writeFrom(fileData.buffer.asUint8List());
+    }
+
+    _log.fine(
+        'Wrote ${nonNormalPriorities.length} file priorities to state file');
+  }
+
+  /// Read file priorities section
+  Future<void> _readFilePriorities(Uint8List bytes, int offset) async {
+    if (bytes.length < offset + 4) {
+      _log.fine('No file priorities section in state file (old format)');
+      _filePriorities = {};
+      return;
+    }
+
+    // Read count
+    final countView = ByteData.view(bytes.buffer, offset, 4);
+    final count = countView.getUint32(0, Endian.little);
+    offset += 4;
+
+    if (count == 0) {
+      _filePriorities = {};
+      return;
+    }
+
+    // Check if we have enough data
+    if (bytes.length < offset + (count * 5)) {
+      _log.warning('File priorities section incomplete, skipping');
+      _filePriorities = {};
+      return;
+    }
+
+    // Read priorities
+    _filePriorities = {};
+    var currentOffset = offset;
+    for (var i = 0; i < count; i++) {
+      final fileView = ByteData.view(bytes.buffer, currentOffset, 5);
+      final fileIndex = fileView.getUint32(0, Endian.little);
+      final priorityValue = fileView.getUint8(4);
+
+      // Convert value to FilePriority
+      FilePriority priority;
+      switch (priorityValue) {
+        case 0:
+          priority = FilePriority.skip;
+          break;
+        case 1:
+          priority = FilePriority.low;
+          break;
+        case 2:
+          priority = FilePriority.normal;
+          break;
+        case 3:
+          priority = FilePriority.high;
+          break;
+        default:
+          _log.warning(
+              'Invalid priority value $priorityValue for file $fileIndex, using normal');
+          priority = FilePriority.normal;
+      }
+
+      _filePriorities[fileIndex] = priority;
+      currentOffset += 5;
+    }
+
+    _log.fine('Read ${_filePriorities.length} file priorities from state file');
+  }
+
   /// Write footer with checksum
   Future<void> _writeFooter() async {
     if (_bitfieldFile == null) return;
 
     final access = await _bitfieldFile!.open(mode: FileMode.writeOnlyAppend);
+
+    // Write file priorities before footer
+    await _writeFilePriorities(access);
 
     // Write uploaded bytes again (for compatibility)
     final uploadedData = ByteData(8);
@@ -426,7 +531,7 @@ class StateFileV2 {
       if (_compressed) {
         // Decompress
         try {
-          bitfieldBytes = Uint8List.fromList(gzip.decode(bitfieldBytes));
+          bitfieldBytes = Uint8List.fromList(gzip.decoder.convert(bitfieldBytes));
           _log.fine(
               'Bitfield decompressed: $dataLength -> ${bitfieldBytes.length} bytes');
         } catch (e) {
@@ -439,9 +544,57 @@ class StateFileV2 {
       bitfieldDataOffset += dataLength;
     }
 
+    // Read file priorities (after bitfield, before footer)
+    var prioritiesOffset = bitfieldDataOffset;
+    await _readFilePriorities(bytes, prioritiesOffset);
+
+    // Calculate priorities section size
+    // Note: _readFilePriorities reads the count first, so we need to calculate size
+    // based on what was actually read
+    final prioritiesCount = _filePriorities.length;
+    final prioritiesSize =
+        4 + (prioritiesCount * 5); // count + (index + priority) for each
+
     // Read uploaded from footer (for compatibility)
-    final uploadedOffset = bitfieldDataOffset;
+    final uploadedOffset = prioritiesOffset + prioritiesSize;
     if (bytes.length < uploadedOffset + 8 + 4) {
+      // If file is too short, priorities might not be present (old format)
+      if (bytes.length >= bitfieldDataOffset + 8 + 4) {
+        // Try reading without priorities (old format)
+        _filePriorities = {};
+        final uploadedOffsetOld = bitfieldDataOffset;
+        final uploadedView = ByteData.view(bytes.buffer, uploadedOffsetOld, 8);
+        final uploadedFromFooter = uploadedView.getUint64(0, Endian.little);
+        if (_uploaded != uploadedFromFooter) {
+          _log.warning(
+              'Uploaded mismatch between header and footer, using header value');
+        }
+        final checksumOffset = uploadedOffsetOld + 8;
+        // Continue with checksum validation...
+        final expectedBitfieldChecksum =
+            ByteData.view(bytes.buffer, checksumOffset, 4)
+                .getUint32(0, Endian.little);
+        int actualBitfieldChecksum;
+        if (_sparse) {
+          final completedPieces = _bitfield.completedPieces;
+          final indicesBytes = Uint8List(completedPieces.length * 4);
+          final view = ByteData.view(indicesBytes.buffer);
+          for (var i = 0; i < completedPieces.length; i++) {
+            view.setUint32(i * 4, completedPieces[i], Endian.little);
+          }
+          actualBitfieldChecksum = _calculateCRC32(indicesBytes);
+        } else {
+          actualBitfieldChecksum = _calculateCRC32(_bitfield.buffer);
+        }
+        if (expectedBitfieldChecksum != actualBitfieldChecksum) {
+          _log.warning(
+              'Bitfield checksum mismatch, state file may be corrupted');
+          _isValid = false;
+        } else {
+          _isValid = true;
+        }
+        return;
+      }
       throw Exception('State file incomplete (missing footer)');
     }
     final uploadedView = ByteData.view(bytes.buffer, uploadedOffset, 8);
@@ -750,11 +903,23 @@ class StateFileV2 {
       }
     }
 
-    final checksumOffset = 72 + bitfieldSize + 8;
+    // Calculate priorities section size
+    final prioritiesCount = _filePriorities.entries
+        .where((e) => e.value != FilePriority.normal)
+        .length;
+    final prioritiesSize = 4 + (prioritiesCount * 5);
+
+    final prioritiesOffset = 72 + bitfieldSize;
+    final uploadedOffset = prioritiesOffset + prioritiesSize;
+    final checksumOffset = uploadedOffset + 8;
     final access = await _bitfieldFile!.open(mode: FileMode.writeOnlyAppend);
 
+    // Update file priorities
+    await access.setPosition(prioritiesOffset);
+    await _writeFilePriorities(access);
+
     // Update uploaded
-    await access.setPosition(72 + bitfieldSize);
+    await access.setPosition(uploadedOffset);
     final uploadedData = ByteData(8);
     uploadedData.setUint64(0, _uploaded, Endian.little);
     await access.writeFrom(uploadedData.buffer.asUint8List());
@@ -853,14 +1018,98 @@ class StateFileV2 {
       final actualChecksum = _calculateCRC32(headerBytes);
       if (expectedChecksum != actualChecksum) return false;
 
-      // Validate bitfield checksum
-      final piecesNum = metainfo.pieces.length;
-      final bitfieldLength = (piecesNum / 8).ceil();
-      final bitfieldBytes = bytes.sublist(72, 72 + bitfieldLength);
+      // Read bitfield section to determine its size
+      final header = ByteData.view(bytes.buffer, 0, 72);
+      var offset = 4; // Skip magic
+      offset += 4; // Skip version
+      offset += 20; // Skip info hash
+      final pieceCount = header.getUint32(offset, Endian.little);
+      offset += 4;
+      offset += 8; // Skip piece length
+      offset += 8; // Skip total length
+      offset += 8; // Skip uploaded
+      offset += 8; // Skip timestamp
+      final flags = header.getUint8(offset++);
+      final compressed = (flags & FLAG_COMPRESSED) != 0;
+      final sparse = (flags & FLAG_SPARSE) != 0;
+      offset += 1; // Skip compression level
+      offset += 2; // Skip reserved
+
+      // Calculate bitfield size
+      var bitfieldSize = 0;
+      var bitfieldStart = 72;
+      if (sparse) {
+        if (bytes.length < bitfieldStart + 4) return false;
+        final countData = ByteData.view(bytes.buffer, bitfieldStart, 4);
+        final completedCount = countData.getUint32(0, Endian.little);
+        bitfieldSize = 4 + (completedCount * 4);
+      } else {
+        if (compressed) {
+          if (bytes.length < bitfieldStart + 4) return false;
+          final sizeData = ByteData.view(bytes.buffer, bitfieldStart, 4);
+          bitfieldSize = 4 + sizeData.getUint32(0, Endian.little);
+        } else {
+          bitfieldSize = (pieceCount / 8).ceil();
+        }
+      }
+
+      // Read priorities section size
+      var prioritiesOffset = bitfieldStart + bitfieldSize;
+      var prioritiesSize = 0;
+      if (bytes.length >= prioritiesOffset + 4) {
+        final countView = ByteData.view(bytes.buffer, prioritiesOffset, 4);
+        final prioritiesCount = countView.getUint32(0, Endian.little);
+        prioritiesSize = 4 + (prioritiesCount * 5);
+      }
+
+      // Validate bitfield checksum (after priorities section)
+      final uploadedOffset = prioritiesOffset + prioritiesSize;
+      if (bytes.length < uploadedOffset + 8 + 4) return false;
+
+      final checksumOffset = uploadedOffset + 8;
       final expectedBitfieldChecksum =
-          ByteData.view(bytes.buffer, 72 + bitfieldLength + 8, 4)
+          ByteData.view(bytes.buffer, checksumOffset, 4)
               .getUint32(0, Endian.little);
-      final actualBitfieldChecksum = _calculateCRC32(bitfieldBytes);
+
+      int actualBitfieldChecksum;
+      if (sparse) {
+        if (bytes.length < bitfieldStart + bitfieldSize) return false;
+        final completedPieces = <int>[];
+        if (bitfieldSize > 4) {
+          final indicesData =
+              bytes.sublist(bitfieldStart + 4, bitfieldStart + bitfieldSize);
+          for (var i = 0; i < indicesData.length; i += 4) {
+            if (i + 4 <= indicesData.length) {
+              final view = ByteData.view(indicesData.buffer, i, 4);
+              completedPieces.add(view.getUint32(0, Endian.little));
+            }
+          }
+        }
+        final indicesBytes = Uint8List(completedPieces.length * 4);
+        final view = ByteData.view(indicesBytes.buffer);
+        for (var i = 0; i < completedPieces.length; i++) {
+          view.setUint32(i * 4, completedPieces[i], Endian.little);
+        }
+        actualBitfieldChecksum = _calculateCRC32(indicesBytes);
+      } else {
+        Uint8List bitfieldBytes;
+        if (compressed) {
+          if (bytes.length < bitfieldStart + bitfieldSize) return false;
+          final compressedData =
+              bytes.sublist(bitfieldStart + 4, bitfieldStart + bitfieldSize);
+          try {
+            bitfieldBytes = Uint8List.fromList(gzip.decoder.convert(compressedData));
+          } catch (e) {
+            return false;
+          }
+        } else {
+          if (bytes.length < bitfieldStart + bitfieldSize) return false;
+          bitfieldBytes =
+              bytes.sublist(bitfieldStart, bitfieldStart + bitfieldSize);
+        }
+        actualBitfieldChecksum = _calculateCRC32(bitfieldBytes);
+      }
+
       if (expectedBitfieldChecksum != actualBitfieldChecksum) return false;
 
       return true;

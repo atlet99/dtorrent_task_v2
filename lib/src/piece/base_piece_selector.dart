@@ -14,11 +14,18 @@ import 'piece_selector.dart';
 /// - If multiple Pieces have the same number of available Peers, choose the one with the fewest Sub Pieces remaining.
 class BasePieceSelector implements PieceSelector {
   final Set<int> _priorityPieces = {};
+  final Set<int> _skippedPieces = {};
 
   @override
   void setPriorityPieces(Iterable<int> pieces) {
     _priorityPieces.clear();
     _priorityPieces.addAll(pieces);
+  }
+
+  @override
+  void setSkippedPieces(Iterable<int> pieces) {
+    _skippedPieces.clear();
+    _skippedPieces.addAll(pieces);
   }
 
   @override
@@ -56,7 +63,12 @@ class BasePieceSelector implements PieceSelector {
     Piece? a;
     int? startIndex;
     for (var i = 0; i < candidatePieces.length; i++) {
-      var p = provider[candidatePieces[i]];
+      var pieceIndex = candidatePieces[i];
+      // Skip pieces that are marked as skipped
+      if (_skippedPieces.contains(pieceIndex)) {
+        continue;
+      }
+      var p = provider[pieceIndex];
       if (p != null &&
           !p.isCompleted &&
           p.haveAvailableSubPiece() &&

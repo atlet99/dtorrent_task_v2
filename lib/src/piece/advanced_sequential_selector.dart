@@ -28,6 +28,9 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
   /// Critical pieces (moov atom, file headers, etc.)
   final Set<int> _criticalPieces = {};
 
+  /// Skipped pieces (from files with skip priority)
+  final Set<int> _skippedPieces = {};
+
   /// Current playback position in piece index
   int _currentPlaybackPiece = 0;
 
@@ -65,6 +68,12 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
       _log.fine('Priority pieces set: ${pieces.length} pieces, '
           'playback position: $_currentPlaybackPiece');
     }
+  }
+
+  @override
+  void setSkippedPieces(Iterable<int> pieces) {
+    _skippedPieces.clear();
+    _skippedPieces.addAll(pieces);
   }
 
   /// Set critical pieces (e.g., moov atom for MP4)
@@ -184,6 +193,10 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
   Piece? _selectSequential(Peer peer, PieceProvider provider) {
     // Priority 1: Critical pieces
     for (var pieceIndex in _criticalPieces) {
+      // Skip pieces that are marked as skipped
+      if (_skippedPieces.contains(pieceIndex)) {
+        continue;
+      }
       final piece = provider[pieceIndex];
       if (piece != null &&
           !piece.isCompleted &&
@@ -196,6 +209,10 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
 
     // Priority 2: Priority pieces (look-ahead buffer)
     for (var pieceIndex in _priorityPieces) {
+      // Skip pieces that are marked as skipped
+      if (_skippedPieces.contains(pieceIndex)) {
+        continue;
+      }
       final piece = provider[pieceIndex];
       if (piece != null &&
           !piece.isCompleted &&
@@ -208,6 +225,10 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
     // Priority 3: Sequential from current position
     if (_totalPieces != null) {
       for (var i = _currentPlaybackPiece; i < _totalPieces!; i++) {
+        // Skip pieces that are marked as skipped
+        if (_skippedPieces.contains(i)) {
+          continue;
+        }
         final piece = provider[i];
         if (piece != null &&
             !piece.isCompleted &&
@@ -220,6 +241,10 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
 
     // Priority 4: Any available piece from peer
     for (var pieceIndex in peer.remoteCompletePieces) {
+      // Skip pieces that are marked as skipped
+      if (_skippedPieces.contains(pieceIndex)) {
+        continue;
+      }
       final piece = provider[pieceIndex];
       if (piece != null &&
           !piece.isCompleted &&
@@ -237,6 +262,10 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
     int minAvailability = 999999;
 
     for (var pieceIndex in peer.remoteCompletePieces) {
+      // Skip pieces that are marked as skipped
+      if (_skippedPieces.contains(pieceIndex)) {
+        continue;
+      }
       final piece = provider[pieceIndex];
       if (piece == null ||
           piece.isCompleted ||

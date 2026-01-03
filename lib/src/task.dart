@@ -25,6 +25,7 @@ import 'package:logging/logging.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'file/download_file_manager.dart';
 import 'file/state_file.dart';
+import 'file/state_file_v2.dart';
 import 'lsd/lsd.dart';
 import 'peer/protocol/peer.dart';
 import 'piece/base_piece_selector.dart';
@@ -39,6 +40,8 @@ import 'filter/ip_filter.dart';
 import 'proxy/proxy_config.dart';
 import 'proxy/proxy_manager.dart';
 import 'seeding/superseeder.dart';
+import 'file/file_priority.dart';
+import 'file/file_priority_manager.dart';
 
 const MAX_PEERS = 50;
 const MAX_IN_PEERS = 10;
@@ -147,6 +150,51 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   /// task.applySelectedFiles([0, 2]); // Only download files at indices 0 and 2
   /// ```
   void applySelectedFiles(List<int> fileIndices);
+
+  /// Set priority for a single file
+  ///
+  /// [fileIndex] - Index of the file (0-based)
+  /// [priority] - Priority level (skip, low, normal, high)
+  ///
+  /// Example:
+  /// ```dart
+  /// task.setFilePriority(0, FilePriority.high); // Set first file to high priority
+  /// ```
+  void setFilePriority(int fileIndex, FilePriority priority);
+
+  /// Set priorities for multiple files
+  ///
+  /// [priorities] - Map of file index to priority
+  ///
+  /// Example:
+  /// ```dart
+  /// task.setFilePriorities({
+  ///   0: FilePriority.high,   // First file - high priority
+  ///   1: FilePriority.normal,  // Second file - normal
+  ///   2: FilePriority.skip,    // Third file - skip
+  /// });
+  /// ```
+  void setFilePriorities(Map<int, FilePriority> priorities);
+
+  /// Get priority for a file
+  ///
+  /// [fileIndex] - Index of the file (0-based)
+  ///
+  /// Returns the current priority of the file, or [FilePriority.normal] if not set.
+  FilePriority getFilePriority(int fileIndex);
+
+  /// Automatically prioritize files based on their type
+  ///
+  /// This method analyzes file extensions and sets priorities:
+  /// - Video/audio files (mp4, mkv, avi, mp3, flac, etc.) -> high priority
+  /// - Subtitle files (srt, ass, vtt, etc.) -> normal priority
+  /// - Other files -> low priority
+  ///
+  /// Example:
+  /// ```dart
+  /// task.autoPrioritizeFiles();
+  /// ```
+  void autoPrioritizeFiles();
 
   void requestPeersFromDHT();
 
@@ -280,10 +328,14 @@ class _TorrentTask
 
   LSD? _lsd;
 
-  StateFile? _stateFile;
+  dynamic _stateFile; // Can be StateFile or StateFileV2
 
   @override
-  StateFile? get stateFile => _stateFile;
+  StateFile? get stateFile {
+    // StateFileV2 implements the same interface as StateFile
+    // Both have bitfield, uploaded, downloaded properties
+    return _stateFile as StateFile?;
+  }
 
   PieceManager? _pieceManager;
 
@@ -324,6 +376,9 @@ class _TorrentTask
 
   /// Whether superseeding is enabled
   bool _superseedingEnabled = false;
+
+  /// File priority manager for managing file priorities
+  FilePriorityManager? _filePriorityManager;
 
   /// The maximum size of the disk write cache.
   final int maxWriteBufferSize = MAX_WRITE_BUFFER_SIZE;
@@ -428,7 +483,21 @@ class _TorrentTask
     _lsd ??= LSD(model.infoHash, _peerId);
     _infoHashString ??= String.fromCharCodes(model.infoHashBuffer);
     _tracker ??= TorrentAnnounceTracker(this);
-    _stateFile ??= await StateFile.getStateFile(savePath, model);
+    _stateFile ??= await StateFileV2.getStateFile(savePath, model);
+
+    // Initialize file priority manager
+    _filePriorityManager ??= FilePriorityManager(model);
+
+    // Load file priorities from state file if available
+    if (_stateFile != null && _stateFile is StateFileV2) {
+      final stateFileV2 = _stateFile as StateFileV2;
+      final savedPriorities = stateFileV2.filePriorities;
+      if (savedPriorities.isNotEmpty) {
+        _filePriorityManager!.setPriorities(savedPriorities);
+        _log.info(
+            'Loaded ${savedPriorities.length} file priorities from state file');
+      }
+    }
 
     // Initialize piece manager with appropriate selector
     if (_pieceManager == null) {
@@ -470,6 +539,11 @@ class _TorrentTask
         _stateFile!.bitfield,
         version: torrentVersion,
       );
+
+      // Update piece priorities after piece manager is created
+      if (_filePriorityManager != null) {
+        _updatePiecePriorities();
+      }
     }
 
     _fileManager ??= await DownloadFileManager.createFileManager(
@@ -727,6 +801,151 @@ class _TorrentTask
           'Applied selected files (indices: $validIndices) - ${priorityPieces.length} pieces prioritized');
     } else {
       _log.warning('No pieces found for selected file indices: $validIndices');
+    }
+  }
+
+  @override
+  void setFilePriority(int fileIndex, FilePriority priority) {
+    if (_filePriorityManager == null) {
+      _log.warning('FilePriorityManager not initialized');
+      return;
+    }
+
+    _filePriorityManager!.setPriority(fileIndex, priority);
+    _updatePiecePriorities();
+    _log.info('Set priority for file $fileIndex: $priority');
+  }
+
+  @override
+  void setFilePriorities(Map<int, FilePriority> priorities) {
+    if (_filePriorityManager == null) {
+      _log.warning('FilePriorityManager not initialized');
+      return;
+    }
+
+    _filePriorityManager!.setPriorities(priorities);
+    _updatePiecePriorities();
+    _saveFilePriorities();
+    _log.info('Set priorities for ${priorities.length} files');
+  }
+
+  @override
+  FilePriority getFilePriority(int fileIndex) {
+    if (_filePriorityManager == null) {
+      return FilePriority.normal;
+    }
+    return _filePriorityManager!.getPriority(fileIndex);
+  }
+
+  @override
+  void autoPrioritizeFiles() {
+    if (_filePriorityManager == null) {
+      _log.warning('FilePriorityManager not initialized');
+      return;
+    }
+
+    // Video file extensions
+    final videoExtensions = {
+      'mp4',
+      'mkv',
+      'avi',
+      'mov',
+      'wmv',
+      'flv',
+      'webm',
+      'm4v',
+      'mpg',
+      'mpeg',
+      '3gp',
+      'ogv',
+      'ts',
+      'm2ts'
+    };
+
+    // Audio file extensions
+    final audioExtensions = {
+      'mp3',
+      'flac',
+      'wav',
+      'aac',
+      'ogg',
+      'opus',
+      'm4a',
+      'wma',
+      'ape',
+      'dsd'
+    };
+
+    // Subtitle file extensions
+    final subtitleExtensions = {
+      'srt',
+      'ass',
+      'ssa',
+      'vtt',
+      'sub',
+      'idx',
+      'sup'
+    };
+
+    for (var i = 0; i < _metaInfo.files.length; i++) {
+      final file = _metaInfo.files[i];
+      final fileName = file.path.toLowerCase();
+      final extension = fileName.split('.').last;
+
+      if (videoExtensions.contains(extension) ||
+          audioExtensions.contains(extension)) {
+        _filePriorityManager!.setPriority(i, FilePriority.high);
+      } else if (subtitleExtensions.contains(extension)) {
+        _filePriorityManager!.setPriority(i, FilePriority.normal);
+      } else {
+        _filePriorityManager!.setPriority(i, FilePriority.low);
+      }
+    }
+
+    _updatePiecePriorities();
+    _saveFilePriorities();
+    _log.info('Auto-prioritized files based on file types');
+  }
+
+  /// Save file priorities to state file
+  void _saveFilePriorities() {
+    if (_filePriorityManager == null || _stateFile == null) {
+      return;
+    }
+
+    if (_stateFile is StateFileV2) {
+      final stateFileV2 = _stateFile as StateFileV2;
+      final allPriorities = _filePriorityManager!.getAllPriorities();
+      stateFileV2.setFilePriorities(allPriorities);
+      _log.fine('Saved file priorities to state file');
+    }
+  }
+
+  /// Update piece priorities based on file priorities
+  void _updatePiecePriorities() {
+    if (_filePriorityManager == null || _pieceManager == null) {
+      return;
+    }
+
+    // Get pieces by priority
+    final piecesByPriority = _filePriorityManager!.getPiecesByPriority();
+
+    // Set priority pieces: high priority first, then normal, then low
+    final priorityPieces = <int>{};
+    priorityPieces.addAll(piecesByPriority[FilePriority.high]!);
+    priorityPieces.addAll(piecesByPriority[FilePriority.normal]!);
+    priorityPieces.addAll(piecesByPriority[FilePriority.low]!);
+
+    // Update piece selector
+    _pieceManager!.pieceSelector.setPriorityPieces(priorityPieces);
+
+    // Mark skipped pieces (if any)
+    final skippedPieces = piecesByPriority[FilePriority.skip]!;
+    if (skippedPieces.isNotEmpty) {
+      _pieceManager!.pieceSelector.setSkippedPieces(skippedPieces);
+      _log.info('Skipping ${skippedPieces.length} pieces from skipped files');
+    } else {
+      _pieceManager!.pieceSelector.setSkippedPieces([]);
     }
   }
 

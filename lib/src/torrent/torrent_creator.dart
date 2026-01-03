@@ -129,7 +129,14 @@ class TorrentCreator {
     final encoded = encode(torrent);
     await tempFile.writeAsBytes(encoded);
     final parsed = await Torrent.parse(tempFile.path);
-    await tempFile.delete();
+    // Clean up temp file if it still exists
+    try {
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+    } catch (e) {
+      // Ignore errors when deleting temp file
+    }
     return parsed;
   }
 
@@ -216,7 +223,14 @@ class TorrentCreator {
     final encoded = encode(torrent);
     await tempFile.writeAsBytes(encoded);
     final parsed = await Torrent.parse(tempFile.path);
-    await tempFile.delete();
+    // Clean up temp file if it still exists
+    try {
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+    } catch (e) {
+      // Ignore errors when deleting temp file
+    }
     return parsed;
   }
 
