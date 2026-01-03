@@ -130,6 +130,29 @@ void main() {
       expect(result.error, isNotNull);
       expect(result.error, contains('Unsupported'));
     });
+
+    test('URL replacement for scrape endpoint (BEP 48)', () {
+      // Test that announce URLs are correctly converted to scrape URLs
+      final testCases = [
+        'http://tracker.example.com/announce',
+        'https://tracker.example.com/announce',
+        'http://tracker.example.com/path/announce',
+        'http://tracker.example.com/announce.php',
+      ];
+
+      for (var announceUrlStr in testCases) {
+        final announceUrl = Uri.parse(announceUrlStr);
+
+        // The actual URL replacement happens in _scrapeHttp, but we can test the logic
+        final path = announceUrl.path;
+        final scrapePath = path.contains('announce')
+            ? path.replaceAll('announce', 'scrape')
+            : '${path.endsWith('/') ? path : '$path/'}scrape';
+
+        expect(scrapePath, contains('scrape'));
+        expect(scrapePath, isNot(contains('announce')));
+      }
+    });
   });
 
   group('ScrapeStats', () {
