@@ -34,6 +34,7 @@ import 'utils.dart';
 import 'utils/debouncer.dart';
 import 'torrent/torrent_version.dart';
 import 'tracker/scrape_client.dart' as scrape;
+import 'nat/port_forwarding_manager.dart';
 
 const MAX_PEERS = 50;
 const MAX_IN_PEERS = 10;
@@ -198,6 +199,8 @@ class _TorrentTask
   TorrentAnnounceTracker? _tracker;
 
   scrape.ScrapeClient? _scrapeClient;
+
+  PortForwardingManager? _portForwardingManager;
 
   DHT? _dht = DHT();
 
@@ -640,6 +643,9 @@ class _TorrentTask
     _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     await _init(_metaInfo, _savePath);
     _serverSocketListener = _serverSocket?.listen(_hookInPeer);
+
+    // Try to forward port automatically (non-blocking)
+    _forwardPortIfAvailable();
     // _utpServer ??= await ServerUTPSocket.bind(
     //     InternetAddress.anyIPv4, _serverSocket?.port ?? 0);
     // _utpServer?.listen(_hookUTP);
@@ -1112,8 +1118,51 @@ class _TorrentTask
     _webSeedDownloader?.dispose();
     _webSeedDownloader = null;
 
+    // Remove port forwarding
+    await _removePortForwarding();
+
     state = TaskState.stopped;
     return;
+  }
+
+  /// Forward port if port forwarding is available
+  Future<void> _forwardPortIfAvailable() async {
+    if (_serverSocket == null) return;
+
+    try {
+      _portForwardingManager ??= PortForwardingManager();
+      final port = _serverSocket!.port;
+
+      if (port > 0) {
+        _log.info('Attempting to forward port $port...');
+        final result = await _portForwardingManager!.forwardPort(port: port);
+
+        if (result.success) {
+          _log.info('Port $port forwarded successfully using ${result.method}');
+          if (result.externalIP != null) {
+            _log.info('External IP: ${result.externalIP}');
+          }
+        } else {
+          _log.fine('Port forwarding not available: ${result.error}');
+        }
+      }
+    } catch (e, stackTrace) {
+      _log.warning('Error during port forwarding', e, stackTrace);
+    }
+  }
+
+  /// Remove port forwarding
+  Future<void> _removePortForwarding() async {
+    if (_portForwardingManager == null || _serverSocket == null) return;
+
+    try {
+      final port = _serverSocket!.port;
+      if (port > 0) {
+        await _portForwardingManager!.removePortForwarding(port: port);
+      }
+    } catch (e, stackTrace) {
+      _log.warning('Error removing port forwarding', e, stackTrace);
+    }
   }
 
   @override
