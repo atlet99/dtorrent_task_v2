@@ -1,21 +1,3 @@
-## 0.4.5
-- add advanced sequential download support for streaming
-- add `SequentialConfig` class for flexible streaming configuration
-- add `AdvancedSequentialPieceSelector` with look-ahead buffer
-- add `SequentialStats` for download metrics and health monitoring
-- add look-ahead buffer for smooth playback (configurable size)
-- add critical piece prioritization (moov atom for MP4 files)
-- add adaptive strategy (automatic switching between sequential and rarest-first)
-- add seek operation support with fast priority rebuilding
-- add auto-detection of moov atom for MP4 files
-- add peer priority optimization (BEP 40 - Canonical Peer Priority)
-- add fast piece resumption support (BEP 53 - Partial data)
-- add sequential statistics API (`getSequentialStats()`)
-- add playback position tracking (`setPlaybackPosition()`)
-- add factory methods for common use cases (`forVideoStreaming()`, `forAudioStreaming()`)
-- add comprehensive streaming examples
-- export sequential download classes in public API
-
 ## 0.0.1
 
 - Initial version
@@ -169,3 +151,21 @@
 - add trackers from magnet link to TorrentTask to ensure all trackers are used even if not in metadata
 - improve bitfield handling: properly support messages without payload according to BEP 0003
 - enhance test example with comprehensive diagnostics and automatic completion detection
+
+## 0.4.5
+- add advanced sequential download support for streaming
+- add `SequentialConfig` class for flexible streaming configuration
+- add `AdvancedSequentialPieceSelector` with look-ahead buffer
+- add `SequentialStats` for download metrics and health monitoring
+- add look-ahead buffer for smooth playback (configurable size)
+- add critical piece prioritization (moov atom for MP4 files)
+- add adaptive strategy (automatic switching between sequential and rarest-first)
+- add seek operation support with fast priority rebuilding
+- add auto-detection of moov atom for MP4 files
+- add peer priority optimization (BEP 40 - Canonical Peer Priority)
+- add fast piece resumption support (BEP 53 - Partial data)
+- add sequential statistics API (`getSequentialStats()`)
+- add playback position tracking (`setPlaybackPosition()`)
+- add factory methods for common use cases (`forVideoStreaming()`, `forAudioStreaming()`)
+- add comprehensive streaming examples
+- export sequential download classes in public API
