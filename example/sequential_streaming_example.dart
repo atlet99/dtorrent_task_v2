@@ -13,13 +13,13 @@ import 'package:path/path.dart' as path;
 ///
 /// If no torrent file is provided, it will use tmp/test.torrent
 void main(List<String> args) async {
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('Sequential Streaming Example');
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('');
 
   String torrentFile;
-  
+
   if (args.isNotEmpty) {
     // Use provided torrent file
     torrentFile = args[0];
@@ -27,17 +27,18 @@ void main(List<String> args) async {
     // Use default torrent file from tmp/
     torrentFile = 'tmp/test.torrent';
   }
-  
+
   if (!await File(torrentFile).exists()) {
     print('Error: Torrent file not found: $torrentFile');
     print('');
     print('Please provide a torrent file:');
-    print('  dart run example/sequential_streaming_example.dart <torrent_file>');
+    print(
+        '  dart run example/sequential_streaming_example.dart <torrent_file>');
     print('');
     print('Or place a torrent file at: tmp/test.torrent');
     exit(1);
   }
-  
+
   print('Using torrent file: $torrentFile');
   print('');
 

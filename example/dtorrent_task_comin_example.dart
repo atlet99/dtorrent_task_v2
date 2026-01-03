@@ -8,6 +8,7 @@ import 'package:dtorrent_task_v2/src/task.dart';
 import 'package:dtorrent_task_v2/src/task_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:path/path.dart' as path;
+import 'test_torrent_helper.dart';
 
 var scriptDir = path.dirname(Platform.script.path);
 var torrentsPath =
@@ -15,8 +16,14 @@ var torrentsPath =
 
 /// This example is for connect local
 Future<void> main() async {
-  var model =
-      await Torrent.parse(path.join(torrentsPath, 'big-buck-bunny.torrent'));
+  // Try to use big-buck-bunny.torrent, fallback to test torrent
+  var torrentFile = path.join(torrentsPath, 'big-buck-bunny.torrent');
+  if (!await File(torrentFile).exists()) {
+    print('big-buck-bunny.torrent not found, creating test torrent...');
+    torrentFile = await ensureTestTorrentExists();
+    print('Using test torrent: $torrentFile');
+  }
+  var model = await Torrent.parse(torrentFile);
   // No peers retrieval
   model.announces.clear();
   var task = TorrentTask.newTask(model, path.join(scriptDir, '..', 'tmp'));
@@ -42,7 +49,7 @@ Future<void> main() async {
   timer = Timer.periodic(Duration(seconds: 2), (timer) {
     try {
       print(
-          'Downloaded: ${task.downloaded ?? 0 / (1024 * 1024)} mb , ${((task.downloaded ?? 0 / model.length) * 100).toStringAsFixed(2)}%');
+          'Downloaded: ${(task.downloaded ?? 0) / (1024 * 1024)} mb , ${(((task.downloaded ?? 0) / model.length) * 100).toStringAsFixed(2)}%');
     } finally {}
   });
 

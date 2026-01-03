@@ -8,6 +8,7 @@ import 'package:dtorrent_task_v2/src/task_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as path;
+import 'test_torrent_helper.dart';
 
 var scriptDir = path.dirname(Platform.script.path);
 var torrentsPath =
@@ -15,7 +16,13 @@ var torrentsPath =
 var _log = Logger('task_example');
 void main() async {
   try {
+    // Try to use big-buck-bunny.torrent, fallback to test torrent
     var torrentFile = path.join(torrentsPath, 'big-buck-bunny.torrent');
+    if (!await File(torrentFile).exists()) {
+      print('big-buck-bunny.torrent not found, creating test torrent...');
+      torrentFile = await ensureTestTorrentExists();
+      print('Using test torrent: $torrentFile');
+    }
     var savePath = path.join(scriptDir, '..', 'tmp');
     var model = await Torrent.parse(torrentFile);
     // model.announces.clear();

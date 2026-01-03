@@ -27,9 +27,9 @@ void main(List<String> args) async {
   );
   await Directory(savePath).create(recursive: true);
 
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('Testing download fix for issue #4');
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('Torrent file: $torrentPath');
   print('Save path: $savePath');
   print('');
@@ -116,7 +116,7 @@ void main(List<String> args) async {
       final downloadedDelta = downloaded - lastDownloaded;
       final peersDelta = connectedPeers - lastConnectedPeers;
 
-      print('─' * 60);
+      print(List.filled(60, '─').join());
       print('Progress: ${progress.toStringAsFixed(2)}%');
       print('Downloaded: ${(downloaded / 1024 / 1024).toStringAsFixed(2)} MB');
       print('Peers: $connectedPeers connected, $allPeers total');
@@ -174,9 +174,9 @@ void main(List<String> args) async {
 
     // Final summary
     print('');
-    print('=' * 60);
+    print(List.filled(60, '=').join());
     print('TEST SUMMARY');
-    print('=' * 60);
+    print(List.filled(60, '=').join());
     final connectedPeersFinal = task.connectedPeersNumber;
     final allPeersFinal = task.allPeersNumber;
     final finalDownloaded = task.downloaded ?? 0;
@@ -205,7 +205,7 @@ void main(List<String> args) async {
         print('   (Need at least 12 peers to reproduce the original issue)');
       }
     }
-    print('=' * 60);
+    print(List.filled(60, '=').join());
 
     // Cleanup
     await task.stop();

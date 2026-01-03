@@ -11,26 +11,26 @@ import 'package:path/path.dart' as path;
 /// Config types: video, audio, minimal, custom
 /// If no torrent file is provided, it will use tmp/test.torrent
 void main(List<String> args) async {
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('Sequential Download - Custom Configuration Example');
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('');
 
   final configType = args.isNotEmpty ? args[0] : 'video';
   String torrentFile;
-  
+
   if (args.length > 1) {
     torrentFile = args[1];
   } else {
     torrentFile = 'tmp/test.torrent';
   }
-  
+
   if (!await File(torrentFile).exists()) {
     print('Error: Torrent file not found: $torrentFile');
     print('Please provide a torrent file or place one at: tmp/test.torrent');
     exit(1);
   }
-  
+
   print('Using torrent file: $torrentFile');
   print('');
 
@@ -42,7 +42,7 @@ void main(List<String> args) async {
 
   // Create configuration based on type
   SequentialConfig config;
-  
+
   switch (configType.toLowerCase()) {
     case 'video':
       config = SequentialConfig.forVideoStreaming();
@@ -75,9 +75,11 @@ void main(List<String> args) async {
   }
 
   print('  Look-ahead buffer: ${config.lookAheadSize} pieces');
-  print('  Critical zone: ${(config.criticalZoneSize / 1024 / 1024).toStringAsFixed(1)} MB');
+  print(
+      '  Critical zone: ${(config.criticalZoneSize / 1024 / 1024).toStringAsFixed(1)} MB');
   print('  Adaptive strategy: ${config.adaptiveStrategy}');
-  print('  Min speed: ${(config.minSpeedForSequential / 1024).toStringAsFixed(1)} KB/s');
+  print(
+      '  Min speed: ${(config.minSpeedForSequential / 1024).toStringAsFixed(1)} KB/s');
   print('');
 
   // Create save directory in tmp
@@ -88,7 +90,7 @@ void main(List<String> args) async {
 
   final task = TorrentTask.newTask(torrent, savePath, true, null, null, config);
   final listener = task.createListener();
-  
+
   listener
     ..on<TaskStarted>((event) {
       print('Task started with custom configuration');
@@ -97,7 +99,7 @@ void main(List<String> args) async {
     ..on<TaskCompleted>((event) {
       print('');
       print('Download completed!');
-      
+
       final stats = task.getSequentialStats();
       if (stats != null) {
         print('');
@@ -113,9 +115,10 @@ void main(List<String> args) async {
       final downloaded = task.downloaded ?? 0;
       final progress = task.progress * 100;
       final peers = task.connectedPeersNumber;
-      final speed = ((task.currentDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
+      final speed =
+          ((task.currentDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
       final stats = task.getSequentialStats();
-      
+
       if (stats != null) {
         print('Progress: ${progress.toStringAsFixed(1)}% | '
             'Downloaded: ${(downloaded / 1024 / 1024).toStringAsFixed(2)} MB | '

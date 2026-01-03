@@ -54,9 +54,9 @@ void main(List<String> args) async {
   final savePath = path.join(Directory.current.path, 'tmp');
   await Directory(savePath).create(recursive: true);
 
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('Testing Issue #4 Fix with Magnet Link');
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('Magnet: $magnetUri');
   print('Save path: $savePath');
   print('');
@@ -762,7 +762,7 @@ void main(List<String> args) async {
       }
       final piecesDelta = currentTotalPieces - lastTotalPieces;
 
-      print('─' * 60);
+      print(List.filled(60, '─').join());
       print('Progress: ${progress.toStringAsFixed(2)}% | '
           'Downloaded: ${(downloaded / 1024 / 1024).toStringAsFixed(2)} MB | '
           'Peers: $connectedPeers/$allPeers ($seederCount seeders) | '
@@ -869,9 +869,9 @@ void main(List<String> args) async {
 
     // Summary
     print('');
-    print('=' * 60);
+    print(List.filled(60, '=').join());
     print('TEST SUMMARY');
-    print('=' * 60);
+    print(List.filled(60, '=').join());
     final finalConnected = task.connectedPeersNumber;
     final finalAll = task.allPeersNumber;
     final finalSeederCount = task.seederNumber;
@@ -948,7 +948,7 @@ void main(List<String> args) async {
       print('    - Firewall blocking connections');
       print('    - Tracker issues');
     }
-    print('=' * 60);
+    print(List.filled(60, '=').join());
 
     await task.stop();
     await task.dispose();

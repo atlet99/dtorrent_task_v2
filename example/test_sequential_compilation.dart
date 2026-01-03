@@ -9,9 +9,9 @@ void main() async {
     print('[${record.level.name}] ${record.loggerName}: ${record.message}');
   });
 
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('Sequential Download - Compilation Test');
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('');
 
   // Test 1: SequentialConfig creation
@@ -62,9 +62,9 @@ void main() async {
   print('  Playback position set to 5MB');
   print('');
 
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('All compilation tests passed!');
-  print('=' * 60);
+  print(List.filled(60, '=').join());
   print('');
   print('Sequential download is ready to use.');
   print('To test with a real torrent, run:');
