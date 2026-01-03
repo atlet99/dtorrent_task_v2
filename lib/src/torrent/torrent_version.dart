@@ -103,6 +103,39 @@ class TorrentVersionHelper {
     }
   }
 
+  /// Extract file tree from decoded torrent data
+  static Map<String, dynamic>? getFileTree(dynamic decodedTorrent) {
+    if (decodedTorrent is! Map) {
+      return null;
+    }
+
+    final info = decodedTorrent['info'];
+    if (info is! Map) {
+      return null;
+    }
+
+    final fileTree = info['file tree'];
+    if (fileTree is Map) {
+      return fileTree as Map<String, dynamic>;
+    }
+
+    return null;
+  }
+
+  /// Extract piece layers from decoded torrent data
+  static Map<dynamic, dynamic>? getPieceLayers(dynamic decodedTorrent) {
+    if (decodedTorrent is! Map) {
+      return null;
+    }
+
+    final pieceLayers = decodedTorrent['piece layers'];
+    if (pieceLayers is Map) {
+      return pieceLayers;
+    }
+
+    return null;
+  }
+
   /// Detect version from torrent file path
   static Future<TorrentVersion> detectVersionFromFile(String filePath) async {
     try {

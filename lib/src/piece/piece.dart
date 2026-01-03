@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../peer/protocol/peer.dart';
 import '../utils.dart';
 import '../torrent/torrent_version.dart';
+import '../torrent/merkle_tree.dart';
 
 class Piece {
   final String hashString;
@@ -240,13 +241,36 @@ class Piece {
     return true;
   }
 
+  /// Expected piece hash from piece layers (for v2)
+  Uint8List? _expectedPieceHash;
+
+  /// Set expected piece hash from piece layers (for v2 validation)
+  void setExpectedPieceHash(Uint8List hash) {
+    if (hash.length == 32) {
+      _expectedPieceHash = hash;
+    }
+  }
+
   bool validatePiece() {
     if (_block == null ||
         _block!.length < byteLength ||
         !isCompletelyDownloaded) {
       throw Exception("Piece is cleared");
     }
-    // Use appropriate hash algorithm based on version
+
+    // For v2, use Merkle tree validation if piece hash is available
+    if (version == TorrentVersion.v2 && _expectedPieceHash != null) {
+      final valid =
+          MerkleTreeHelper.validatePiece(_block!, _expectedPieceHash!);
+      if (!valid) {
+        for (var subPiece in {..._inMemorySubPieces}) {
+          pushSubPieceBack(subPiece);
+        }
+      }
+      return valid;
+    }
+
+    // Use appropriate hash algorithm based on version (v1 or fallback)
     final hashAlgo = TorrentVersionHelper.getHashAlgorithm(version!);
     var digest = hashAlgo.convert(_block!);
     var valid = digest.toString() == hashString;

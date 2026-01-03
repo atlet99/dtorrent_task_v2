@@ -8,6 +8,7 @@ import 'piece.dart';
 import 'piece_provider.dart';
 import 'piece_selector.dart';
 import '../torrent/torrent_version.dart';
+import 'dart:typed_data';
 
 var _log = Logger('PieceManager');
 
@@ -30,6 +31,26 @@ class PieceManager
   final PieceSelector _pieceSelector;
 
   PieceSelector get pieceSelector => _pieceSelector;
+
+  /// Piece layers for v2 torrents (maps pieces root to concatenated hashes)
+  Map<Uint8List, Uint8List>? _pieceLayers;
+
+  /// Set piece layers for v2 torrent validation
+  void setPieceLayers(Map<Uint8List, Uint8List> pieceLayers) {
+    _pieceLayers = pieceLayers;
+    _applyPieceLayersToPieces();
+  }
+
+  /// Apply piece layers hashes to pieces
+  void _applyPieceLayersToPieces() {
+    if (_pieceLayers == null) return;
+
+    // For v2, we need to map piece layers to pieces
+    // This is a simplified implementation - in full version,
+    // we'd need to map files to pieces and use pieces root
+    _log.info(
+        'Piece layers set, ${_pieceLayers!.length} files with piece layers');
+  }
 
   PieceManager(this._pieceSelector, int piecesNumber);
 
