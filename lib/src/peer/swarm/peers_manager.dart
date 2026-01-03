@@ -14,6 +14,7 @@ import '../extensions/pex.dart';
 import '../extensions/holepunch.dart';
 import '../../torrent/torrent_version.dart';
 import '../../filter/ip_filter.dart';
+import '../../proxy/proxy_manager.dart';
 
 const MAX_ACTIVE_PEERS = 50;
 
@@ -47,6 +48,8 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   InternetAddress? localExternalIP;
 
   IPFilter? _ipFilter;
+
+  ProxyManager? _proxyManager;
 
   final Torrent _metaInfo;
 
@@ -102,6 +105,15 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   /// Get current IP filter
   IPFilter? get ipFilter => _ipFilter;
+
+  /// Set proxy manager for peer connections
+  void setProxyManager(ProxyManager? manager) {
+    _proxyManager = manager;
+    _log.info('Proxy manager ${manager != null ? "enabled" : "disabled"}');
+  }
+
+  /// Get current proxy manager
+  ProxyManager? get proxyManager => _proxyManager;
 
   Future<void> _init() async {
     try {
@@ -277,8 +289,14 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     if (_peersAddress.add(address)) {
       Peer? peer;
       if (type == null || type == PeerType.TCP) {
-        peer = Peer.newTCPPeer(address, _metaInfo.infoHashBuffer,
-            _metaInfo.pieces.length, socket, source);
+        peer = Peer.newTCPPeer(
+          address,
+          _metaInfo.infoHashBuffer,
+          _metaInfo.pieces.length,
+          socket,
+          source,
+          proxyManager: _proxyManager,
+        );
       }
       if (type == PeerType.UTP) {
         peer = Peer.newUTPPeer(address, _metaInfo.infoHashBuffer,

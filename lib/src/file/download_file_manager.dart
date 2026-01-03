@@ -12,6 +12,7 @@ import '../peer/peer_base.dart';
 import '../piece/piece.dart';
 import 'download_file.dart';
 import 'state_file.dart';
+import 'file_validator.dart';
 import '../torrent/file_tree.dart';
 import '../torrent/torrent_version.dart';
 
@@ -40,10 +41,61 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   }
 
   static Future<DownloadFileManager> createFileManager(Torrent metainfo,
-      String localDirectory, StateFile stateFile, List<Piece> pieces) {
+      String localDirectory, StateFile stateFile, List<Piece> pieces,
+      {bool validateOnResume = false}) async {
     var manager = DownloadFileManager(metainfo, stateFile, pieces);
-    // manager._totalDownloaded = stateFile.downloaded;
-    return manager._init(localDirectory);
+    await manager._init(localDirectory);
+
+    // Validate files on resume if requested
+    if (validateOnResume) {
+      await manager._validateOnResume(localDirectory);
+    }
+
+    return manager;
+  }
+
+  /// Validate files on resume
+  Future<void> _validateOnResume(String directory) async {
+    _log.info('Validating files on resume...');
+    try {
+      final validator = FileValidator(metainfo, _pieces, directory);
+
+      // Quick validation first
+      final quickValid = await validator.quickValidate();
+      if (!quickValid) {
+        _log.warning(
+            'Quick validation failed - some files may be missing or corrupted');
+      }
+
+      // Validate pieces that are marked as complete
+      final completedPieces = _stateFile.bitfield.completedPieces;
+      if (completedPieces.isNotEmpty) {
+        _log.info('Validating ${completedPieces.length} completed pieces...');
+        var invalidCount = 0;
+
+        for (var pieceIndex in completedPieces) {
+          if (pieceIndex < _pieces.length) {
+            final isValid = await validator.validatePiece(pieceIndex);
+            if (!isValid) {
+              _log.warning(
+                  'Piece $pieceIndex failed validation, marking for re-download');
+              await _stateFile.updateBitfield(pieceIndex, false);
+              invalidCount++;
+            }
+          }
+        }
+
+        if (invalidCount > 0) {
+          _log.warning(
+              'Found $invalidCount invalid pieces, they will be re-downloaded');
+        } else {
+          _log.info('All completed pieces validated successfully');
+        }
+      }
+    } catch (e, stackTrace) {
+      _log.warning('File validation on resume failed', e, stackTrace);
+      // Don't fail the resume if validation fails
+    }
   }
 
   Future<DownloadFileManager> _init(String directory) async {

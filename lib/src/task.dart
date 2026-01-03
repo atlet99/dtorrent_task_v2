@@ -36,6 +36,8 @@ import 'torrent/torrent_version.dart';
 import 'tracker/scrape_client.dart' as scrape;
 import 'nat/port_forwarding_manager.dart';
 import 'filter/ip_filter.dart';
+import 'proxy/proxy_config.dart';
+import 'proxy/proxy_manager.dart';
 
 const MAX_PEERS = 50;
 const MAX_IN_PEERS = 10;
@@ -45,11 +47,15 @@ enum TaskState { running, paused, stopped }
 var _log = Logger('TorrentTask');
 
 abstract class TorrentTask with EventsEmittable<TaskEvent> {
-  factory TorrentTask.newTask(Torrent metaInfo, String savePath,
-      [bool stream = false,
-      List<Uri>? webSeeds,
-      List<Uri>? acceptableSources,
-      SequentialConfig? sequentialConfig]) {
+  factory TorrentTask.newTask(
+    Torrent metaInfo,
+    String savePath, [
+    bool stream = false,
+    List<Uri>? webSeeds,
+    List<Uri>? acceptableSources,
+    SequentialConfig? sequentialConfig,
+    ProxyConfig? proxyConfig,
+  ]) {
     return _TorrentTask(
       metaInfo,
       savePath,
@@ -57,6 +63,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
       webSeeds: webSeeds,
       acceptableSources: acceptableSources,
       sequentialConfig: sequentialConfig,
+      proxyConfig: proxyConfig,
     );
   }
   void startAnnounceUrl(Uri url, Uint8List infoHash);
@@ -202,6 +209,22 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   /// task.setIPFilter(filter);
   /// ```
   void setIPFilter(IPFilter? filter);
+
+  /// Set proxy configuration
+  ///
+  /// [config] - Proxy configuration. Set to null to disable proxy.
+  ///
+  /// Example:
+  /// ```dart
+  /// final proxy = ProxyConfig.socks5(
+  ///   host: 'proxy.example.com',
+  ///   port: 1080,
+  ///   username: 'user',
+  ///   password: 'pass',
+  /// );
+  /// task.setProxyConfig(proxy);
+  /// ```
+  void setProxyConfig(ProxyConfig? config);
 }
 
 class _TorrentTask
@@ -217,6 +240,8 @@ class _TorrentTask
   PortForwardingManager? _portForwardingManager;
 
   IPFilter? _ipFilter;
+
+  ProxyManager? _proxyManager;
 
   DHT? _dht = DHT();
 
@@ -308,10 +333,14 @@ class _TorrentTask
       {this.stream = false,
       List<Uri>? webSeeds,
       List<Uri>? acceptableSources,
-      SequentialConfig? sequentialConfig})
+      SequentialConfig? sequentialConfig,
+      ProxyConfig? proxyConfig})
       : _webSeeds = webSeeds ?? [],
         _acceptableSources = acceptableSources ?? [],
         _sequentialConfig = sequentialConfig {
+    if (proxyConfig != null) {
+      _proxyManager = ProxyManager(proxyConfig);
+    }
     _peerId = generatePeerId();
     // Initialize progress debouncer with 300ms delay
     _progressDebouncer = Debouncer<StateFileUpdated>(
@@ -1277,8 +1306,17 @@ class _TorrentTask
   }
 
   @override
+  void setProxyConfig(ProxyConfig? config) {
+    _proxyManager = config != null ? ProxyManager(config) : null;
+    _peersManager?.setProxyManager(_proxyManager);
+    _log.info('Proxy ${config != null ? "enabled" : "disabled"}');
+  }
+
+  @override
   Future<scrape.ScrapeResult> scrapeTracker([Uri? trackerUrl]) async {
-    _scrapeClient ??= scrape.ScrapeClient();
+    _scrapeClient ??= scrape.ScrapeClient(
+      proxyManager: _proxyManager,
+    );
 
     // Use provided tracker URL or first tracker from torrent
     Uri? url = trackerUrl;
