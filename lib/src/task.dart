@@ -25,6 +25,7 @@ import 'package:logging/logging.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'file/download_file_manager.dart';
 import 'file/state_file.dart';
+import 'file/state_file_v2.dart';
 import 'lsd/lsd.dart';
 import 'peer/protocol/peer.dart';
 import 'piece/base_piece_selector.dart';
@@ -327,10 +328,11 @@ class _TorrentTask
 
   LSD? _lsd;
 
-  StateFile? _stateFile;
+  dynamic _stateFile; // Can be StateFile or StateFileV2
 
   @override
-  StateFile? get stateFile => _stateFile;
+  StateFile? get stateFile =>
+      _stateFile is StateFile ? _stateFile as StateFile : null;
 
   PieceManager? _pieceManager;
 
@@ -478,10 +480,21 @@ class _TorrentTask
     _lsd ??= LSD(model.infoHash, _peerId);
     _infoHashString ??= String.fromCharCodes(model.infoHashBuffer);
     _tracker ??= TorrentAnnounceTracker(this);
-    _stateFile ??= await StateFile.getStateFile(savePath, model);
+    _stateFile ??= await StateFileV2.getStateFile(savePath, model);
 
     // Initialize file priority manager
     _filePriorityManager ??= FilePriorityManager(model);
+
+    // Load file priorities from state file if available
+    if (_stateFile != null && _stateFile is StateFileV2) {
+      final stateFileV2 = _stateFile as StateFileV2;
+      final savedPriorities = stateFileV2.filePriorities;
+      if (savedPriorities.isNotEmpty) {
+        _filePriorityManager!.setPriorities(savedPriorities);
+        _log.info(
+            'Loaded ${savedPriorities.length} file priorities from state file');
+      }
+    }
 
     // Initialize piece manager with appropriate selector
     if (_pieceManager == null) {
@@ -523,6 +536,11 @@ class _TorrentTask
         _stateFile!.bitfield,
         version: torrentVersion,
       );
+
+      // Update piece priorities after piece manager is created
+      if (_filePriorityManager != null) {
+        _updatePiecePriorities();
+      }
     }
 
     _fileManager ??= await DownloadFileManager.createFileManager(
@@ -804,6 +822,7 @@ class _TorrentTask
 
     _filePriorityManager!.setPriorities(priorities);
     _updatePiecePriorities();
+    _saveFilePriorities();
     _log.info('Set priorities for ${priorities.length} files');
   }
 
@@ -881,7 +900,22 @@ class _TorrentTask
     }
 
     _updatePiecePriorities();
+    _saveFilePriorities();
     _log.info('Auto-prioritized files based on file types');
+  }
+
+  /// Save file priorities to state file
+  void _saveFilePriorities() {
+    if (_filePriorityManager == null || _stateFile == null) {
+      return;
+    }
+
+    if (_stateFile is StateFileV2) {
+      final stateFileV2 = _stateFile as StateFileV2;
+      final allPriorities = _filePriorityManager!.getAllPriorities();
+      stateFileV2.setFilePriorities(allPriorities);
+      _log.fine('Saved file priorities to state file');
+    }
   }
 
   /// Update piece priorities based on file priorities

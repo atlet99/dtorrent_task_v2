@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:logging/logging.dart';
 import '../peer/bitfield.dart';
+import 'file_priority.dart';
 
 var _log = Logger('StateFileV2');
 
@@ -61,6 +62,21 @@ class StateFileV2 {
   bool _compressed = false;
   bool _sparse = false;
   int _compressionLevel = 6; // Default zlib compression level
+
+  /// File priorities (only non-normal priorities are stored)
+  Map<int, FilePriority> _filePriorities = {};
+
+  /// Get file priorities
+  Map<int, FilePriority> get filePriorities =>
+      Map.unmodifiable(_filePriorities);
+
+  /// Set file priorities
+  void setFilePriorities(Map<int, FilePriority> priorities) {
+    _filePriorities = Map.from(priorities);
+    // Remove normal priorities (they're default)
+    _filePriorities
+        .removeWhere((index, priority) => priority == FilePriority.normal);
+  }
 
   bool get isClosed => _closed;
   bool get isValid => _isValid;
@@ -266,11 +282,100 @@ class StateFileV2 {
         'Bitfield stored in sparse format: ${completedPieces.length} pieces');
   }
 
+  /// Write file priorities section
+  /// Format: count (4 bytes) + for each file: index (4 bytes) + priority (1 byte)
+  Future<void> _writeFilePriorities(RandomAccessFile access) async {
+    // Only write non-normal priorities
+    final nonNormalPriorities = _filePriorities.entries
+        .where((e) => e.value != FilePriority.normal)
+        .toList();
+
+    // Write count
+    final countData = ByteData(4);
+    countData.setUint32(0, nonNormalPriorities.length, Endian.little);
+    await access.writeFrom(countData.buffer.asUint8List());
+
+    // Write priorities
+    for (var entry in nonNormalPriorities) {
+      final fileData = ByteData(5);
+      fileData.setUint32(0, entry.key, Endian.little);
+      fileData.setUint8(4, entry.value.value);
+      await access.writeFrom(fileData.buffer.asUint8List());
+    }
+
+    _log.fine(
+        'Wrote ${nonNormalPriorities.length} file priorities to state file');
+  }
+
+  /// Read file priorities section
+  Future<void> _readFilePriorities(Uint8List bytes, int offset) async {
+    if (bytes.length < offset + 4) {
+      _log.fine('No file priorities section in state file (old format)');
+      _filePriorities = {};
+      return;
+    }
+
+    // Read count
+    final countView = ByteData.view(bytes.buffer, offset, 4);
+    final count = countView.getUint32(0, Endian.little);
+    offset += 4;
+
+    if (count == 0) {
+      _filePriorities = {};
+      return;
+    }
+
+    // Check if we have enough data
+    if (bytes.length < offset + (count * 5)) {
+      _log.warning('File priorities section incomplete, skipping');
+      _filePriorities = {};
+      return;
+    }
+
+    // Read priorities
+    _filePriorities = {};
+    var currentOffset = offset;
+    for (var i = 0; i < count; i++) {
+      final fileView = ByteData.view(bytes.buffer, currentOffset, 5);
+      final fileIndex = fileView.getUint32(0, Endian.little);
+      final priorityValue = fileView.getUint8(4);
+
+      // Convert value to FilePriority
+      FilePriority priority;
+      switch (priorityValue) {
+        case 0:
+          priority = FilePriority.skip;
+          break;
+        case 1:
+          priority = FilePriority.low;
+          break;
+        case 2:
+          priority = FilePriority.normal;
+          break;
+        case 3:
+          priority = FilePriority.high;
+          break;
+        default:
+          _log.warning(
+              'Invalid priority value $priorityValue for file $fileIndex, using normal');
+          priority = FilePriority.normal;
+      }
+
+      _filePriorities[fileIndex] = priority;
+      currentOffset += 5;
+    }
+
+    _log.fine('Read ${_filePriorities.length} file priorities from state file');
+  }
+
   /// Write footer with checksum
   Future<void> _writeFooter() async {
     if (_bitfieldFile == null) return;
 
     final access = await _bitfieldFile!.open(mode: FileMode.writeOnlyAppend);
+
+    // Write file priorities before footer
+    await _writeFilePriorities(access);
 
     // Write uploaded bytes again (for compatibility)
     final uploadedData = ByteData(8);
@@ -439,8 +544,16 @@ class StateFileV2 {
       bitfieldDataOffset += dataLength;
     }
 
+    // Read file priorities (after bitfield, before footer)
+    var prioritiesOffset = bitfieldDataOffset;
+    await _readFilePriorities(bytes, prioritiesOffset);
+    // Calculate priorities section size
+    final prioritiesCount = _filePriorities.length;
+    final prioritiesSize =
+        4 + (prioritiesCount * 5); // count + (index + priority) for each
+
     // Read uploaded from footer (for compatibility)
-    final uploadedOffset = bitfieldDataOffset;
+    final uploadedOffset = prioritiesOffset + prioritiesSize;
     if (bytes.length < uploadedOffset + 8 + 4) {
       throw Exception('State file incomplete (missing footer)');
     }
@@ -750,11 +863,23 @@ class StateFileV2 {
       }
     }
 
-    final checksumOffset = 72 + bitfieldSize + 8;
+    // Calculate priorities section size
+    final prioritiesCount = _filePriorities.entries
+        .where((e) => e.value != FilePriority.normal)
+        .length;
+    final prioritiesSize = 4 + (prioritiesCount * 5);
+
+    final prioritiesOffset = 72 + bitfieldSize;
+    final uploadedOffset = prioritiesOffset + prioritiesSize;
+    final checksumOffset = uploadedOffset + 8;
     final access = await _bitfieldFile!.open(mode: FileMode.writeOnlyAppend);
 
+    // Update file priorities
+    await access.setPosition(prioritiesOffset);
+    await _writeFilePriorities(access);
+
     // Update uploaded
-    await access.setPosition(72 + bitfieldSize);
+    await access.setPosition(uploadedOffset);
     final uploadedData = ByteData(8);
     uploadedData.setUint64(0, _uploaded, Endian.little);
     await access.writeFrom(uploadedData.buffer.asUint8List());
