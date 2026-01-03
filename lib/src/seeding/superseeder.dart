@@ -162,22 +162,43 @@ class SuperSeeder {
     if (!_enabled) return;
     if (pieceIndex < 0 || pieceIndex >= totalPieces) return;
 
+    // Ensure the set exists for this piece
+    _pieceDistribution[pieceIndex] ??= {};
+
+    // Get old rarity BEFORE adding the peer
+    final oldRarity = _pieceRarity[pieceIndex] ?? 0;
+    final wasAlreadyInSet = _pieceDistribution[pieceIndex]!.contains(peer);
+
     // Add peer to the distribution set for this piece
-    _pieceDistribution[pieceIndex]?.add(peer);
+    if (!wasAlreadyInSet) {
+      _pieceDistribution[pieceIndex]!.add(peer);
+    }
 
     // Update rarity (number of peers with this piece)
-    _pieceRarity[pieceIndex] = _pieceDistribution[pieceIndex]?.length ?? 0;
+    _pieceRarity[pieceIndex] = _pieceDistribution[pieceIndex]!.length;
+    final newRarity = _pieceRarity[pieceIndex]!;
 
-    // Check if this piece was offered to this peer
-    final offeredPiece = _peerOfferedPiece[peer];
-    if (offeredPiece == pieceIndex) {
-      // This is the piece we offered to this peer
-      // Now that it's on the peer, we can offer a new piece when they connect again
-      // But we wait until we see it on ANOTHER peer (rarity > 0 means someone else has it)
-      if (_pieceRarity[pieceIndex]! > 0) {
-        _log.fine(
-            'Piece $pieceIndex offered to peer ${peer.address} has been distributed (rarity: ${_pieceRarity[pieceIndex]})');
-        _piecesDistributed++;
+    // Check if this piece was offered to any peer
+    // A piece is considered distributed when we see it on a peer that we didn't offer it to
+    // (meaning it has spread from the peer we offered it to)
+    if (_offeredPieces.contains(pieceIndex)) {
+      // This piece was offered to someone
+      // Find which peer(s) we offered this piece to
+      final offeredToPeers = _peerOfferedPiece.entries
+          .where((e) => e.value == pieceIndex)
+          .map((e) => e.key)
+          .toList();
+
+      // If we see the piece on a peer that we didn't offer it to, it's distributed!
+      // This means the piece has spread from the peer we offered it to
+      if (offeredToPeers.isNotEmpty && !offeredToPeers.contains(peer)) {
+        // Piece is on a different peer than we offered it to - it's distributed!
+        // Only count once when it first appears on another peer
+        if (oldRarity == 0) {
+          _piecesDistributed++;
+          _log.fine(
+              'Piece $pieceIndex has been distributed (seen on peer ${peer.address}, rarity: $newRarity)');
+        }
       }
     }
 
@@ -193,8 +214,11 @@ class SuperSeeder {
 
     // Remove peer from piece distribution
     for (var pieceIndex in _pieceDistribution.keys) {
-      _pieceDistribution[pieceIndex]?.remove(peer);
-      _pieceRarity[pieceIndex] = _pieceDistribution[pieceIndex]?.length ?? 0;
+      final distributionSet = _pieceDistribution[pieceIndex];
+      if (distributionSet != null) {
+        distributionSet.remove(peer);
+        _pieceRarity[pieceIndex] = distributionSet.length;
+      }
     }
 
     // Remove peer from offered pieces tracking
