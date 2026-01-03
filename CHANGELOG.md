@@ -189,3 +189,38 @@
 - update `DownloadFileManager` to support file tree structure
 - add comprehensive test suite for BEP 52 features (33 new tests)
 - export BEP 52 helper classes in public API (`FileTreeHelper`, `PieceLayersHelper`, `MerkleTreeHelper`)
+
+## 0.4.7
+- add BEP 48 Tracker Scrape support with `scrapeTracker()` method in `TorrentTask`
+- add `ScrapeClient` class for retrieving torrent statistics (seeders, leechers, downloads) without full announce
+- add UPnP and NAT-PMP port forwarding support with `PortForwardingManager` class
+- add `NATPMPClient` and `UPnPClient` for automatic port mapping and gateway discovery
+- add IP filtering functionality with `IPFilter` class supporting blacklist and whitelist modes
+- add eMule dat format parser (`EmuleDatParser`) for loading IP filters from .dat files
+- add PeerGuardian format parser (`PeerGuardianParser`) for loading IP filters from .p2p files
+- add HTTP proxy support with `ProxyConfig` and `ProxyManager` classes
+- add SOCKS5 proxy support with `Socks5Client` class
+- add HTTP proxy client (`HttpProxyClient`) for HTTP/HTTPS proxy connections
+- add torrent queue management system with `QueueManager` and `TorrentQueue` classes
+- add priority-based queue system with `QueuePriority` enum (low, normal, high, urgent)
+- add concurrent download limit support in queue manager
+- add queue events (`QueueItemAdded`, `QueueItemCompleted`, `QueueItemFailed`, etc.)
+- add enhanced state file format (StateFileV2) with versioning and validation
+- add magic bytes ("DTSF") for state file format identification
+- add automatic migration from v1 to v2 state file format
+- add gzip compression support for bitfield storage (reduces file size for large torrents)
+- add sparse storage format for partially downloaded torrents (optimizes storage for <10% completion)
+- add CRC32 checksums for header and bitfield validation
+- add state file integrity validation with `validate()` method
+- add `StateRecovery` class for automatic recovery from corrupted state files
+- add `FileValidator` class for validating downloaded files against piece hashes
+- add quick validation mode (checks file existence and sizes without hash verification)
+- add full validation mode (validates all pieces with SHA-1/SHA-256 hashes)
+- add per-file validation support for selective file verification
+- add automatic file validation on resume with `validateOnResume` option in `DownloadFileManager`
+- add state file metadata tracking (version, last modified timestamp, storage flags)
+- add dynamic storage format switching (sparse/full based on completion ratio)
+- add state file backup functionality before recovery operations
+- export new classes in public API (`StateFileV2`, `StateRecovery`, `FileValidator`, `ProxyConfig`, `ProxyManager`, `QueueManager`, `IPFilter`, `PortForwardingManager`)
+- add comprehensive examples (`proxy_example.dart`, `torrent_queue_example.dart`, `fast_resume_example.dart`, `ip_filtering_example.dart`, `port_forwarding_example.dart`, `simple_integration_example.dart`)
+- add comprehensive test suites for all new features

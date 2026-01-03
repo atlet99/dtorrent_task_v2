@@ -1,4 +1,4 @@
-## About
+# About
 Dart library for implementing BitTorrent client.
 
 The Dart Torrent client consists of several parts:
@@ -25,6 +25,7 @@ This package implements the regular BitTorrent Protocol and manages the above pa
 - [BEP 0027 Private Torrents](https://www.bittorrent.org/beps/bep_0027.html)
 - [BEP 0029 uTorrent transport protocol](https://www.bittorrent.org/beps/bep_0029.html)
 - [BEP 0040 Canonical Peer Priority](https://www.bittorrent.org/beps/bep_0040.html)
+- [BEP 0048 Tracker Scrape Extension](https://www.bittorrent.org/beps/bep_0048.html)
 - [BEP 0052 BitTorrent v2](https://www.bittorrent.org/beps/bep_0052.html)
 - [BEP 0053 Magnet URI extension - Select specific file indices](https://www.bittorrent.org/beps/bep_0053.html)
 - [BEP 0055 Holepunch extension](https://www.bittorrent.org/beps/bep_0055.html)
@@ -35,7 +36,7 @@ This package requires dependency [`dtorrent_parser`](https://pub.dev/packages/dt
 ```yaml
 dependencies:
   dtorrent_parser: ^1.0.8
-  dtorrent_task_v2: ^0.4.6
+  dtorrent_task_v2: ^0.4.7
 ```
 
 Download from: [DTORRENT_TASK_V2](https://pub.dev/packages/dtorrent_task_v2)
@@ -299,7 +300,307 @@ final customConfig = SequentialConfig(
 - **BEP 53 support**: Efficient partial piece resumption
 
 See `example/sequential_streaming_example.dart` for complete examples.
+
+### Fast Resume and State File Management (NEW in 0.4.7)
+
+The library now includes an enhanced state file system with automatic recovery and validation:
+
+```dart
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+
+// Load or create state file (automatically migrates from v1 to v2)
+final stateFile = await StateFileV2.getStateFile(savePath, torrent);
+
+// Check state file validity
+if (stateFile.isValid) {
+  print('State file version: ${stateFile.version}');
+  print('Last modified: ${stateFile.lastModified}');
+  print('Downloaded: ${stateFile.downloaded} bytes');
+  print('Uploaded: ${stateFile.uploaded} bytes');
+} else {
+  print('State file is invalid, attempting recovery...');
+  // Recover from corrupted state file
+  final recovery = StateRecovery(torrent, savePath, pieces);
+  final recoveredStateFile = await recovery.recoverStateFile();
+  if (recoveredStateFile != null) {
+    print('Recovery successful!');
+  }
+}
+
+// Validate downloaded files
+final validator = FileValidator(torrent, pieces, savePath);
+
+// Quick validation (checks file existence and sizes)
+final quickValid = await validator.quickValidate();
+
+// Full validation (validates all pieces with hash verification)
+final validationResult = await validator.validateAll();
+if (validationResult.isValid) {
+  print('All files validated successfully');
+} else {
+  print('Found ${validationResult.invalidPieces.length} invalid pieces');
+}
 ```
+
+**State File v2 Features:**
+- **Automatic migration**: Seamlessly migrates from v1 to v2 format
+- **Compression**: Gzip compression for large bitfields (reduces file size)
+- **Sparse storage**: Optimized storage format for partially downloaded torrents (<10% completion)
+- **Integrity validation**: CRC32 checksums for header and bitfield validation
+- **Metadata tracking**: Version, timestamp, and storage flags
+
+**File Validation:**
+- **Quick validation**: Fast check for file existence and sizes
+- **Full validation**: Complete hash verification of all pieces
+- **Per-file validation**: Validate specific files only
+- **Automatic validation on resume**: Enable with `validateOnResume` option
+
+**State Recovery:**
+- Automatic detection of corrupted state files
+- Rebuilds bitfield from validated downloaded files
+- Backup functionality before recovery operations
+
+**Usage with DownloadFileManager:**
+
+```dart
+// Enable validation on resume
+final fileManager = await DownloadFileManager.createFileManager(
+  torrent,
+  savePath,
+  stateFile,
+  pieces,
+  validateOnResume: true, // Automatically validate files on resume
+);
+```
+
+See `example/fast_resume_example.dart` for complete examples.
+
+### Tracker Scrape (BEP 48) (NEW in 0.4.7)
+
+The library supports tracker scrape requests to get torrent statistics without performing a full announce:
+
+```dart
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+
+// Scrape tracker for torrent statistics
+final result = await task.scrapeTracker();
+
+if (result.isSuccess) {
+  final stats = result.getStatsForInfoHash(task.metaInfo.infoHash);
+  if (stats != null) {
+    print('Seeders: ${stats.complete}');
+    print('Leechers: ${stats.incomplete}');
+    print('Downloads: ${stats.downloaded}');
+  }
+} else {
+  print('Scrape failed: ${result.error}');
+}
+
+// Scrape specific tracker URL
+final customResult = await task.scrapeTracker(Uri.parse('https://tracker.example.com/announce'));
+```
+
+**Features:**
+- Get torrent statistics (seeders, leechers, downloads) without full announce
+- Automatic URL conversion from announce to scrape endpoint
+- Support for HTTP and UDP trackers
+- Error handling for unavailable trackers
+
+See `example/tracker_scrape_example.dart` for complete examples.
+
+### Proxy Support (NEW in 0.4.7)
+
+The library supports HTTP, HTTPS, and SOCKS5 proxies for tracker requests and peer connections:
+
+```dart
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+
+// Configure proxy
+final proxyConfig = ProxyConfig(
+  httpProxy: Uri.parse('http://proxy.example.com:8080'),
+  httpsProxy: Uri.parse('https://proxy.example.com:8080'),
+  socks5Proxy: Uri.parse('socks5://proxy.example.com:1080'),
+  username: 'user', // Optional
+  password: 'pass', // Optional
+);
+
+// Create task with proxy
+final task = TorrentTask.newTask(
+  torrent,
+  savePath,
+  false, // stream
+  null, // webSeeds
+  null, // acceptableSources
+  null, // sequentialConfig
+  proxyConfig, // proxy configuration
+);
+
+await task.start();
+```
+
+**Proxy Types:**
+- **HTTP/HTTPS Proxy**: For HTTP tracker requests and web seed connections
+- **SOCKS5 Proxy**: For peer connections (TCP and uTP)
+- **Authentication**: Support for username/password authentication
+
+**Features:**
+- Automatic proxy selection based on connection type
+- Support for authenticated proxies
+- Transparent integration with existing code
+
+See `example/proxy_example.dart` for complete examples.
+
+### Torrent Queue Management (NEW in 0.4.7)
+
+The library includes a queue management system for organizing and prioritizing torrent downloads:
+
+```dart
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+
+// Create queue manager with concurrent download limit
+final queueManager = QueueManager(maxConcurrentDownloads: 3);
+
+// Listen to queue events
+final queueListener = queueManager.createListener();
+queueListener
+  ..on<QueueItemAdded>((event) {
+    print('Torrent added to queue: ${event.item.metaInfo.name}');
+  })
+  ..on<QueueItemStarted>((event) {
+    print('Download started: ${event.item.metaInfo.name}');
+  })
+  ..on<QueueItemCompleted>((event) {
+    print('Download completed: ${event.item.metaInfo.name}');
+  });
+
+// Add torrents to queue with priorities
+final item1 = await queueManager.addTorrent(
+  torrent1,
+  savePath1,
+  priority: QueuePriority.high,
+);
+
+final item2 = await queueManager.addTorrent(
+  torrent2,
+  savePath2,
+  priority: QueuePriority.normal,
+);
+
+// Update priority
+queueManager.updatePriority(item1.id, QueuePriority.urgent);
+
+// Get queue status
+print('Active downloads: ${queueManager.activeDownloads}');
+print('Queued items: ${queueManager.queuedItems}');
+```
+
+**Priority Levels:**
+- `QueuePriority.low`: Lowest priority
+- `QueuePriority.normal`: Default priority
+- `QueuePriority.high`: High priority
+- `QueuePriority.urgent`: Highest priority
+
+**Features:**
+- Concurrent download limit control
+- Priority-based queue ordering
+- Automatic queue progression
+- Event-based queue monitoring
+- FIFO ordering within same priority
+
+See `example/torrent_queue_example.dart` for complete examples.
+
+### Port Forwarding (NEW in 0.4.7)
+
+The library supports automatic port forwarding via UPnP and NAT-PMP:
+
+```dart
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+
+// Create port forwarding manager
+final portManager = PortForwardingManager();
+
+// Forward port automatically
+final result = await portManager.forwardPort(
+  port: 6881,
+  protocol: 'TCP',
+  description: 'BitTorrent',
+);
+
+if (result.isSuccess) {
+  print('Port forwarded successfully');
+  print('External port: ${result.externalPort}');
+  print('Lease duration: ${result.leaseDuration} seconds');
+} else {
+  print('Port forwarding failed: ${result.error}');
+}
+
+// Remove port forwarding
+await portManager.removePortForwarding(6881, 'TCP');
+
+// Cleanup
+await portManager.dispose();
+```
+
+**Protocols:**
+- **UPnP**: Universal Plug and Play port forwarding
+- **NAT-PMP**: NAT Port Mapping Protocol
+
+**Features:**
+- Automatic gateway discovery
+- Lease renewal for NAT-PMP
+- Support for TCP and UDP protocols
+- Error handling and retry logic
+
+See `example/port_forwarding_example.dart` for complete examples.
+
+### IP Filtering (NEW in 0.4.7)
+
+The library supports IP filtering to block or allow peer connections:
+
+```dart
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+
+// Create IP filter
+final ipFilter = IPFilter();
+
+// Load from eMule dat file
+await ipFilter.loadFromEmuleDat('ipfilter.dat');
+
+// Or load from PeerGuardian format
+await ipFilter.loadFromPeerGuardian('blocklist.p2p');
+
+// Add custom IP ranges
+ipFilter.addRange('192.168.1.0', '192.168.1.255');
+ipFilter.addCIDR('10.0.0.0/8');
+
+// Set filter mode (blacklist or whitelist)
+ipFilter.mode = IPFilterMode.blacklist; // Block listed IPs
+// or
+ipFilter.mode = IPFilterMode.whitelist; // Allow only listed IPs
+
+// Apply filter to task
+task.setIPFilter(ipFilter);
+
+// Check if IP is allowed
+if (ipFilter.isAllowed(InternetAddress('192.168.1.100'))) {
+  print('IP is allowed');
+} else {
+  print('IP is blocked');
+}
+```
+
+**Supported Formats:**
+- **eMule dat format**: Standard IP filter format used by eMule
+- **PeerGuardian format**: P2P blocklist format
+
+**Features:**
+- Blacklist and whitelist modes
+- CIDR block support
+- IP range support
+- Automatic peer blocking
+- Dynamic filter updates
+
+See `example/ip_filtering_example.dart` for complete examples.
 
 ### Monitoring Download Progress
 
@@ -391,6 +692,7 @@ These metrics help monitor uTP protocol stability and debug RangeError crashes, 
 ### Protocol Support
 - Full BitTorrent protocol implementation
 - **BitTorrent Protocol v2 (BEP 52)** with automatic version detection
+- **Tracker Scrape (BEP 48)** for torrent statistics without full announce
 - uTP (uTorrent transport protocol) support with enhanced stability
 - TCP fallback support
 - Multiple extension protocols (PEX, LSD, Holepunch, Metadata Exchange)
@@ -400,6 +702,9 @@ These metrics help monitor uTP protocol stability and debug RangeError crashes, 
 - Selected file download (BEP 0053)
 - Private torrent support (BEP 0027) with automatic DHT/PEX disabling
 - Hybrid torrent support (v1 + v2 compatibility)
+- HTTP/HTTPS and SOCKS5 proxy support
+- UPnP and NAT-PMP port forwarding
+- IP filtering with eMule dat and PeerGuardian format support
 
 ### Performance
 - Efficient piece management and selection
@@ -410,6 +715,18 @@ These metrics help monitor uTP protocol stability and debug RangeError crashes, 
 - Automatic peer transfer from metadata download to actual download
 - Metadata caching to avoid re-downloading
 - Parallel metadata download from multiple peers
+- Compressed state file storage for large torrents
+- Sparse bitfield storage for partially downloaded torrents
+
+### State File and Recovery
+- Enhanced state file format (v2) with versioning and validation
+- Automatic migration from v1 to v2 format
+- Gzip compression for bitfield storage
+- Sparse storage format for partially downloaded torrents
+- CRC32 checksums for integrity validation
+- Automatic state file recovery from corruption
+- File validation with quick and full modes
+- Automatic validation on resume option
 
 ### Magnet Link Features
 - Automatic metadata download from magnet links
@@ -419,3 +736,17 @@ These metrics help monitor uTP protocol stability and debug RangeError crashes, 
 - Acceptable source URL support
 - Selected file indices parsing (BEP 0053)
 - Automatic peer and tracker transfer from metadata phase to download phase
+
+### Queue Management
+- Priority-based torrent queue system
+- Concurrent download limit control
+- Automatic queue progression
+- Event-based queue monitoring
+- FIFO ordering within same priority level
+
+### Network Features
+- HTTP/HTTPS and SOCKS5 proxy support for tracker requests and peer connections
+- UPnP and NAT-PMP automatic port forwarding
+- IP filtering with blacklist/whitelist modes
+- eMule dat and PeerGuardian format support for IP filters
+- CIDR block and IP range support
