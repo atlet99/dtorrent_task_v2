@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
-import 'package:dtorrent_task_v2/src/torrent/torrent_version.dart';
 
 /// Example demonstrating BitTorrent v2 protocol support
 ///

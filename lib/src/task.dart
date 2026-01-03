@@ -370,6 +370,11 @@ class _TorrentTask
     _fileManager ??= await DownloadFileManager.createFileManager(
         model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
     _peersManager ??= PeersManager(_peerId, model);
+    // Set torrent version for v2/hybrid support in peer handshakes
+    if (_peersManager != null) {
+      final torrentVersion = TorrentVersionHelper.detectVersion(model);
+      _peersManager!.setTorrentVersion(torrentVersion);
+    }
 
     // Initialize web seed downloader if web seeds are available (BEP 0019)
     if ((_webSeeds.isNotEmpty || _acceptableSources.isNotEmpty) &&

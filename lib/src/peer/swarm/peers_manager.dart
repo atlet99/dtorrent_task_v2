@@ -12,6 +12,7 @@ import 'package:logging/logging.dart';
 import '../protocol/peer.dart';
 import '../extensions/pex.dart';
 import '../extensions/holepunch.dart';
+import '../../torrent/torrent_version.dart';
 
 const MAX_ACTIVE_PEERS = 50;
 
@@ -68,6 +69,8 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   final String _localPeerId;
 
+  TorrentVersion? _torrentVersion;
+
   PeersManager(
     this._localPeerId,
     this._metaInfo,
@@ -75,6 +78,15 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     _init();
     // Start pex interval
     startPEX();
+  }
+
+  /// Set torrent version for v2/hybrid support
+  void setTorrentVersion(TorrentVersion version) {
+    _torrentVersion = version;
+    // Update existing peers
+    for (var peer in _activePeers) {
+      peer.setTorrentVersion(version);
+    }
   }
 
   Future<void> _init() async {
@@ -252,7 +264,13 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
         peer = Peer.newUTPPeer(address, _metaInfo.infoHashBuffer,
             _metaInfo.pieces.length, socket, source);
       }
-      if (peer != null) _hookPeer(peer);
+      if (peer != null) {
+        // Set torrent version for v2/hybrid support in handshake
+        if (_torrentVersion != null) {
+          peer.setTorrentVersion(_torrentVersion!);
+        }
+        _hookPeer(peer);
+      }
     }
   }
 

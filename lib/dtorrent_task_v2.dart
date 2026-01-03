@@ -10,6 +10,7 @@ export 'src/metadata/metadata_downloader.dart';
 export 'src/metadata/metadata_downloader_events.dart';
 export 'src/metadata/magnet_parser.dart';
 export 'src/torrent/torrent_creator.dart';
+export 'src/torrent/torrent_version.dart';
 export 'src/piece/sequential_config.dart';
 export 'src/piece/sequential_stats.dart';
 export 'src/piece/advanced_sequential_selector.dart';
