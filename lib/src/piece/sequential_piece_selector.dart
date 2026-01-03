@@ -9,6 +9,7 @@ import 'piece_selector.dart';
 ///
 class SequentialPieceSelector implements PieceSelector {
   final Set<int> _priorityPieces = {};
+  final Set<int> _skippedPieces = {};
 
   /// should be called when the user seeks to a specific position in the video
   /// to prioritize the pieces that are needed to continue streaming from that position.
@@ -21,12 +22,22 @@ class SequentialPieceSelector implements PieceSelector {
   }
 
   @override
+  void setSkippedPieces(Iterable<int> pieces) {
+    _skippedPieces.clear();
+    _skippedPieces.addAll(pieces);
+  }
+
+  @override
   Piece? selectPiece(Peer peer, PieceProvider provider,
       [bool random = false, Set<int>? suggestPieces]) {
     // Check if the current downloading piece can be used by this peer.
     // TODO: for last pieces maybe we can pull pieces even if they are not in the remoteCompletePieces?
     // TODO: investigate the need to sort remoteHavePieces
     for (var piece in _priorityPieces) {
+      // Skip pieces that are marked as skipped
+      if (_skippedPieces.contains(piece)) {
+        continue;
+      }
       var p = provider.pieces[piece];
       if (p == null ||
           p.isCompleted ||
@@ -37,6 +48,10 @@ class SequentialPieceSelector implements PieceSelector {
       return p; //return the first piece that is not completed and has available sub-pieces and is in the remote complete pieces
     }
     for (var remoteHavePiece in peer.remoteCompletePieces) {
+      // Skip pieces that are marked as skipped
+      if (_skippedPieces.contains(remoteHavePiece)) {
+        continue;
+      }
       var p = provider.pieces[remoteHavePiece];
       if (p == null) return null;
       if (!p.isCompleted && p.haveAvailableSubPiece()) return p;

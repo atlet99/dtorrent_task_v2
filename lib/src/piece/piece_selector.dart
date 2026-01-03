@@ -23,4 +23,9 @@ abstract class PieceSelector {
   /// for example when the user is streaming a video and seeks to a specific position this method should be called to prioritize
   /// the pieces that are needed to continue streaming from that position.
   void setPriorityPieces(Iterable<int> pieces);
+
+  /// Sets the pieces that should be skipped (not downloaded).
+  /// The [pieces] parameter is an iterable of piece indices that should be skipped.
+  /// Skipped pieces will not be selected by [selectPiece].
+  void setSkippedPieces(Iterable<int> pieces);
 }
