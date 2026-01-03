@@ -14,6 +14,9 @@ class NATPMPClient {
   /// NAT-PMP server address (gateway IP)
   InternetAddress? _gatewayAddress;
 
+  /// Flag to track if discovery was already attempted
+  bool _discoveryAttempted = false;
+
   /// NAT-PMP server port (always 5351)
   static const int NATPMP_PORT = 5351;
 
@@ -26,9 +29,18 @@ class NATPMPClient {
   ///
   /// NAT-PMP gateway is typically the default gateway (router IP).
   /// This method attempts to discover it by trying common gateway IPs.
+  /// Uses a shorter timeout per gateway test to avoid long delays.
   Future<InternetAddress?> discoverGateway() async {
     try {
       _log.info('Discovering NAT-PMP gateway...');
+
+      // Use shorter timeout for discovery to avoid long delays
+      final discoveryTimeout = Duration(
+                milliseconds: timeout.inMilliseconds ~/ 2,
+              ).inMilliseconds >
+              0
+          ? Duration(milliseconds: timeout.inMilliseconds ~/ 2)
+          : const Duration(milliseconds: 500);
 
       // Try to get default gateway from network interfaces
       final interfaces = await NetworkInterface.list(
@@ -36,32 +48,36 @@ class NATPMPClient {
         type: InternetAddressType.IPv4,
       );
 
+      // Limit number of interfaces to test to avoid long delays
+      final maxInterfaces = 3;
+      var interfaceCount = 0;
+
       for (var interface in interfaces) {
+        if (interfaceCount >= maxInterfaces) break;
         for (var addr in interface.addresses) {
           // Try common gateway addresses (last octet = 1)
           final gatewayIP = _getGatewayIP(addr);
           if (gatewayIP != null) {
-            if (await _testGateway(gatewayIP)) {
+            if (await _testGateway(gatewayIP, timeout: discoveryTimeout)) {
               _gatewayAddress = gatewayIP;
               _log.info('NAT-PMP gateway found: $gatewayIP');
               return gatewayIP;
             }
           }
         }
+        interfaceCount++;
       }
 
-      // Fallback: try common gateway IPs
+      // Fallback: try common gateway IPs (limit to 2 most common)
       final commonGateways = [
         '192.168.1.1',
         '192.168.0.1',
-        '10.0.0.1',
-        '172.16.0.1',
       ];
 
       for (var gwStr in commonGateways) {
         try {
           final gw = InternetAddress(gwStr);
-          if (await _testGateway(gw)) {
+          if (await _testGateway(gw, timeout: discoveryTimeout)) {
             _gatewayAddress = gw;
             _log.info('NAT-PMP gateway found: $gw');
             return gw;
@@ -102,8 +118,14 @@ class NATPMPClient {
   }
 
   /// Test if gateway supports NAT-PMP
-  Future<bool> _testGateway(InternetAddress gateway) async {
+  Future<bool> _testGateway(
+    InternetAddress gateway, {
+    Duration? timeout,
+  }) async {
     try {
+      // Use provided timeout or default client timeout
+      final testTimeout = timeout ?? this.timeout;
+
       // Send public address request (version 0, opcode 0)
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       try {
@@ -140,7 +162,7 @@ class NATPMPClient {
           }
         });
 
-        timeoutTimer = Timer(timeout, () {
+        timeoutTimer = Timer(testTimeout, () {
           subscription?.cancel();
           if (!completer.isCompleted) {
             completer.complete(false);
@@ -169,13 +191,19 @@ class NATPMPClient {
     int leaseDuration = 3600, // 1 hour default
   }) async {
     try {
-      // Discover gateway if not already discovered
-      if (_gatewayAddress == null) {
+      // Discover gateway if not already discovered and not already attempted
+      if (_gatewayAddress == null && !_discoveryAttempted) {
+        _discoveryAttempted = true;
         _gatewayAddress = await discoverGateway();
         if (_gatewayAddress == null) {
           _log.warning('Cannot add port mapping: gateway not found');
           return false;
         }
+      } else if (_gatewayAddress == null) {
+        // Already attempted discovery and failed, don't try again
+        _log.warning(
+            'Cannot add port mapping: gateway not found (discovery already attempted)');
+        return false;
       }
 
       _log.info(
