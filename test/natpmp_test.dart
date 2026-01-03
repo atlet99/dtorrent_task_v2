@@ -80,32 +80,39 @@ void main() {
 
     test('Lease duration handling', () async {
       // Test with different lease durations
-      final result1 = await client.addPortMapping(
-        externalPort: 6881,
-        internalPort: 6881,
-        protocol: 1,
-        leaseDuration: 0, // Permanent
-      );
+      // Use timeout wrapper to prevent test from hanging
+      final result1 = await client
+          .addPortMapping(
+            externalPort: 6881,
+            internalPort: 6881,
+            protocol: 1,
+            leaseDuration: 0, // Permanent
+          )
+          .timeout(const Duration(seconds: 5));
 
-      final result2 = await client.addPortMapping(
-        externalPort: 6882,
-        internalPort: 6882,
-        protocol: 1,
-        leaseDuration: 3600, // 1 hour
-      );
+      final result2 = await client
+          .addPortMapping(
+            externalPort: 6882,
+            internalPort: 6882,
+            protocol: 1,
+            leaseDuration: 3600, // 1 hour
+          )
+          .timeout(const Duration(seconds: 5));
 
-      final result3 = await client.addPortMapping(
-        externalPort: 6883,
-        internalPort: 6883,
-        protocol: 1,
-        leaseDuration: 65535, // Max value
-      );
+      final result3 = await client
+          .addPortMapping(
+            externalPort: 6883,
+            internalPort: 6883,
+            protocol: 1,
+            leaseDuration: 65535, // Max value
+          )
+          .timeout(const Duration(seconds: 5));
 
       // All should return bool
       expect(result1, isA<bool>());
       expect(result2, isA<bool>());
       expect(result3, isA<bool>());
-    });
+    }, timeout: const Timeout(Duration(seconds: 20)));
   });
 
   group('NATPMPClient error handling', () {
