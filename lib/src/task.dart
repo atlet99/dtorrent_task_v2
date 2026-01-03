@@ -331,8 +331,11 @@ class _TorrentTask
   dynamic _stateFile; // Can be StateFile or StateFileV2
 
   @override
-  StateFile? get stateFile =>
-      _stateFile is StateFile ? _stateFile as StateFile : null;
+  StateFile? get stateFile {
+    // StateFileV2 implements the same interface as StateFile
+    // Both have bitfield, uploaded, downloaded properties
+    return _stateFile as StateFile?;
+  }
 
   PieceManager? _pieceManager;
 

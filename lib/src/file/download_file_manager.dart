@@ -11,7 +11,6 @@ import '../peer/peer_base.dart';
 
 import '../piece/piece.dart';
 import 'download_file.dart';
-import 'state_file.dart';
 import 'file_validator.dart';
 import '../torrent/file_tree.dart';
 import '../torrent/torrent_version.dart';
@@ -29,7 +28,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   List<List<DownloadFile>?>? get piece2fileMap => _piece2fileMap;
 
   final Map<String, List<Piece>> _file2pieceMap = {};
-  final StateFile _stateFile;
+  final dynamic _stateFile; // Can be StateFile or StateFileV2
 
   /// TODO: File read caching
   DownloadFileManager(
@@ -41,7 +40,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   }
 
   static Future<DownloadFileManager> createFileManager(Torrent metainfo,
-      String localDirectory, StateFile stateFile, List<Piece> pieces,
+      String localDirectory, dynamic stateFile, List<Piece> pieces,
       {bool validateOnResume = false}) async {
     var manager = DownloadFileManager(metainfo, stateFile, pieces);
     await manager._init(localDirectory);
