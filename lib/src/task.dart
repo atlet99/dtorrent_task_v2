@@ -32,6 +32,7 @@ import 'peer/swarm/peers_manager.dart';
 import 'piece/web_seed_downloader.dart';
 import 'utils.dart';
 import 'utils/debouncer.dart';
+import 'torrent/torrent_version.dart';
 
 const MAX_PEERS = 50;
 const MAX_IN_PEERS = 10;
@@ -354,10 +355,15 @@ class _TorrentTask
         _log.info('Using BasePieceSelector (rarest-first)');
       }
 
+      // Detect torrent version (v1, v2, or hybrid)
+      final torrentVersion = TorrentVersionHelper.detectVersion(model);
+      _log.info('Detected torrent version: $torrentVersion');
+
       _pieceManager = PieceManager.createPieceManager(
         selector,
         model,
         _stateFile!.bitfield,
+        version: torrentVersion,
       );
     }
 

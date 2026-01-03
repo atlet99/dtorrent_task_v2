@@ -649,14 +649,21 @@ abstract class Peer
         return false;
       }
 
-      // Validate _infoHashBuffer has correct length
-      var expectedInfoHashLength = PEER_ID_START - INFO_HASH_START;
+      // Standard handshake always uses 20 bytes for info hash (v1)
+      // v2 info hash (32 bytes) is communicated via Extension Protocol (BEP 10)
+      // For hybrid torrents, v1 info hash is used in handshake
+      var expectedInfoHashLength =
+          PEER_ID_START - INFO_HASH_START; // Always 20 bytes
+
+      // Support both v1 (20 bytes) and v2 (32 bytes) info hash buffers
+      // But in handshake, we only validate the first 20 bytes
       if (_infoHashBuffer.length < expectedInfoHashLength) {
         _log.warning(
             'InfoHash buffer too short: length=${_infoHashBuffer.length}, required=$expectedInfoHashLength, peer=$address');
         return false;
       }
 
+      // Validate first 20 bytes (standard handshake format)
       for (var i = INFO_HASH_START; i < PEER_ID_START; i++) {
         if (buffer[i] != _infoHashBuffer[i - INFO_HASH_START]) return false;
       }
@@ -1079,6 +1086,7 @@ abstract class Peer
   /// Send a handshake message.
   ///
   /// After sending the handshake message, this method will also proactively send the bitfield and have messages to the remote peer.
+  /// For v2/hybrid torrents, uses v1 info hash (first 20 bytes) in handshake for compatibility.
   void sendHandShake(String localPeerId) {
     if (_handShaked) return;
     var message = <int>[];
@@ -1091,7 +1099,12 @@ abstract class Peer
       reserved[5] |= 0x10;
     }
     message.addAll(reserved);
-    message.addAll(_infoHashBuffer);
+    // Standard handshake always uses 20 bytes for info hash
+    // For v2/hybrid torrents, use v1 info hash (first 20 bytes) for compatibility
+    var handshakeInfoHash = _infoHashBuffer.length >= 20
+        ? _infoHashBuffer.sublist(0, 20)
+        : _infoHashBuffer;
+    message.addAll(handshakeInfoHash);
     message.addAll(utf8.encode(localPeerId));
     sendByteMessage(message);
     _startToCountdown();

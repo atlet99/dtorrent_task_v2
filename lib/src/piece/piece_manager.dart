@@ -7,6 +7,7 @@ import '../peer/bitfield.dart';
 import 'piece.dart';
 import 'piece_provider.dart';
 import 'piece_selector.dart';
+import '../torrent/torrent_version.dart';
 
 var _log = Logger('PieceManager');
 
@@ -33,13 +34,17 @@ class PieceManager
   PieceManager(this._pieceSelector, int piecesNumber);
 
   static PieceManager createPieceManager(
-      PieceSelector pieceSelector, Torrent metaInfo, Bitfield bitfield) {
+      PieceSelector pieceSelector, Torrent metaInfo, Bitfield bitfield,
+      {TorrentVersion? version}) {
     var p = PieceManager(pieceSelector, metaInfo.pieces.length);
-    p.initPieces(metaInfo, bitfield);
+    p.initPieces(metaInfo, bitfield, version: version);
     return p;
   }
 
-  void initPieces(Torrent metaInfo, Bitfield bitfield) {
+  void initPieces(Torrent metaInfo, Bitfield bitfield,
+      {TorrentVersion? version}) {
+    var detectedVersion =
+        version ?? TorrentVersionHelper.detectVersion(metaInfo);
     var startbyte = 0;
     for (var i = 0; i < metaInfo.pieces.length; i++) {
       var byteLength = metaInfo.pieceLength;
@@ -49,10 +54,11 @@ class PieceManager
 
       if (bitfield.getBit(i)) {
         var piece = Piece(metaInfo.pieces[i], i, byteLength, startbyte,
-            isComplete: true);
+            isComplete: true, version: detectedVersion);
         _pieces[i] = piece;
       } else {
-        var piece = Piece(metaInfo.pieces[i], i, byteLength, startbyte);
+        var piece = Piece(metaInfo.pieces[i], i, byteLength, startbyte,
+            version: detectedVersion);
         _pieces[i] = piece;
       }
 
