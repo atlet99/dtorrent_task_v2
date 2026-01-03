@@ -83,6 +83,17 @@ Future<Directory> getTestDownloadDirectory() async {
 /// Cleans up a test directory
 Future<void> cleanupTestDirectory(Directory dir) async {
   if (await dir.exists()) {
-    await dir.delete(recursive: true);
+    try {
+      await dir.delete(recursive: true);
+    } catch (e) {
+      // If deletion fails, try again after a short delay
+      // This can happen if files are still being written
+      await Future.delayed(const Duration(milliseconds: 100));
+      try {
+        await dir.delete(recursive: true);
+      } catch (e2) {
+        // Ignore if still fails - test cleanup is best effort
+      }
+    }
   }
 }
