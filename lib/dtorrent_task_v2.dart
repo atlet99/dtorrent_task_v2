@@ -20,6 +20,10 @@ export 'src/piece/advanced_sequential_selector.dart';
 export 'src/filter/ip_filter.dart';
 export 'src/filter/emule_dat_parser.dart';
 export 'src/filter/peer_guardian_parser.dart';
+export 'src/proxy/proxy_config.dart';
+export 'src/proxy/proxy_manager.dart';
+export 'src/proxy/http_proxy_client.dart';
+export 'src/proxy/socks5_client.dart';
 
 /// Peer ID prefix
 const ID_PREFIX = '-DT0201-';

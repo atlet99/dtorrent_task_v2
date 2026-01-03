@@ -288,9 +288,13 @@ abstract class Peer
 
   factory Peer.newTCPPeer(CompactAddress address, List<int> infoHashBuffer,
       int piecesNum, Socket? socket, PeerSource source,
-      {bool enableExtend = true, bool enableFast = true}) {
+      {bool enableExtend = true,
+      bool enableFast = true,
+      ProxyManager? proxyManager}) {
     return _TCPPeer(address, infoHashBuffer, piecesNum, socket, source,
-        enableExtend: enableExtend, enableFast: enableFast);
+        enableExtend: enableExtend,
+        enableFast: enableFast,
+        proxyManager: proxyManager);
   }
 
   factory Peer.newUTPPeer(CompactAddress address, List<int> infoHashBuffer,
@@ -1725,10 +1729,15 @@ class TCPConnectException implements Exception {
 
 class _TCPPeer extends Peer {
   Socket? _socket;
+  final ProxyManager? _proxyManager;
+
   _TCPPeer(CompactAddress address, List<int> infoHashBuffer, int piecesNum,
       this._socket, PeerSource source,
-      {bool enableExtend = true, bool enableFast = true})
-      : super(address, infoHashBuffer, piecesNum, source,
+      {bool enableExtend = true,
+      bool enableFast = true,
+      ProxyManager? proxyManager})
+      : _proxyManager = proxyManager,
+        super(address, infoHashBuffer, piecesNum, source,
             type: PeerType.TCP,
             localEnableExtended: enableExtend,
             localEnableFastPeer: enableFast);
@@ -1737,8 +1746,22 @@ class _TCPPeer extends Peer {
   Future<Stream<Uint8List>?> connectRemote(int? timeout) async {
     timeout ??= 30;
     try {
-      _socket ??= await Socket.connect(address.address, address.port,
-          timeout: Duration(seconds: timeout));
+      if (_socket != null) return _socket;
+
+      // Use proxy if configured and enabled for peers
+      if (_proxyManager != null && _proxyManager!.shouldUseForPeers()) {
+        _socket = await _proxyManager!.connectThroughProxy(
+          address.address,
+          address.port,
+          timeout: Duration(seconds: timeout),
+        );
+      } else {
+        _socket = await Socket.connect(
+          address.address,
+          address.port,
+          timeout: Duration(seconds: timeout),
+        );
+      }
       return _socket;
     } on Exception catch (e) {
       throw TCPConnectException(e);

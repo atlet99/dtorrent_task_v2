@@ -8,19 +8,32 @@ import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 /// This example shows how to get torrent statistics (seeders, leechers, downloads)
 /// from trackers without performing a full announce.
 void main(List<String> args) async {
-  // Parse command line arguments
-  final parser = ArgParser();
-  parser.addOption('torrent', abbr: 't', help: 'Path to torrent file');
+  // Handle --help
+  if (args.contains('--help') || args.contains('-h')) {
+    _showHelp();
+    exit(0);
+  }
 
-  final results = parser.parse(args);
+  // Parse command line arguments
+  final parser = ArgParser()
+    ..addOption('torrent', abbr: 't', help: 'Path to torrent file')
+    ..addFlag('help',
+        abbr: 'h', negatable: false, help: 'Show usage information');
+
+  ArgResults results;
+  try {
+    results = parser.parse(args);
+  } on FormatException catch (e) {
+    print('Error: $e');
+    print('');
+    _showHelp();
+    exit(1);
+  }
+
   final torrentPath = results['torrent'] as String?;
 
   if (torrentPath == null || torrentPath.isEmpty) {
-    print('Usage: dart tracker_scrape_example.dart --torrent <torrent_file>');
-    print('');
-    print('Example:');
-    print('  dart tracker_scrape_example.dart --torrent example.torrent');
-    print('  dart tracker_scrape_example.dart -t example.torrent');
+    _showHelp();
     exit(1);
   }
   final torrentFile = File(torrentPath);
@@ -132,4 +145,26 @@ void main(List<String> args) async {
   await task.dispose();
   print('');
   print('Done!');
+}
+
+void _showHelp() {
+  print('Tracker Scrape Example (BEP 48)');
+  print('');
+  print('Usage:');
+  print(
+      '  dart run example/tracker_scrape_example.dart --torrent <torrent_file>');
+  print('');
+  print('Options:');
+  print('  -t, --torrent    Path to torrent file (required)');
+  print('  -h, --help       Show this help message');
+  print('');
+  print('Example:');
+  print(
+      '  dart run example/tracker_scrape_example.dart --torrent example.torrent');
+  print('  dart run example/tracker_scrape_example.dart -t example.torrent');
+  print('');
+  print('This example demonstrates how to get torrent statistics (seeders,');
+  print(
+      'leechers, downloads) from trackers without performing a full announce.');
+  print('');
 }

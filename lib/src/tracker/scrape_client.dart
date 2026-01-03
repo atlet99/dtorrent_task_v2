@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:logging/logging.dart';
 import 'package:http/http.dart' as http;
+import '../proxy/proxy_manager.dart';
 
 /// Logger instance for ScrapeClient
 final _log = Logger('ScrapeClient');
@@ -86,10 +87,14 @@ class ScrapeClient {
   /// UDP socket timeout
   final Duration udpTimeout;
 
+  /// Proxy manager for HTTP requests
+  final ProxyManager? proxyManager;
+
   ScrapeClient({
     this.cacheTimeout = const Duration(minutes: 5),
     this.httpTimeout = const Duration(seconds: 10),
     this.udpTimeout = const Duration(seconds: 5),
+    this.proxyManager,
   });
 
   /// Perform scrape request for one or more info hashes
