@@ -4,6 +4,7 @@ import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:crypto/crypto.dart';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:logging/logging.dart';
+import 'torrent_model.dart';
 
 /// BitTorrent protocol version
 enum TorrentVersion {
@@ -21,14 +22,21 @@ var _log = Logger('TorrentVersionHelper');
 
 /// Helper class for working with torrent versions
 class TorrentVersionHelper {
-  /// Determine torrent version from Torrent object
+  /// Determine torrent version from TorrentModel object
+  ///
+  /// TorrentModel already has the version field, so we can return it directly
+  static TorrentVersion detectVersion(TorrentModel torrent) {
+    return torrent.version;
+  }
+
+  /// Determine torrent version from old Torrent object (backward compatibility)
   ///
   /// Checks the torrent file for:
   /// - meta version field in info dict (2 = v2)
   /// - file tree structure (v2 format)
   /// - piece layers (v2 format)
   /// - pieces field (v1 format)
-  static TorrentVersion detectVersion(Torrent torrent) {
+  static TorrentVersion detectVersionLegacy(Torrent torrent) {
     try {
       // Try to detect from torrent file path if available
       // This is a fallback - ideally we'd have access to raw bencoded data
@@ -153,8 +161,23 @@ class TorrentVersionHelper {
     }
   }
 
-  /// Get info hash for a specific version
+  /// Get info hash for a specific version from TorrentModel
   static Uint8List? getInfoHashForVersion(
+      TorrentModel torrent, TorrentVersion version) {
+    switch (version) {
+      case TorrentVersion.v1:
+        return torrent.v1InfoHash;
+      case TorrentVersion.v2:
+        return torrent.v2InfoHash;
+      case TorrentVersion.hybrid:
+        // Hybrid torrents can use either v1 or v2 info hash
+        // Return v1 by default for compatibility
+        return torrent.v1InfoHash ?? torrent.v2InfoHash;
+    }
+  }
+
+  /// Get info hash for a specific version from old Torrent object (backward compatibility)
+  static Uint8List? getInfoHashForVersionLegacy(
       Torrent torrent, TorrentVersion version) {
     switch (version) {
       case TorrentVersion.v1:

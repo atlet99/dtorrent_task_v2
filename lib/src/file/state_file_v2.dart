@@ -531,7 +531,8 @@ class StateFileV2 {
       if (_compressed) {
         // Decompress
         try {
-          bitfieldBytes = Uint8List.fromList(gzip.decoder.convert(bitfieldBytes));
+          bitfieldBytes =
+              Uint8List.fromList(gzip.decoder.convert(bitfieldBytes));
           _log.fine(
               'Bitfield decompressed: $dataLength -> ${bitfieldBytes.length} bytes');
         } catch (e) {
@@ -1098,7 +1099,8 @@ class StateFileV2 {
           final compressedData =
               bytes.sublist(bitfieldStart + 4, bitfieldStart + bitfieldSize);
           try {
-            bitfieldBytes = Uint8List.fromList(gzip.decoder.convert(compressedData));
+            bitfieldBytes =
+                Uint8List.fromList(gzip.decoder.convert(compressedData));
           } catch (e) {
             return false;
           }
