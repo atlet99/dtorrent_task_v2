@@ -150,6 +150,7 @@ void main() {
             }
           });
 
+        // Initialize stream for incoming connection
         peer.connect();
       });
 
