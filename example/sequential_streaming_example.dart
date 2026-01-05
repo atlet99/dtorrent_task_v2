@@ -69,7 +69,7 @@ void main(List<String> args) async {
 
   // Create torrent task with sequential config
   final task = TorrentTask.newTask(
-    torrent,
+    torrent as TorrentModel,
     savePath,
     true, // streaming mode
     null, // webSeeds

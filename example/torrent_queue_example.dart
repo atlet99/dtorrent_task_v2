@@ -113,7 +113,7 @@ void main(List<String> args) async {
     try {
       final torrent = await Torrent.parse(torrentFile);
       final item = TorrentQueueItem(
-        metaInfo: torrent,
+        metaInfo: torrent as TorrentModel,
         savePath: savePath,
         priority: priority,
       );

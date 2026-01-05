@@ -122,7 +122,7 @@ void main(List<String> args) async {
 
   // Create task with sequential config
   final task = TorrentTask.newTask(
-    torrent,
+    torrent as TorrentModel,
     savePath,
     true, // streaming mode
     magnet.webSeeds.isNotEmpty ? magnet.webSeeds : null,

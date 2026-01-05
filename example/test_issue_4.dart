@@ -63,7 +63,7 @@ void main(List<String> args) async {
     print('');
 
     // Create task
-    task = TorrentTask.newTask(model, savePath);
+    task = TorrentTask.newTask(model as TorrentModel, savePath);
 
     // Track metrics
     int lastDownloaded = 0;

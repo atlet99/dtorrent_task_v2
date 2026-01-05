@@ -116,7 +116,7 @@ void main(List<String> args) async {
 
     // Create task (must be in seeding mode - all files complete)
     _log.info('Creating torrent task...');
-    final task = TorrentTask.newTask(torrent, savePath);
+    final task = TorrentTask.newTask(torrent as TorrentModel, savePath);
 
     // Start task to initialize fileManager and pieceManager
     try {
@@ -193,7 +193,7 @@ void main(List<String> args) async {
             }
 
             // Quick validation first
-            final validator = FileValidator(torrent,
+            final validator = FileValidator(torrent as TorrentModel,
                 task.pieceManager!.pieces.values.toList(), normalizedSavePath);
             final quickValid = await validator.quickValidate();
             if (!quickValid) {
@@ -216,7 +216,10 @@ void main(List<String> args) async {
               try {
                 // Read piece data directly from files
                 final pieceData = await _readPieceDataFromFiles(
-                    torrent, normalizedSavePath, i, torrent.pieceLength);
+                    torrent as TorrentModel,
+                    normalizedSavePath,
+                    i,
+                    torrent.pieceLength);
                 if (pieceData.length !=
                     (i == torrent.pieces.length - 1
                         ? torrent.lastPieceLength
@@ -396,11 +399,11 @@ void main(List<String> args) async {
 }
 
 /// Helper function to read piece data directly from files
-Future<Uint8List> _readPieceDataFromFiles(
-    Torrent torrent, String savePath, int pieceIndex, int pieceLength) async {
+Future<Uint8List> _readPieceDataFromFiles(TorrentModel torrent, String savePath,
+    int pieceIndex, int pieceLength) async {
   final pieceStart = pieceIndex * pieceLength;
   final pieceEnd = pieceStart +
-      (pieceIndex == torrent.pieces.length - 1
+      (pieceIndex == (torrent.pieces?.length ?? 0) - 1
           ? torrent.lastPieceLength
           : pieceLength);
   final pieceByteLength = pieceEnd - pieceStart;

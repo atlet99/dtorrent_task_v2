@@ -108,7 +108,7 @@ void main() async {
       '${tempDir.path}/download_${DateTime.now().millisecondsSinceEpoch}';
   await Directory(savePath).create(recursive: true);
 
-  final task = TorrentTask.newTask(torrent, savePath);
+  final task = TorrentTask.newTask(torrent as TorrentModel, savePath);
   print('  ✓ Task created');
   print('  Save path: $savePath');
   print('');
@@ -203,7 +203,9 @@ void main() async {
   listener.on<StateFileUpdated>((event) {
     final progress = (task.progress * 100).toStringAsFixed(2);
     final downloaded = (task.downloaded! / 1024 / 1024).toStringAsFixed(2);
-    final total = (task.metaInfo.length / 1024 / 1024).toStringAsFixed(2);
+    final total =
+        ((task.metaInfo.length ?? task.metaInfo.totalSize) / 1024 / 1024)
+            .toStringAsFixed(2);
     final downloadSpeed = (task.currentDownloadSpeed / 1024).toStringAsFixed(2);
     final uploadSpeed = (task.uploadSpeed / 1024).toStringAsFixed(2);
 

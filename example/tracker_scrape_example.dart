@@ -51,7 +51,7 @@ void main(List<String> args) async {
 
   // Create a task (we don't need to start it for scraping)
   final savePath = Directory.systemTemp.path;
-  final task = TorrentTask.newTask(torrent, savePath);
+  final task = TorrentTask.newTask(torrent as TorrentModel, savePath);
 
   print('Available trackers:');
   if (torrent.announces.isEmpty) {

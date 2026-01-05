@@ -73,7 +73,8 @@ void main(List<String> args) async {
 
     // Load or create state file
     _log.info('Loading state file...');
-    final stateFile = await StateFileV2.getStateFile(savePath, torrent);
+    final stateFile =
+        await StateFileV2.getStateFile(savePath, torrent as TorrentModel);
 
     if (stateFile.isValid) {
       _log.info('State file is valid (version: ${stateFile.version})');

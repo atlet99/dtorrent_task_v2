@@ -61,7 +61,8 @@ void main(List<String> args) async {
   print('');
 
   // Create task
-  final task = TorrentTask.newTask(torrent, savePath, true, null, null, config);
+  final task = TorrentTask.newTask(
+      torrent as TorrentModel, savePath, true, null, null, config);
 
   Timer? seekSimulationTimer;
   final listener = task.createListener();

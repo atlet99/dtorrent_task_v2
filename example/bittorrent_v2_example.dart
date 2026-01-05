@@ -24,7 +24,7 @@ void main() async {
 
   try {
     final torrent = await Torrent.parse(torrentPath);
-    final version = TorrentVersionHelper.detectVersion(torrent);
+    final version = TorrentVersionHelper.detectVersion(torrent as TorrentModel);
 
     print('Torrent Information:');
     print('  Name: ${torrent.name}');
@@ -40,7 +40,7 @@ void main() async {
     // Example 2: Create a task with v2 support
     final savePath = Directory.systemTemp.path;
     print('\nCreating torrent task...');
-    final task = TorrentTask.newTask(torrent, savePath);
+    final task = TorrentTask.newTask(torrent as TorrentModel, savePath);
 
     // The task will automatically detect the torrent version
     // and use the appropriate hash algorithm (SHA-1 for v1, SHA-256 for v2)

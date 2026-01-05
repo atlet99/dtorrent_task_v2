@@ -88,7 +88,8 @@ void main(List<String> args) async {
   print('Save path: $savePath');
   print('');
 
-  final task = TorrentTask.newTask(torrent, savePath, true, null, null, config);
+  final task = TorrentTask.newTask(
+      torrent as TorrentModel, savePath, true, null, null, config);
   final listener = task.createListener();
 
   listener

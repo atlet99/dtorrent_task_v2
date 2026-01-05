@@ -7,6 +7,7 @@ import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/src/metadata/metadata_downloader.dart';
 import 'package:dtorrent_task_v2/src/metadata/metadata_downloader_events.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:dtorrent_task_v2/src/task.dart';
 import 'package:dtorrent_task_v2/src/task_events.dart';
 import 'package:dtorrent_task_v2/src/utils.dart' show hexString2Buffer;
@@ -47,7 +48,7 @@ void main(List<String> args) async {
         print('complete , info : ${torrentModel.name}');
         var startTime = DateTime.now().millisecondsSinceEpoch;
         var task = TorrentTask.newTask(
-            torrentModel, path.join(scriptDir, '..', 'tmp'));
+            torrentModel as TorrentModel, path.join(scriptDir, '..', 'tmp'));
         EventsListener<TaskEvent> listener = task.createListener();
         listener
           ..on<TaskCompleted>((event) {

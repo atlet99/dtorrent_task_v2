@@ -586,7 +586,7 @@ void main(List<String> args) async {
     // Now start the actual download
     // Pass web seeds and acceptable sources from magnet link (BEP 0019)
     final task = TorrentTask.newTask(
-      torrentModel,
+      torrentModel as TorrentModel,
       savePath,
       false, // stream
       magnet.webSeeds.isNotEmpty ? magnet.webSeeds : null,
