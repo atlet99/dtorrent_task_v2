@@ -227,7 +227,16 @@ void main() {
 
       // Verify all events were called
       final allCalled = callMap.values.every((value) => value);
-      expect(allCalled, isTrue, reason: 'Not all peer events were triggered');
+      if (!allCalled) {
+        final notCalled = callMap.entries
+            .where((entry) => !entry.value)
+            .map((entry) => entry.key)
+            .join(', ');
+        expect(allCalled, isTrue,
+            reason: 'Not all peer events were triggered. Missing: $notCalled');
+      } else {
+        expect(allCalled, isTrue, reason: 'Not all peer events were triggered');
+      }
     }, timeout: Timeout(const Duration(seconds: 15)));
   });
 }

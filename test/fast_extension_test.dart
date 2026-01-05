@@ -43,6 +43,11 @@ void main() {
         );
         final peerListener = peer.createListener();
 
+        peerListener.on<PeerConnected>((event) {
+          // Send handshake from server
+          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+        });
+
         peerListener.on<PeerHandshakeEvent>((event) {
           // Send Have All message
           event.peer.sendHaveAll();
@@ -100,6 +105,11 @@ void main() {
           PeerSource.incoming,
         );
         final peerListener = peer.createListener();
+
+        peerListener.on<PeerConnected>((event) {
+          // Send handshake from server
+          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+        });
 
         peerListener.on<PeerHandshakeEvent>((event) {
           // Send Have None message
@@ -169,6 +179,11 @@ void main() {
           event.peer.sendBitfield(bitfield);
         });
 
+        peerListener.on<PeerConnected>((event) {
+          // Send handshake from server
+          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+        });
+
         peerListener.on<PeerRequestEvent>((event) {
           // Choke the peer and reject the request
           event.peer.sendChoke(true);
@@ -234,6 +249,13 @@ void main() {
           socket,
           PeerSource.incoming,
         );
+        final peerListener = peer.createListener();
+
+        peerListener.on<PeerConnected>((event) {
+          // Send handshake from server
+          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+        });
+
         // Server will automatically generate and send allowed fast set after handshake
         // Initialize stream for incoming connection
         peer.connect();
@@ -295,6 +317,11 @@ void main() {
           PeerSource.incoming,
         );
         final peerListener = peer.createListener();
+
+        peerListener.on<PeerConnected>((event) {
+          // Send handshake from server
+          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+        });
 
         peerListener.on<PeerHandshakeEvent>((event) {
           // Send bitfield
@@ -380,6 +407,11 @@ void main() {
           PeerSource.incoming,
         );
         final peerListener = peer.createListener();
+
+        peerListener.on<PeerConnected>((event) {
+          // Send handshake from server
+          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+        });
 
         peerListener.on<PeerHandshakeEvent>((event) {
           // Send Suggest Piece message
