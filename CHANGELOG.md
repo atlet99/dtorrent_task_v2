@@ -224,3 +224,31 @@
 - export new classes in public API (`StateFileV2`, `StateRecovery`, `FileValidator`, `ProxyConfig`, `ProxyManager`, `QueueManager`, `IPFilter`, `PortForwardingManager`)
 - add comprehensive examples (`proxy_example.dart`, `torrent_queue_example.dart`, `fast_resume_example.dart`, `ip_filtering_example.dart`, `port_forwarding_example.dart`, `simple_integration_example.dart`)
 - add comprehensive test suites for all new features
+
+## 0.4.8
+- add BEP 16 Superseeding support with `SuperSeeder` class and `enableSuperseeding()`/`disableSuperseeding()` methods in `TorrentTask`
+- add superseeding algorithm implementation that masquerades seeder as peer with no data to improve seeding efficiency
+- add piece rarity tracking and distribution monitoring for superseeding mode
+- add automatic superseeding activation when download completes (if enabled before completion)
+- add file priority management system with `FilePriorityManager` class and `FilePriority` enum (skip, low, normal, high)
+- add `setFilePriority()` and `setFilePriorities()` methods for individual and batch file priority management
+- add `getFilePriority()` method to retrieve current file priority
+- add `autoPrioritizeFiles()` method for automatic priority assignment based on file extensions (video/audio files get high priority, subtitles get normal, others get low)
+- add piece prioritization based on file priorities (high priority files download first)
+- add file priority persistence in state file (StateFileV2) for resume support
+- add `TorrentParser` class to replace external `dtorrent_parser` dependency
+- add `TorrentModel` class as replacement for `Torrent` class from `dtorrent_parser`
+- add full BEP 52 (v2) support in built-in parser with automatic version detection
+- add support for parsing v1, v2, and hybrid torrents in `TorrentParser`
+- add `TorrentModel.parse()` static method for backward compatibility with `Torrent.parse()`
+- add `TorrentParser.parseBytes()` and `TorrentParser.parseFromMap()` for flexible parsing
+- remove dependency on `dtorrent_parser` package (now built-in)
+- add comprehensive superseeding example (`superseeding_example.dart`) with CLI interface
+- add file validation and bitfield update functionality in superseeding example
+- improve piece distribution logic in `SuperSeeder` for better efficiency
+- improve state file handling with file priorities support
+- improve temporary file cleanup during state file operations
+- export `FilePriority` and `FilePriorityManager` in public API
+- export `SuperSeeder` in public API (via seeding module)
+- add comprehensive test suite for superseeding functionality
+- update all examples and tests to use `TorrentModel` instead of `Torrent` from `dtorrent_parser`

@@ -5,7 +5,7 @@ The Dart Torrent client consists of several parts:
 - [Bencode](https://pub.dev/packages/b_encode_decode) 
 - [Tracker](https://pub.dev/packages/dtorrent_tracker)
 - [DHT](https://pub.dev/packages/bittorrent_dht)
-- [Torrent model](https://pub.dev/packages/dtorrent_parser)
+- [Built-in Torrent parser](https://github.com/atlet99/dtorrent_task_v2/blob/main/lib/src/torrent/torrent_parser.dart) (TorrentParser/TorrentModel) - no external dependency required since 0.4.8
 - [Common library](https://pub.dev/packages/dtorrent_common)
 - [UTP](https://pub.dev/packages/utp_protocol)
 
@@ -21,6 +21,7 @@ This package implements the regular BitTorrent Protocol and manages the above pa
 - [BEP 0012 Multitracker Metadata Extension](https://www.bittorrent.org/beps/bep_0012.html)
 - [BEP 0014 Local Service Discovery](https://www.bittorrent.org/beps/bep_0014.html)
 - [BEP 0015 UDP Tracker Protocol](https://www.bittorrent.org/beps/bep_0015.html)
+- [BEP 0016 Superseeding](https://www.bittorrent.org/beps/bep_0016.html)
 - [BEP 0019 HTTP/FTP Seeding (GetRight-style)](https://www.bittorrent.org/beps/bep_0019.html)
 - [BEP 0027 Private Torrents](https://www.bittorrent.org/beps/bep_0027.html)
 - [BEP 0029 uTorrent transport protocol](https://www.bittorrent.org/beps/bep_0029.html)
@@ -32,11 +33,10 @@ This package implements the regular BitTorrent Protocol and manages the above pa
 
 ## How to use
 
-This package requires dependency [`dtorrent_parser`](https://pub.dev/packages/dtorrent_parser):
+This package no longer requires the external `dtorrent_parser` dependency (built-in since 0.4.8):
 ```yaml
 dependencies:
-  dtorrent_parser: ^1.0.8
-  dtorrent_task_v2: ^0.4.7
+  dtorrent_task_v2: ^0.4.8
 ```
 
 Download from: [DTORRENT_TASK_V2](https://pub.dev/packages/dtorrent_task_v2)
@@ -46,10 +46,10 @@ Import the library:
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 ```
 
-First, create a `Torrent` model from a .torrent file:
+First, create a `TorrentModel` from a .torrent file:
 
 ```dart
-  var model = await Torrent.parse('some.torrent');
+  var model = await TorrentModel.parse('some.torrent');
 ```
 
 Second, create a `Torrent Task` and start it:
@@ -602,6 +602,114 @@ if (ipFilter.isAllowed(InternetAddress('192.168.1.100'))) {
 
 See `example/ip_filtering_example.dart` for complete examples.
 
+### Superseeding (BEP 16) (NEW in 0.4.8)
+
+The library supports BEP 16 Superseeding algorithm for improved seeding efficiency:
+
+```dart
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+
+// Create task for a completed torrent (seeder)
+final task = TorrentTask.newTask(torrent, savePath);
+await task.start();
+
+// Wait for download to complete (or use already completed torrent)
+// Enable superseeding mode
+task.enableSuperseeding();
+
+// Check if superseeding is enabled
+if (task.isSuperseedingEnabled) {
+  print('Superseeding is active');
+}
+
+// Disable superseeding
+task.disableSuperseeding();
+```
+
+**How Superseeding Works:**
+- The seeder masquerades as a peer with no data (doesn't send bitfield)
+- Only rare pieces are offered to peers, one at a time
+- Next piece is offered only after previous piece is distributed to other peers
+- Reduces redundant uploads and improves seeding efficiency (from 150-200% to ~105%)
+
+**Important Notes:**
+- Superseeding is **NOT recommended for general use**
+- Should only be used for **initial seeding** when you are the only or primary seeder
+- Automatically activates when download completes if enabled before completion
+
+See `example/superseeding_example.dart` for complete examples with CLI interface.
+
+### File Priority Management (NEW in 0.4.8)
+
+The library supports file priority management for controlling download order:
+
+```dart
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+
+final task = TorrentTask.newTask(torrent, savePath);
+
+// Set priority for a single file
+task.setFilePriority(0, FilePriority.high);  // First file - high priority
+task.setFilePriority(1, FilePriority.normal); // Second file - normal
+task.setFilePriority(2, FilePriority.skip);    // Third file - skip
+
+// Set priorities for multiple files at once
+task.setFilePriorities({
+  0: FilePriority.high,
+  1: FilePriority.normal,
+  2: FilePriority.low,
+  3: FilePriority.skip,
+});
+
+// Get current priority of a file
+final priority = task.getFilePriority(0);
+
+// Auto-prioritize files based on file extensions
+// Video/audio files get high priority, subtitles get normal, others get low
+task.autoPrioritizeFiles();
+
+await task.start();
+```
+
+**Priority Levels:**
+- `FilePriority.high`: Downloaded first
+- `FilePriority.normal`: Default priority
+- `FilePriority.low`: Downloaded after normal and high priority files
+- `FilePriority.skip`: File is not downloaded
+
+**Features:**
+- Piece prioritization based on file priorities
+- Priority persistence in state file for resume support
+- Automatic priority assignment based on file types
+- Support for skipping specific files
+
+### Built-in Torrent Parser (NEW in 0.4.8)
+
+The library now includes a built-in torrent parser, removing the need for external `dtorrent_parser` dependency:
+
+```dart
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+
+// Parse from file (backward compatible with Torrent.parse())
+final model = await TorrentModel.parse('some.torrent');
+
+// Parse from bytes
+final bytes = await File('some.torrent').readAsBytes();
+final model = TorrentParser.parseBytes(bytes);
+
+// Parse from decoded bencoded map
+final decoded = decode(torrentBytes);
+final torrentMap = Map<String, dynamic>.from(decoded);
+final model = TorrentParser.parseFromMap(torrentMap);
+```
+
+**Features:**
+- Full support for BEP 3 (v1) and BEP 52 (v2) torrents
+- Automatic version detection (v1, v2, hybrid)
+- Support for file tree structure (v2)
+- Support for piece layers (v2)
+- Backward compatible API with `TorrentModel.parse()`
+
 ### Monitoring Download Progress
 
 You can monitor detailed download progress:
@@ -692,14 +800,17 @@ These metrics help monitor uTP protocol stability and debug RangeError crashes, 
 ### Protocol Support
 - Full BitTorrent protocol implementation
 - **BitTorrent Protocol v2 (BEP 52)** with automatic version detection
+- **Superseeding (BEP 16)** for improved seeding efficiency
 - **Tracker Scrape (BEP 48)** for torrent statistics without full announce
 - uTP (uTorrent transport protocol) support with enhanced stability
 - TCP fallback support
 - Multiple extension protocols (PEX, LSD, Holepunch, Metadata Exchange)
 - Magnet link support via `MagnetParser` with automatic metadata download
 - Torrent creation via `TorrentCreator`
+- Built-in torrent parser (`TorrentParser` and `TorrentModel`) - no external dependency required
 - Web seeding (HTTP/FTP) support (BEP 0019)
 - Selected file download (BEP 0053)
+- File priority management for download order control
 - Private torrent support (BEP 0027) with automatic DHT/PEX disabling
 - Hybrid torrent support (v1 + v2 compatibility)
 - HTTP/HTTPS and SOCKS5 proxy support
@@ -750,3 +861,9 @@ These metrics help monitor uTP protocol stability and debug RangeError crashes, 
 - IP filtering with blacklist/whitelist modes
 - eMule dat and PeerGuardian format support for IP filters
 - CIDR block and IP range support
+
+### Seeding Features
+- **Superseeding (BEP 16)**: Improved seeding efficiency for initial seeders
+- Piece rarity tracking and distribution monitoring
+- Automatic superseeding activation on download completion
+- File priority management for selective seeding
