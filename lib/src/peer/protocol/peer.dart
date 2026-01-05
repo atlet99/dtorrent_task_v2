@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:b_encode_decode/b_encode_decode.dart';
+import 'package:crypto/crypto.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
@@ -328,6 +329,9 @@ abstract class Peer
   List<List<int>> get requestBuffer => _requestBuffer;
 
   Set<int> get remoteSuggestPieces => _remoteSuggestPieces;
+
+  /// Remote Allow Fast pieces (pieces that can be downloaded when choked)
+  Set<int> get remoteAllowFastPieces => _remoteAllowFastPieces;
 
   bool get isDisposed => _disposed;
 
@@ -855,37 +859,51 @@ abstract class Peer
     events.emit(PeerPortChanged(this, port));
   }
 
+  /// Process Have All message (BEP 6)
+  ///
+  /// According to BEP 6, Have All completely replaces the bitfield.
+  /// All pieces are marked as available, making the peer a seeder.
   void _processHaveAll() {
     if (!remoteEnableFastPeer) {
       // Per [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html):
-      // "When the fast extension is disabled, if a peer receives a Suggest Piece message, the peer MUST close the connection."
-
-      // TODO: Is this correct? or should we close the connection when the "local peer" has the extension disabled?
+      // "When the fast extension is disabled, if a peer receives a Have All message, the peer MUST close the connection."
       dispose('Remote disabled fast extension but receive \'have all\'');
       return;
     }
-    if (_remoteBitfield == null) return;
+
+    // Create a new bitfield with all pieces set (replaces existing bitfield)
+    _remoteBitfield = Bitfield.createEmptyBitfield(_piecesNum);
     for (var i = 0; i < _remoteBitfield!.buffer.length - 1; i++) {
-      _remoteBitfield?.buffer[i] = 255;
+      _remoteBitfield!.buffer[i] = 255;
     }
-    var index = _remoteBitfield!.buffer.length - 1;
-    index = index * 8;
-    for (var i = index; i < _remoteBitfield!.piecesNum; i++) {
-      _remoteBitfield?.setBit(i, true);
+    // Set remaining bits in the last byte
+    var lastByteIndex = _remoteBitfield!.buffer.length - 1;
+    var startIndex = lastByteIndex * 8;
+    for (var i = startIndex; i < _remoteBitfield!.piecesNum; i++) {
+      _remoteBitfield!.setBit(i, true);
     }
-    _log.fine('Peer $address sent HAVE ALL and became a seeder!');
+
+    _log.fine(
+        'Peer $address sent HAVE ALL - bitfield completely replaced, peer is now a seeder!');
     events.emit(PeerHaveAll(this));
   }
 
+  /// Process Have None message (BEP 6)
+  ///
+  /// According to BEP 6, Have None completely replaces the bitfield.
+  /// All pieces are marked as unavailable (empty bitfield).
   void _processHaveNone() {
     if (!remoteEnableFastPeer) {
       // Per [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html):
-
-      // TODO: Is this correct? or should we close the connection when the "local peer" has the extension disabled?
+      // "When the fast extension is disabled, if a peer receives a Have None message, the peer MUST close the connection."
       dispose('Remote disabled fast extension but receive \'have none\'');
       return;
     }
+
+    // Create a new empty bitfield (replaces existing bitfield)
     _remoteBitfield = Bitfield.createEmptyBitfield(_piecesNum);
+    _log.fine(
+        'Peer $address sent HAVE NONE - bitfield completely replaced, peer has no pieces');
     events.emit(PeerHaveNone(this));
   }
 
@@ -896,7 +914,6 @@ abstract class Peer
     if (!remoteEnableFastPeer) {
       // Per [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html):
       // "When the fast extension is disabled, if a peer receives a Suggest Piece message, the peer MUST close the connection."
-      // TODO: Is this correct? or should we close the connection when the "local peer" has the extension disabled?
       dispose('Remote disabled fast extension but receive \'suggest piece\'');
       return;
     }
@@ -1081,12 +1098,17 @@ abstract class Peer
     }
     if (chokeRemote) {
       if (_allowFastPieces.contains(index)) {
+        // Piece is in allowed fast set, accept the request even when choked
         _remoteRequestBuffer.add([index, begin, length]);
         events.emit(PeerRequestEvent(this, index, begin, length));
         return;
       } else {
-        // Choking the remote peer without sending an acknowledgment.
-        // sendRejectRequest(index, begin, length);
+        // Per BEP 6: When choked, we SHOULD send reject request if fast extension is enabled
+        // This helps the remote peer understand that the request was rejected
+        if (remoteEnableFastPeer && localEnableFastPeer) {
+          sendRejectRequest(index, begin, length);
+        }
+        // Don't add to request buffer - we're choking and rejecting
         return;
       }
     }
@@ -1099,6 +1121,10 @@ abstract class Peer
   /// Handle the received PIECE messages.
   ///
   /// Unlike other message types, PIECE messages are processed in batches.
+  ///
+  /// Per BEP 6 and security best practices: if we receive a piece without
+  /// a corresponding request, we should close the connection as this may
+  /// indicate a protocol violation or attack.
   void _processReceivePieces(List<Uint8List> messages) {
     var requests = <List<int>>[];
     for (var message in messages) {
@@ -1111,9 +1137,14 @@ abstract class Peer
       var blockLength = message.length - MESSAGE_INTEGER * 2;
       var request = removeRequest(index, begin, blockLength);
 
-      /// Ignore if there are no requests to process.
+      /// Per BEP 6: Receiving a piece without a corresponding request is a protocol violation.
+      /// Close the connection to prevent potential attacks or protocol errors.
       if (request == null) {
-        continue;
+        _log.warning(
+            'Received piece ($index, $begin, $blockLength) without corresponding request from $address - closing connection');
+        dispose(BadException(
+            'Received piece without request: index=$index, begin=$begin, length=$blockLength'));
+        return;
       }
       var block = Uint8List(blockLength);
       block.setRange(0, blockLength, message, MESSAGE_INTEGER * 2);
@@ -1170,6 +1201,12 @@ abstract class Peer
       _log.fine('Remote peer supports v2 protocol');
       // TODO: Handle v2 info hash upgrade if we're in hybrid mode
     }
+
+    // Generate and send Allowed Fast set if both peers support Fast Extension
+    if (remoteEnableFastPeer && localEnableFastPeer) {
+      _generateAndSendAllowedFastSet();
+    }
+
     _sendExtendedHandshake();
     events.emit(PeerHandshakeEvent(this, _remotePeerId!, data));
   }
@@ -1448,6 +1485,11 @@ abstract class Peer
   /// - `unchoke: <len=0001><id=1>`
   ///
   /// The `choke`/`unchoke` message is fixed-length and has no payload.
+  ///
+  /// Per BEP 6: When choking, we MUST reject all pending requests except
+  /// those for pieces in the allowed fast set. We SHOULD choke first and
+  /// then reject requests so that the peer receiving the choke does not
+  /// re-request the pieces.
   void sendChoke(bool choke) {
     if (chokeRemote == choke) {
       return;
@@ -1456,6 +1498,31 @@ abstract class Peer
     var id = ID_CHOKE;
     if (!choke) id = ID_UNCHOKE;
     sendMessage(id);
+
+    // Per BEP 6: When choking, reject all pending requests except allowed fast
+    if (choke && remoteEnableFastPeer && localEnableFastPeer) {
+      // Reject all pending requests that are not in allowed fast set
+      final requestsToReject = <List<int>>[];
+      for (var request in _remoteRequestBuffer) {
+        final index = request[0];
+        final begin = request[1];
+        final length = request[2];
+        // Don't reject if piece is in allowed fast set
+        if (!_allowFastPieces.contains(index)) {
+          requestsToReject.add([index, begin, length]);
+        }
+      }
+
+      // Send reject messages for all non-allowed-fast requests
+      for (var request in requestsToReject) {
+        sendRejectRequest(request[0], request[1], request[2]);
+      }
+
+      if (requestsToReject.isNotEmpty) {
+        _log.fine(
+            'Rejected ${requestsToReject.length} pending requests after choking peer $address');
+      }
+    }
   }
 
   ///Send interested or not interested to the other party to indicate whether you are interested in its resources or not.
@@ -1657,6 +1724,105 @@ abstract class Peer
         view.setUint32(0, index, Endian.big);
         sendMessage(OP_ALLOW_FAST, bytes);
       }
+    }
+  }
+
+  /// Generate and send Allowed Fast set according to BEP 6
+  ///
+  /// The Allowed Fast set is generated deterministically using the canonical algorithm
+  /// specified in BEP 6:
+  ///
+  /// 1. Use only the 3 most significant bytes of IP address (0xFFFFFF00 & ip)
+  /// 2. Concatenate with info hash (20 bytes)
+  /// 3. Iteratively compute SHA-1 hashes until k unique piece indices are generated
+  /// 4. From each 20-byte hash, extract 5 piece indices (each 4 bytes)
+  /// 5. Continue until k unique indices are obtained (k=10 by default)
+  ///
+  /// This ensures that if two peers offer k pieces fast, it will be the same k pieces.
+  void _generateAndSendAllowedFastSet() {
+    const k = 10; // Default number of allowed fast pieces (per BEP 6)
+    try {
+      // Extract IP address from peer address
+      final ipAddress = address.address;
+
+      // Get IP address bytes (IPv4 only for now)
+      Uint8List ipBytes;
+      if (ipAddress.type == InternetAddressType.IPv4) {
+        ipBytes = Uint8List.fromList(ipAddress.rawAddress);
+      } else {
+        // IPv6 not supported for Allowed Fast set generation (BEP 6 specifies IPv4)
+        _log.warning(
+            'Cannot generate Allowed Fast set: IPv6 not supported, peer: $address');
+        return;
+      }
+
+      if (ipBytes.length != 4) {
+        _log.warning(
+            'Cannot generate Allowed Fast set: Invalid IP address length: ${ipBytes.length}');
+        return;
+      }
+
+      // Step 1: Use only 3 most significant bytes (0xFFFFFF00 & ip)
+      // Convert IP to 32-bit integer in network byte order
+      final ipInt = ByteData.view(ipBytes.buffer).getUint32(0, Endian.big);
+      final maskedIp = ipInt & 0xFFFFFF00; // Mask last byte
+
+      // Convert back to bytes (4 bytes, but last byte is 0)
+      final maskedIpBytes = Uint8List(4);
+      ByteData.view(maskedIpBytes.buffer).setUint32(0, maskedIp, Endian.big);
+
+      // Get info hash (use first 20 bytes for v1 compatibility)
+      final infoHash = _infoHashBuffer.length >= 20
+          ? Uint8List.fromList(_infoHashBuffer.sublist(0, 20))
+          : Uint8List.fromList(_infoHashBuffer);
+
+      // Step 2: Concatenate masked IP with info hash
+      var x = Uint8List(maskedIpBytes.length + infoHash.length);
+      x.setRange(0, maskedIpBytes.length, maskedIpBytes);
+      x.setRange(maskedIpBytes.length, x.length, infoHash);
+
+      // Step 3: Iteratively generate hashes until we have k unique pieces
+      final allowedPieces = <int>{};
+      while (allowedPieces.length < k) {
+        // Compute SHA-1 hash
+        final hash = sha1.convert(x);
+        final hashBytes = Uint8List.fromList(hash.bytes);
+
+        // Step 4: Extract 5 piece indices from this 20-byte hash
+        // Each index is 4 bytes (big-endian)
+        for (var i = 0; i < 5 && allowedPieces.length < k; i++) {
+          final j = i * 4;
+          if (j + 4 > hashBytes.length) break;
+
+          // Extract 4 bytes and convert to 32-bit integer (big-endian)
+          final yBytes = hashBytes.sublist(j, j + 4);
+          final y = ByteData.view(yBytes.buffer).getUint32(0, Endian.big);
+
+          // Step 5: Compute piece index
+          final pieceIndex = y % _piecesNum;
+
+          // Step 6: Add to set if not already present
+          if (allowedPieces.add(pieceIndex)) {
+            // Send Allow Fast message
+            sendAllowFast(pieceIndex);
+            _log.fine(
+                'Generated Allowed Fast piece $pieceIndex for peer $address');
+          }
+        }
+
+        // Use the hash as input for next iteration
+        x = hashBytes;
+      }
+
+      if (allowedPieces.isEmpty) {
+        _log.warning('No Allowed Fast pieces generated for peer $address');
+      } else {
+        _log.fine(
+            'Generated ${allowedPieces.length} Allowed Fast pieces for peer $address: $allowedPieces');
+      }
+    } catch (e, stackTrace) {
+      _log.warning('Failed to generate Allowed Fast set for peer $address', e,
+          stackTrace);
     }
   }
 
