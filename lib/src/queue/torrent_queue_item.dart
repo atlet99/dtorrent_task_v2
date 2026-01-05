@@ -1,4 +1,4 @@
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:dtorrent_task_v2/src/piece/sequential_config.dart';
 import 'package:dtorrent_task_v2/src/proxy/proxy_config.dart';
 
@@ -20,7 +20,7 @@ class TorrentQueueItem {
   final String id;
 
   /// Torrent metadata
-  final Torrent metaInfo;
+  final TorrentModel metaInfo;
 
   /// Path where the torrent will be saved
   final String savePath;
@@ -82,7 +82,7 @@ class TorrentQueueItem {
 
   /// Create a copy of this item with modified fields
   TorrentQueueItem copyWith({
-    Torrent? metaInfo,
+    TorrentModel? metaInfo,
     String? savePath,
     QueuePriority? priority,
     bool? stream,

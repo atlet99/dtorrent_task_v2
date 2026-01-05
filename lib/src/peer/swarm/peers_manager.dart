@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dart_ipify/dart_ipify.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
 import 'package:dtorrent_task_v2/src/peer/swarm/peers_manager_events.dart';
@@ -51,7 +51,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   ProxyManager? _proxyManager;
 
-  final Torrent _metaInfo;
+  final TorrentModel _metaInfo;
 
   int _uploaded = 0;
 
@@ -289,18 +289,28 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     if (_peersAddress.add(address)) {
       Peer? peer;
       if (type == null || type == PeerType.TCP) {
+        if (_metaInfo.pieces == null) {
+          _log.warning(
+              'Cannot create peer: torrent has no pieces (v2-only torrent?)');
+          return;
+        }
         peer = Peer.newTCPPeer(
           address,
           _metaInfo.infoHashBuffer,
-          _metaInfo.pieces.length,
+          _metaInfo.pieces!.length,
           socket,
           source,
           proxyManager: _proxyManager,
         );
       }
       if (type == PeerType.UTP) {
+        if (_metaInfo.pieces == null) {
+          _log.warning(
+              'Cannot create peer: torrent has no pieces (v2-only torrent?)');
+          return;
+        }
         peer = Peer.newUTPPeer(address, _metaInfo.infoHashBuffer,
-            _metaInfo.pieces.length, socket, source);
+            _metaInfo.pieces!.length, socket, source);
       }
       if (peer != null) {
         // Set torrent version for v2/hybrid support in handshake

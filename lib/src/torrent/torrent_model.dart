@@ -93,6 +93,17 @@ class TorrentModel {
   /// Check if this is a single-file torrent
   bool get isSingleFile => files.length == 1;
 
+  /// Length of the last piece (may be smaller than pieceLength)
+  int get lastPieceLength {
+    if (pieces == null || pieces!.isEmpty) {
+      return pieceLength;
+    }
+    final totalSize = this.totalSize;
+    final fullPieces = totalSize ~/ pieceLength;
+    final remainder = totalSize % pieceLength;
+    return remainder == 0 ? pieceLength : remainder;
+  }
+
   /// Get v1 info hash (20 bytes, SHA-1)
   Uint8List? get v1InfoHash {
     if (version == TorrentVersion.v1 || version == TorrentVersion.hybrid) {
