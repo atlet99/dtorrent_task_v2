@@ -417,8 +417,9 @@ void main() {
       expect(set1, equals(set2),
           reason: 'Same IP and info hash should produce same allowed fast set');
 
-      // Test with different IP
-      final ip3 = InternetAddress('192.168.1.2');
+      // Test with different IP (must differ in first 3 bytes, not just last byte)
+      // because mask 0xFFFFFF00 zeros the last byte
+      final ip3 = InternetAddress('192.168.2.1');
       final set3 = _generateAllowedFastSet(ip3, infoHash1, piecesNum);
       expect(set1, isNot(equals(set3)),
           reason: 'Different IP should produce different allowed fast set');
