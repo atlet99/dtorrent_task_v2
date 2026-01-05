@@ -99,7 +99,6 @@ class TorrentModel {
       return pieceLength;
     }
     final totalSize = this.totalSize;
-    final fullPieces = totalSize ~/ pieceLength;
     final remainder = totalSize % pieceLength;
     return remainder == 0 ? pieceLength : remainder;
   }

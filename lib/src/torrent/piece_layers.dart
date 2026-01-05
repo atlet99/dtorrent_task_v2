@@ -13,8 +13,8 @@ class PieceLayersHelper {
   ///
   /// Piece layers structure:
   /// {
-  ///   <pieces_root_1>: <concatenated_hashes_1>,
-  ///   <pieces_root_2>: <concatenated_hashes_2>,
+  ///   `pieces_root_1`: `concatenated_hashes_1`,
+  ///   `pieces_root_2`: `concatenated_hashes_2`,
   ///   ...
   /// }
   static Map<Uint8List, Uint8List>? parsePieceLayers(dynamic pieceLayersData) {
