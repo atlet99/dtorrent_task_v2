@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:crypto/crypto.dart';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:logging/logging.dart';
+import 'torrent_model.dart';
 
 /// BitTorrent protocol version
 enum TorrentVersion {
@@ -21,43 +21,11 @@ var _log = Logger('TorrentVersionHelper');
 
 /// Helper class for working with torrent versions
 class TorrentVersionHelper {
-  /// Determine torrent version from Torrent object
+  /// Determine torrent version from TorrentModel object
   ///
-  /// Checks the torrent file for:
-  /// - meta version field in info dict (2 = v2)
-  /// - file tree structure (v2 format)
-  /// - piece layers (v2 format)
-  /// - pieces field (v1 format)
-  static TorrentVersion detectVersion(Torrent torrent) {
-    try {
-      // Try to detect from torrent file path if available
-      // This is a fallback - ideally we'd have access to raw bencoded data
-      // For now, we check based on available fields
-
-      // Check if we can access the torrent file path
-      // If torrent was parsed from file, we can re-read it
-      return _detectVersionFromTorrent(torrent);
-    } catch (e) {
-      _log.warning('Failed to detect torrent version, defaulting to v1', e);
-      return TorrentVersion.v1;
-    }
-  }
-
-  /// Detect version by reading torrent file directly
-  static TorrentVersion _detectVersionFromTorrent(Torrent torrent) {
-    // Since we don't have direct access to raw bencoded data,
-    // we'll use heuristics based on available fields
-    // This is a limitation - ideally dtorrent_parser would expose these fields
-
-    // For now, default to v1
-    // In a full implementation, we would:
-    // 1. Read the torrent file
-    // 2. Decode bencoded data
-    // 3. Check info['meta version'] == 2
-    // 4. Check for 'file tree' vs 'files'
-    // 5. Check for 'piece layers' in root dict
-
-    return TorrentVersion.v1;
+  /// TorrentModel already has the version field, so we can return it directly
+  static TorrentVersion detectVersion(TorrentModel torrent) {
+    return torrent.version;
   }
 
   /// Detect version from raw bencoded torrent data
@@ -153,20 +121,18 @@ class TorrentVersionHelper {
     }
   }
 
-  /// Get info hash for a specific version
+  /// Get info hash for a specific version from TorrentModel
   static Uint8List? getInfoHashForVersion(
-      Torrent torrent, TorrentVersion version) {
+      TorrentModel torrent, TorrentVersion version) {
     switch (version) {
       case TorrentVersion.v1:
-        return torrent.infoHashBuffer;
+        return torrent.v1InfoHash;
       case TorrentVersion.v2:
-        // For v2, we need to calculate SHA-256 of the info dict
-        // This requires access to the raw bencoded info dict
-        return null; // Will be calculated when we have raw data
+        return torrent.v2InfoHash;
       case TorrentVersion.hybrid:
         // Hybrid torrents can use either v1 or v2 info hash
         // Return v1 by default for compatibility
-        return torrent.infoHashBuffer;
+        return torrent.v1InfoHash ?? torrent.v2InfoHash;
     }
   }
 

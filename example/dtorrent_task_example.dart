@@ -2,9 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dtorrent_common/dtorrent_common.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
-import 'package:dtorrent_task_v2/src/task.dart';
-import 'package:dtorrent_task_v2/src/task_events.dart';
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as path;
@@ -24,7 +22,7 @@ void main() async {
       print('Using test torrent: $torrentFile');
     }
     var savePath = path.join(scriptDir, '..', 'tmp');
-    var model = await Torrent.parse(torrentFile);
+    var model = await TorrentModel.parse(torrentFile);
     // model.announces.clear();
     var task = TorrentTask.newTask(model, savePath);
     Timer? timer;

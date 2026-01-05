@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:crypto/crypto.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:logging/logging.dart';
 
 var _log = Logger('TorrentCreator');
@@ -50,7 +50,7 @@ class TorrentCreator {
   /// [options] - creation options
   ///
   /// Returns the created Torrent model
-  static Future<Torrent> createTorrent(
+  static Future<TorrentModel> createTorrent(
     String path,
     TorrentCreationOptions options,
   ) async {
@@ -67,7 +67,7 @@ class TorrentCreator {
   }
 
   /// Create torrent for a single file
-  static Future<Torrent> _createSingleFileTorrent(
+  static Future<TorrentModel> _createSingleFileTorrent(
     File file,
     TorrentCreationOptions options,
   ) async {
@@ -128,7 +128,7 @@ class TorrentCreator {
         '${Directory.systemTemp.path}/torrent_${DateTime.now().millisecondsSinceEpoch}.torrent');
     final encoded = encode(torrent);
     await tempFile.writeAsBytes(encoded);
-    final parsed = await Torrent.parse(tempFile.path);
+    final parsed = await TorrentModel.parse(tempFile.path);
     // Clean up temp file if it still exists
     try {
       if (await tempFile.exists()) {
@@ -141,7 +141,7 @@ class TorrentCreator {
   }
 
   /// Create torrent for multiple files (directory)
-  static Future<Torrent> _createMultiFileTorrent(
+  static Future<TorrentModel> _createMultiFileTorrent(
     Directory directory,
     TorrentCreationOptions options,
   ) async {
@@ -222,7 +222,7 @@ class TorrentCreator {
         '${Directory.systemTemp.path}/torrent_${DateTime.now().millisecondsSinceEpoch}.torrent');
     final encoded = encode(torrent);
     await tempFile.writeAsBytes(encoded);
-    final parsed = await Torrent.parse(tempFile.path);
+    final parsed = await TorrentModel.parse(tempFile.path);
     // Clean up temp file if it still exists
     try {
       if (await tempFile.exists()) {

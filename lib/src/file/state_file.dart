@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:logging/logging.dart';
 import '../peer/bitfield.dart';
 
@@ -23,7 +23,7 @@ class StateFile {
 
   int _uploaded = 0;
 
-  final Torrent metainfo;
+  final TorrentModel metainfo;
 
   StateFile(this.metainfo);
 
@@ -38,7 +38,7 @@ class StateFile {
   bool get isClosed => _closed;
 
   static Future<StateFile> getStateFile(
-      String directoryPath, Torrent metainfo) async {
+      String directoryPath, TorrentModel metainfo) async {
     var stateFile = StateFile(metainfo);
     await stateFile.init(directoryPath, metainfo);
     return stateFile;
@@ -56,7 +56,7 @@ class StateFile {
 
   int get uploaded => _uploaded;
 
-  Future<File> init(String directoryPath, Torrent metainfo) async {
+  Future<File> init(String directoryPath, TorrentModel metainfo) async {
     var lastChar = directoryPath.substring(directoryPath.length - 1);
     if (lastChar != Platform.pathSeparator) {
       directoryPath = directoryPath + Platform.pathSeparator;
@@ -66,14 +66,22 @@ class StateFile {
     var exists = await _bitfieldFile?.exists();
     if (exists != null && !exists) {
       _bitfieldFile = await _bitfieldFile?.create(recursive: true);
-      _bitfield = Bitfield.createEmptyBitfield(metainfo.pieces.length);
+      if (metainfo.pieces == null) {
+        throw StateError(
+            'Cannot create state file for v2-only torrent (no pieces)');
+      }
+      _bitfield = Bitfield.createEmptyBitfield(metainfo.pieces!.length);
       _uploaded = 0;
       var acc = await _bitfieldFile?.open(mode: FileMode.writeOnly);
       acc = await acc?.truncate(_bitfield.length + 8);
       await acc?.close();
     } else {
       var bytes = await _bitfieldFile!.readAsBytes();
-      var piecesNum = metainfo.pieces.length;
+      if (metainfo.pieces == null) {
+        throw StateError(
+            'Cannot load state file for v2-only torrent (no pieces)');
+      }
+      var piecesNum = metainfo.pieces!.length;
       var bitfieldBufferLength = piecesNum ~/ 8;
       if (bitfieldBufferLength * 8 != piecesNum) bitfieldBufferLength++;
       _bitfield = Bitfield.copyFrom(piecesNum, bytes, 0, bitfieldBufferLength);

@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:args/args.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 
 /// Example demonstrating tracker scrape functionality (BEP 48)
@@ -44,7 +43,7 @@ void main(List<String> args) async {
   }
 
   print('Loading torrent: $torrentPath');
-  final torrent = await Torrent.parse(torrentPath);
+  final torrent = await TorrentModel.parse(torrentPath);
   print('Torrent name: ${torrent.name}');
   print('Info hash: ${torrent.infoHash}');
   print('');

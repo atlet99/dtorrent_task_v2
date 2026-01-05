@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:path/path.dart' as path;
 
@@ -35,9 +34,10 @@ void main(List<String> args) async {
   print('');
 
   // Parse torrent
-  final torrent = await Torrent.parse(torrentFile);
+  final torrent = await TorrentModel.parse(torrentFile);
   print('Torrent: ${torrent.name}');
-  print('Size: ${(torrent.length / 1024 / 1024).toStringAsFixed(2)} MB');
+  print(
+      'Size: ${((torrent.length ?? torrent.totalSize) / 1024 / 1024).toStringAsFixed(2)} MB');
   print('');
 
   // Create configuration based on type

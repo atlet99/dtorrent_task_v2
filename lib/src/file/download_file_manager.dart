@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:dtorrent_task_v2/src/file/download_file_manager_events.dart';
 import 'package:dtorrent_task_v2/src/file/utils.dart';
 import 'package:dtorrent_task_v2/src/task_events.dart';
@@ -18,7 +18,7 @@ import '../torrent/torrent_version.dart';
 var _log = Logger("DownloadFileManager");
 
 class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
-  final Torrent metainfo;
+  final TorrentModel metainfo;
 
   final List<DownloadFile> _files = [];
 
@@ -39,7 +39,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     _piece2fileMap = List.filled(_stateFile.bitfield.piecesNum, null);
   }
 
-  static Future<DownloadFileManager> createFileManager(Torrent metainfo,
+  static Future<DownloadFileManager> createFileManager(TorrentModel metainfo,
       String localDirectory, dynamic stateFile, List<Piece> pieces,
       {bool validateOnResume = false}) async {
     var manager = DownloadFileManager(metainfo, stateFile, pieces);
@@ -173,12 +173,13 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     // Check if this is a v2 torrent with file tree
     final torrentVersion = TorrentVersionHelper.detectVersion(metainfo);
 
-    if (torrentVersion == TorrentVersion.v2 ||
-        torrentVersion == TorrentVersion.hybrid) {
-      // For v2, we would use file tree structure
-      // But since dtorrent_parser doesn't expose it, we fall back to v1 structure
-      _log.info(
-          'v2/hybrid torrent detected, but using v1 file structure (file tree not accessible)');
+    if ((torrentVersion == TorrentVersion.v2 ||
+            torrentVersion == TorrentVersion.hybrid) &&
+        metainfo.fileTree != null) {
+      // Use v2 file tree structure
+      _log.info('Using v2 file tree structure');
+      _initFileMapFromTree(directory, metainfo.fileTree!);
+      return;
     }
 
     // Use v1 file structure (files array)
@@ -202,8 +203,10 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
           downloadFileList = <DownloadFile>[];
           _piece2fileMap?[pieceIndex] = downloadFileList;
         }
-        pieces.add(_pieces[pieceIndex]);
-        downloadFileList.add(downloadFile);
+        if (pieceIndex < _pieces.length) {
+          pieces.add(_pieces[pieceIndex]);
+          downloadFileList.add(downloadFile);
+        }
       }
 
       _files.add(downloadFile);
@@ -212,8 +215,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
 
   /// Initialize file map from file tree (v2 format)
   ///
-  /// This method would be used when file tree is available from torrent
-  // ignore: unused_element
+  /// This method is used when file tree is available from torrent
   void _initFileMapFromTree(
       String directory, Map<String, FileTreeEntry> fileTree) {
     final files = FileTreeHelper.extractFiles(fileTree, '');

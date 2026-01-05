@@ -4,7 +4,6 @@ import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:dtorrent_tracker/dtorrent_tracker.dart';
 import 'package:events_emitter2/events_emitter2.dart';
@@ -552,16 +551,16 @@ void main(List<String> args) async {
     // Parse torrent from metadata
     final msg = decode(metadataBytes);
     final torrentMap = <String, dynamic>{'info': msg};
-    final torrentModel = parseTorrentFileContent(torrentMap);
-
-    if (torrentModel == null) {
-      print('ERROR: Failed to parse torrent from metadata');
-      exit(1);
-    }
+    final torrentModel = TorrentParser.parseFromMap(torrentMap);
 
     print('Torrent: ${torrentModel.name}');
-    print('Size: ${(torrentModel.length / 1024 / 1024).toStringAsFixed(2)} MB');
-    print('Pieces: ${torrentModel.pieces.length}');
+    print(
+        'Size: ${((torrentModel.length ?? torrentModel.totalSize) / 1024 / 1024).toStringAsFixed(2)} MB');
+    if (torrentModel.pieces != null) {
+      print('Pieces: ${torrentModel.pieces!.length}');
+    } else {
+      print('Pieces: N/A (v2-only torrent)');
+    }
     print(
         'Piece size: ${(torrentModel.pieceLength / 1024 / 1024).toStringAsFixed(2)} MB');
     print('Files: ${torrentModel.files.length}');
@@ -798,7 +797,7 @@ void main(List<String> args) async {
         }
         if (piecesDelta > 0) {
           print(
-              '  ✓ Completed $piecesDelta piece(s) (total: $currentTotalPieces/${torrentModel.pieces.length})');
+              '  ✓ Completed $piecesDelta piece(s) (total: $currentTotalPieces/${torrentModel.pieces?.length ?? 0})');
         }
         if (interestedCount > 0) {
           print(
@@ -883,7 +882,7 @@ void main(List<String> args) async {
         ((task.averageDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
 
     int finalCompletedPieces = 0;
-    int totalPieces = torrentModel.pieces.length;
+    int totalPieces = torrentModel.pieces?.length ?? 0;
     final stateFile = task.stateFile;
     if (stateFile != null) {
       finalCompletedPieces = stateFile.bitfield.completedPieces.length;

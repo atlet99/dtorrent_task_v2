@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 
 /// Example demonstrating BitTorrent v2 protocol support
@@ -23,7 +22,7 @@ void main() async {
   }
 
   try {
-    final torrent = await Torrent.parse(torrentPath);
+    final torrent = await TorrentModel.parse(torrentPath);
     final version = TorrentVersionHelper.detectVersion(torrent);
 
     print('Torrent Information:');

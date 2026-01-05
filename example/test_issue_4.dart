@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:path/path.dart' as path;
 
@@ -56,10 +55,11 @@ void main(List<String> args) async {
 
   try {
     // Parse torrent
-    final model = await Torrent.parse(torrentPath);
+    final model = await TorrentModel.parse(torrentPath);
     print('Torrent: ${model.name}');
-    print('Size: ${(model.length / 1024 / 1024).toStringAsFixed(2)} MB');
-    print('Pieces: ${model.pieces.length}');
+    print(
+        'Size: ${((model.length ?? model.totalSize) / 1024 / 1024).toStringAsFixed(2)} MB');
+    print('Pieces: ${model.pieces?.length ?? 0}');
     print('');
 
     // Create task

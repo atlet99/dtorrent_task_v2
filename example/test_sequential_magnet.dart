@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:b_encode_decode/b_encode_decode.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as path;
 
@@ -91,18 +90,14 @@ void main(List<String> args) async {
   // Parse torrent
   final msg = decode(Uint8List.fromList(metadataBytes));
   final torrentMap = <String, dynamic>{'info': msg};
-  final torrent = parseTorrentFileContent(torrentMap);
-
-  if (torrent == null) {
-    print('ERROR: Failed to parse torrent');
-    exit(1);
-  }
+  final torrent = TorrentParser.parseFromMap(torrentMap);
 
   print('');
   print('Torrent info:');
   print('  Name: ${torrent.name}');
-  print('  Size: ${(torrent.length / 1024 / 1024).toStringAsFixed(2)} MB');
-  print('  Pieces: ${torrent.pieces.length}');
+  print(
+      '  Size: ${((torrent.length ?? torrent.totalSize) / 1024 / 1024).toStringAsFixed(2)} MB');
+  print('  Pieces: ${torrent.pieces?.length ?? 0}');
   print('  Files: ${torrent.files.length}');
   print('');
 

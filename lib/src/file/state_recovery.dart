@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:logging/logging.dart';
 import 'state_file_v2.dart';
 import 'file_validator.dart';
@@ -10,7 +10,7 @@ var _log = Logger('StateRecovery');
 
 /// Handles recovery from corrupted or invalid state files
 class StateRecovery {
-  final Torrent metainfo;
+  final TorrentModel metainfo;
   final String savePath;
   final List<Piece> pieces;
 
@@ -64,7 +64,12 @@ class StateRecovery {
           'Validation complete: ${validationResult.validatedBytes} / ${validationResult.totalBytes} bytes valid');
 
       // Rebuild bitfield from validated pieces
-      final bitfield = Bitfield.createEmptyBitfield(metainfo.pieces.length);
+      if (metainfo.pieces == null) {
+        _log.warning(
+            'Cannot recover: torrent has no pieces (v2-only torrent?)');
+        return null;
+      }
+      final bitfield = Bitfield.createEmptyBitfield(metainfo.pieces!.length);
       for (var i = 0; i < pieces.length; i++) {
         if (!validationResult.invalidPieces.contains(i)) {
           // Check if piece is completely written

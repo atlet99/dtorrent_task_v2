@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:logging/logging.dart';
 import '../piece/piece.dart';
 
@@ -28,7 +28,7 @@ class FileValidationResult {
 
 /// Validates downloaded files against torrent piece hashes
 class FileValidator {
-  final Torrent metainfo;
+  final TorrentModel metainfo;
   final List<Piece> pieces;
   final String savePath;
 
@@ -66,7 +66,7 @@ class FileValidator {
         isValid: false,
         error: e.toString(),
         validatedBytes: 0,
-        totalBytes: metainfo.length,
+        totalBytes: metainfo.length ?? metainfo.totalSize,
       );
     }
   }

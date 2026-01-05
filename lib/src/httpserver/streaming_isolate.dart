@@ -4,7 +4,7 @@ import 'dart:isolate';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_file_model.dart';
 import 'package:logging/logging.dart';
 import 'package:mime/mime.dart';
 
@@ -15,7 +15,7 @@ abstract class StreamingIsolateMessage {}
 
 /// Request to get playlist data
 class GetPlaylistMessage implements StreamingIsolateMessage {
-  final List<TorrentFile> files;
+  final List<TorrentFileModel> files;
   final InternetAddress address;
   final int port;
 
@@ -24,7 +24,7 @@ class GetPlaylistMessage implements StreamingIsolateMessage {
 
 /// Request to get JSON metadata
 class GetJsonMetadataMessage implements StreamingIsolateMessage {
-  final List<TorrentFile> files;
+  final List<TorrentFileModel> files;
   final int totalLength;
   final int downloaded;
   final double downloadSpeed;
@@ -92,7 +92,7 @@ void _streamingIsolateEntry(SendPort sendPort) {
 }
 
 String _createPlaylist(
-    List<TorrentFile> files, InternetAddress address, int port) {
+    List<TorrentFileModel> files, InternetAddress address, int port) {
   final videoFiles = files.where((element) {
     final mimeType = lookupMimeType(element.name);
     return mimeType?.startsWith('video') ??
@@ -106,7 +106,7 @@ String _createPlaylist(
 }
 
 String _createJsonMetadata(
-  List<TorrentFile> files,
+  List<TorrentFileModel> files,
   int totalLength,
   int downloaded,
   double downloadSpeed,
@@ -158,7 +158,7 @@ class StreamingIsolateManager {
   }
 
   Future<Uint8List> getPlaylist(
-    List<TorrentFile> files,
+    List<TorrentFileModel> files,
     InternetAddress address,
     int port,
   ) async {
@@ -187,7 +187,7 @@ class StreamingIsolateManager {
   }
 
   Future<Uint8List> getJsonMetadata(
-    List<TorrentFile> files,
+    List<TorrentFileModel> files,
     int totalLength,
     int downloaded,
     double downloadSpeed,

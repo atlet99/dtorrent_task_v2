@@ -1,4 +1,4 @@
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:logging/logging.dart';
 import 'file_priority.dart';
 
@@ -9,7 +9,7 @@ var _log = Logger('FilePriorityManager');
 /// This class tracks priorities for each file in a torrent and provides
 /// methods to get pieces that should be prioritized based on file priorities.
 class FilePriorityManager {
-  final Torrent _metainfo;
+  final TorrentModel _metainfo;
   final Map<int, FilePriority> _priorities = {};
   final int _pieceLength;
 
@@ -69,11 +69,13 @@ class FilePriorityManager {
           endPiece--;
         }
 
-        for (var pieceIndex = startPiece;
-            pieceIndex <= endPiece;
-            pieceIndex++) {
-          if (pieceIndex >= 0 && pieceIndex < _metainfo.pieces.length) {
-            pieces.add(pieceIndex);
+        if (_metainfo.pieces != null) {
+          for (var pieceIndex = startPiece;
+              pieceIndex <= endPiece;
+              pieceIndex++) {
+            if (pieceIndex >= 0 && pieceIndex < _metainfo.pieces!.length) {
+              pieces.add(pieceIndex);
+            }
           }
         }
       }
@@ -116,9 +118,13 @@ class FilePriorityManager {
         endPiece--;
       }
 
-      for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
-        if (pieceIndex >= 0 && pieceIndex < _metainfo.pieces.length) {
-          result[priority]!.add(pieceIndex);
+      if (_metainfo.pieces != null) {
+        for (var pieceIndex = startPiece;
+            pieceIndex <= endPiece;
+            pieceIndex++) {
+          if (pieceIndex >= 0 && pieceIndex < _metainfo.pieces!.length) {
+            result[priority]!.add(pieceIndex);
+          }
         }
       }
     }

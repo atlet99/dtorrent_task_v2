@@ -1,4 +1,4 @@
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
 import 'package:dtorrent_task_v2/src/piece/piece_manager_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
@@ -55,30 +55,42 @@ class PieceManager
   PieceManager(this._pieceSelector, int piecesNumber);
 
   static PieceManager createPieceManager(
-      PieceSelector pieceSelector, Torrent metaInfo, Bitfield bitfield,
+      PieceSelector pieceSelector, TorrentModel metaInfo, Bitfield bitfield,
       {TorrentVersion? version}) {
-    var p = PieceManager(pieceSelector, metaInfo.pieces.length);
+    if (metaInfo.pieces == null) {
+      throw ArgumentError(
+          'Cannot create PieceManager: torrent has no pieces (v2-only torrent?)');
+    }
+    var p = PieceManager(pieceSelector, metaInfo.pieces!.length);
     p.initPieces(metaInfo, bitfield, version: version);
     return p;
   }
 
-  void initPieces(Torrent metaInfo, Bitfield bitfield,
+  void initPieces(TorrentModel metaInfo, Bitfield bitfield,
       {TorrentVersion? version}) {
+    if (metaInfo.pieces == null) {
+      throw ArgumentError(
+          'Cannot init pieces: torrent has no pieces (v2-only torrent?)');
+    }
     var detectedVersion =
         version ?? TorrentVersionHelper.detectVersion(metaInfo);
     var startbyte = 0;
-    for (var i = 0; i < metaInfo.pieces.length; i++) {
+    for (var i = 0; i < metaInfo.pieces!.length; i++) {
       var byteLength = metaInfo.pieceLength;
-      if (i == metaInfo.pieces.length - 1) {
+      if (i == metaInfo.pieces!.length - 1) {
         byteLength = metaInfo.lastPieceLength;
       }
 
+      final pieceHash = metaInfo.pieces![i];
+      final hashString =
+          pieceHash.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
       if (bitfield.getBit(i)) {
-        var piece = Piece(metaInfo.pieces[i], i, byteLength, startbyte,
+        var piece = Piece(hashString, i, byteLength, startbyte,
             isComplete: true, version: detectedVersion);
         _pieces[i] = piece;
       } else {
-        var piece = Piece(metaInfo.pieces[i], i, byteLength, startbyte,
+        var piece = Piece(hashString, i, byteLength, startbyte,
             version: detectedVersion);
         _pieces[i] = piece;
       }

@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_file_model.dart';
 import 'package:dtorrent_task_v2/src/file/download_file_manager_events.dart';
 import 'package:dtorrent_task_v2/src/httpserver/server.dart';
 import 'package:dtorrent_task_v2/src/lsd/lsd_events.dart';
@@ -52,7 +53,7 @@ var _log = Logger('TorrentTask');
 
 abstract class TorrentTask with EventsEmittable<TaskEvent> {
   factory TorrentTask.newTask(
-    Torrent metaInfo,
+    TorrentModel metaInfo,
     String savePath, [
     bool stream = false,
     List<Uri>? webSeeds,
@@ -71,7 +72,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
     );
   }
   void startAnnounceUrl(Uri url, Uint8List infoHash);
-  Torrent get metaInfo;
+  TorrentModel get metaInfo;
 
   // The name of the torrent
   String get name => metaInfo.name;
@@ -387,9 +388,9 @@ class _TorrentTask
   @override
   Iterable<Peer>? get activePeers => _peersManager?.activePeers;
 
-  final Torrent _metaInfo;
+  final TorrentModel _metaInfo;
   @override
-  Torrent get metaInfo => _metaInfo;
+  TorrentModel get metaInfo => _metaInfo;
 
   @override
   String get name => metaInfo.name;
@@ -479,7 +480,7 @@ class _TorrentTask
 
   Timer? _dhtRepeatTimer;
 
-  Future<PeersManager> _init(Torrent model, String savePath) async {
+  Future<PeersManager> _init(TorrentModel model, String savePath) async {
     _lsd ??= LSD(model.infoHash, _peerId);
     _infoHashString ??= String.fromCharCodes(model.infoHashBuffer);
     _tracker ??= TorrentAnnounceTracker(this);
@@ -507,12 +508,14 @@ class _TorrentTask
         // Use advanced sequential selector with configuration
         final advancedSelector =
             AdvancedSequentialPieceSelector(_sequentialConfig!);
-        advancedSelector.initialize(model.pieces.length, model.pieceLength);
+        if (model.pieces != null) {
+          advancedSelector.initialize(model.pieces!.length, model.pieceLength);
+        }
 
         // Auto-detect moov atom if enabled
-        if (_sequentialConfig!.autoDetectMoovAtom) {
+        if (_sequentialConfig!.autoDetectMoovAtom && model.length != null) {
           advancedSelector.detectAndSetMoovAtom(
-              model.length, model.pieceLength);
+              model.length!, model.pieceLength);
         }
 
         _advancedSelector = advancedSelector;
@@ -551,16 +554,16 @@ class _TorrentTask
     _peersManager ??= PeersManager(_peerId, model, ipFilter: _ipFilter);
 
     // Initialize SuperSeeder if superseeding is enabled
-    if (_superseedingEnabled && _superseeder == null) {
-      _superseeder = SuperSeeder(model.pieces.length);
+    if (_superseedingEnabled && _superseeder == null && model.pieces != null) {
+      _superseeder = SuperSeeder(model.pieces!.length);
       // Only enable if we're already a seeder
       if (_fileManager != null && _fileManager!.isAllComplete) {
         _superseeder!.enable();
         _log.info(
-            'SuperSeeder initialized and enabled for ${model.pieces.length} pieces (client is a seeder)');
+            'SuperSeeder initialized and enabled for ${model.pieces!.length} pieces (client is a seeder)');
       } else {
         _log.info(
-            'SuperSeeder initialized for ${model.pieces.length} pieces (will be enabled when download completes)');
+            'SuperSeeder initialized for ${model.pieces!.length} pieces (will be enabled when download completes)');
       }
     }
     // Set torrent version for v2/hybrid support in peer handshakes
@@ -575,7 +578,7 @@ class _TorrentTask
       _webSeedDownloader = WebSeedDownloader(
         webSeeds: _webSeeds,
         acceptableSources: _acceptableSources,
-        totalLength: model.length,
+        totalLength: model.length ?? model.totalSize,
         pieceLength: model.pieceLength,
       );
       _log.info(
@@ -609,7 +612,7 @@ class _TorrentTask
         _pieceManager == null) {
       return null;
     }
-    TorrentFile? file;
+    TorrentFileModel file;
     if (fileName != null) {
       file = _fileManager!.metainfo.files
           .firstWhere((file) => file.name == fileName);
@@ -620,7 +623,7 @@ class _TorrentTask
       );
     }
     var localFile = _fileManager?.files.firstWhere(
-        (downloadedFile) => downloadedFile.originalFileName == file?.name);
+        (downloadedFile) => downloadedFile.originalFileName == file.name);
 
     if (localFile == null) return null;
     // if no end position provided, read all file
@@ -788,9 +791,13 @@ class _TorrentTask
       }
 
       // Add all pieces for this file
-      for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
-        if (pieceIndex >= 0 && pieceIndex < _metaInfo.pieces.length) {
-          priorityPieces.add(pieceIndex);
+      if (_metaInfo.pieces != null) {
+        for (var pieceIndex = startPiece;
+            pieceIndex <= endPiece;
+            pieceIndex++) {
+          if (pieceIndex >= 0 && pieceIndex < _metaInfo.pieces!.length) {
+            priorityPieces.add(pieceIndex);
+          }
         }
       }
     }
@@ -1546,7 +1553,7 @@ class _TorrentTask
     var map = {
       'downloaded': _stateFile?.downloaded,
       'uploaded': _stateFile?.uploaded,
-      'left': _metaInfo.length - _stateFile!.downloaded,
+      'left': (_metaInfo.length ?? 0) - _stateFile!.downloaded,
       'numwant': 50,
       'compact': 1,
       'peerId': _peerId,
@@ -1563,6 +1570,7 @@ class _TorrentTask
     var d = downloaded;
     if (d == null) return 0.0;
     var l = _metaInfo.length;
+    if (l == null) return 0.0;
     return d / l;
   }
 
@@ -1653,10 +1661,10 @@ class _TorrentTask
     _superseedingEnabled = true;
 
     // Initialize SuperSeeder if not already initialized
-    if (_superseeder == null) {
-      _superseeder = SuperSeeder(_metaInfo.pieces.length);
+    if (_superseeder == null && _metaInfo.pieces != null) {
+      _superseeder = SuperSeeder(_metaInfo.pieces!.length);
       _log.info(
-          'SuperSeeder initialized for ${_metaInfo.pieces.length} pieces');
+          'SuperSeeder initialized for ${_metaInfo.pieces!.length} pieces');
     }
 
     // Enable superseeding only if we're a seeder

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as path;
@@ -41,11 +40,12 @@ void main(List<String> args) async {
   print('Using torrent file: $torrentFile');
   print('');
 
-  final torrent = await Torrent.parse(torrentFile);
+  final torrent = await TorrentModel.parse(torrentFile);
   print('Torrent information:');
   print('  Name: ${torrent.name}');
-  print('  Size: ${(torrent.length / 1024 / 1024).toStringAsFixed(2)} MB');
-  print('  Pieces: ${torrent.pieces.length}');
+  print(
+      '  Size: ${((torrent.length ?? torrent.totalSize) / 1024 / 1024).toStringAsFixed(2)} MB');
+  print('  Pieces: ${torrent.pieces?.length ?? 0}');
   print('  Files: ${torrent.files.length}');
 
   if (torrent.files.length <= 10) {

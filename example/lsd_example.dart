@@ -1,8 +1,7 @@
 import 'dart:io';
 
-import 'package:dtorrent_parser/dtorrent_parser.dart';
-import 'package:dtorrent_task_v2/src/lsd/lsd.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+import 'package:dtorrent_task_v2/src/lsd/lsd.dart';
 import 'package:path/path.dart' as path;
 import 'test_torrent_helper.dart';
 
@@ -19,7 +18,7 @@ void main(List<String> args) async {
     torrentFile = await ensureTestTorrentExists();
     print('Using test torrent: $torrentFile');
   }
-  var model = await Torrent.parse(torrentFile);
+  var model = await TorrentModel.parse(torrentFile);
   var infoHash = model.infoHash;
   var lsd = LSD(infoHash, 'daa231dfa');
   lsd.port = 61111;

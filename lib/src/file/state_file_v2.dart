@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:logging/logging.dart';
 import '../peer/bitfield.dart';
 import 'file_priority.dart';
@@ -49,7 +49,7 @@ class StateFileV2 {
   late Bitfield _bitfield;
   bool _closed = false;
   int _uploaded = 0;
-  final Torrent metainfo;
+  final TorrentModel metainfo;
   RandomAccessFile? _access;
   File? _bitfieldFile;
   StreamSubscription<Map<String, dynamic>>? _streamSubscription;
@@ -87,7 +87,7 @@ class StateFileV2 {
 
   /// Get state file with automatic migration from old format
   static Future<StateFileV2> getStateFile(
-      String directoryPath, Torrent metainfo) async {
+      String directoryPath, TorrentModel metainfo) async {
     var stateFile = StateFileV2(metainfo);
     await stateFile.init(directoryPath, metainfo);
     return stateFile;
@@ -106,7 +106,7 @@ class StateFileV2 {
   int get uploaded => _uploaded;
 
   /// Initialize state file with validation and migration support
-  Future<File> init(String directoryPath, Torrent metainfo) async {
+  Future<File> init(String directoryPath, TorrentModel metainfo) async {
     var lastChar = directoryPath.substring(directoryPath.length - 1);
     if (lastChar != Platform.pathSeparator) {
       directoryPath = directoryPath + Platform.pathSeparator;
@@ -118,7 +118,11 @@ class StateFileV2 {
     if (exists != null && !exists) {
       // Create new state file with v2 format
       _bitfieldFile = await _bitfieldFile?.create(recursive: true);
-      _bitfield = Bitfield.createEmptyBitfield(metainfo.pieces.length);
+      if (metainfo.pieces == null) {
+        throw StateError(
+            'Cannot create state file: torrent has no pieces (v2-only torrent?)');
+      }
+      _bitfield = Bitfield.createEmptyBitfield(metainfo.pieces!.length);
       _uploaded = 0;
       _version = STATE_FILE_VERSION;
       _lastModified = DateTime.now();
@@ -158,7 +162,11 @@ class StateFileV2 {
     offset += 20 - infoHash.length;
 
     // Piece count
-    header.setUint32(offset, metainfo.pieces.length, Endian.little);
+    if (metainfo.pieces == null) {
+      throw StateError(
+          'Cannot write header: torrent has no pieces (v2-only torrent?)');
+    }
+    header.setUint32(offset, metainfo.pieces!.length, Endian.little);
     offset += 4;
 
     // Piece length
@@ -166,7 +174,8 @@ class StateFileV2 {
     offset += 8;
 
     // Total length
-    header.setUint64(offset, metainfo.length, Endian.little);
+    header.setUint64(
+        offset, metainfo.length ?? metainfo.totalSize, Endian.little);
     offset += 8;
 
     // Uploaded bytes
@@ -426,7 +435,11 @@ class StateFileV2 {
           'Failed to load state file, creating new one', e, stackTrace);
       _isValid = false;
       // Create new state file
-      _bitfield = Bitfield.createEmptyBitfield(metainfo.pieces.length);
+      if (metainfo.pieces == null) {
+        throw StateError(
+            'Cannot create bitfield: torrent has no pieces (v2-only torrent?)');
+      }
+      _bitfield = Bitfield.createEmptyBitfield(metainfo.pieces!.length);
       _uploaded = 0;
       _version = STATE_FILE_VERSION;
       _lastModified = DateTime.now();
@@ -462,7 +475,11 @@ class StateFileV2 {
     offset += 8;
 
     // Validate piece count and length match torrent
-    if (pieceCount != metainfo.pieces.length ||
+    if (metainfo.pieces == null) {
+      throw StateError(
+          'Cannot validate: torrent has no pieces (v2-only torrent?)');
+    }
+    if (pieceCount != metainfo.pieces!.length ||
         pieceLength != metainfo.pieceLength) {
       throw Exception('State file does not match torrent');
     }
@@ -531,7 +548,8 @@ class StateFileV2 {
       if (_compressed) {
         // Decompress
         try {
-          bitfieldBytes = Uint8List.fromList(gzip.decoder.convert(bitfieldBytes));
+          bitfieldBytes =
+              Uint8List.fromList(gzip.decoder.convert(bitfieldBytes));
           _log.fine(
               'Bitfield decompressed: $dataLength -> ${bitfieldBytes.length} bytes');
         } catch (e) {
@@ -658,7 +676,11 @@ class StateFileV2 {
   Future<void> _migrateFromV1(Uint8List bytes) async {
     _log.info('Migrating state file from v1 to v2 format');
 
-    final piecesNum = metainfo.pieces.length;
+    if (metainfo.pieces == null) {
+      throw StateError(
+          'Cannot migrate: torrent has no pieces (v2-only torrent?)');
+    }
+    final piecesNum = metainfo.pieces!.length;
     final bitfieldBufferLength = (piecesNum / 8).ceil();
 
     if (bytes.length < bitfieldBufferLength + 8) {
@@ -839,7 +861,11 @@ class StateFileV2 {
     offset += 20 - infoHash.length;
 
     // Piece count
-    header.setUint32(offset, metainfo.pieces.length, Endian.little);
+    if (metainfo.pieces == null) {
+      throw StateError(
+          'Cannot write header: torrent has no pieces (v2-only torrent?)');
+    }
+    header.setUint32(offset, metainfo.pieces!.length, Endian.little);
     offset += 4;
 
     // Piece length
@@ -847,7 +873,8 @@ class StateFileV2 {
     offset += 8;
 
     // Total length
-    header.setUint64(offset, metainfo.length, Endian.little);
+    header.setUint64(
+        offset, metainfo.length ?? metainfo.totalSize, Endian.little);
     offset += 8;
 
     // Uploaded bytes
@@ -1098,7 +1125,8 @@ class StateFileV2 {
           final compressedData =
               bytes.sublist(bitfieldStart + 4, bitfieldStart + bitfieldSize);
           try {
-            bitfieldBytes = Uint8List.fromList(gzip.decoder.convert(compressedData));
+            bitfieldBytes =
+                Uint8List.fromList(gzip.decoder.convert(compressedData));
           } catch (e) {
             return false;
           }

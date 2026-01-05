@@ -65,7 +65,7 @@ void main(List<String> args) async {
       'piece length': torrent.pieceLength,
       'pieces': torrent.pieces,
       if (torrent.files.length == 1)
-        'length': torrent.length
+        'length': torrent.length ?? torrent.totalSize
       else
         'files': torrent.files
             .map((f) => {
@@ -89,7 +89,8 @@ void main(List<String> args) async {
   print('✓ Test torrent created successfully!');
   print('  Path: $outputPath');
   print('  Name: ${torrent.name}');
-  print('  Size: ${(torrent.length / 1024 / 1024).toStringAsFixed(2)} MB');
-  print('  Pieces: ${torrent.pieces.length}');
+  print(
+      '  Size: ${((torrent.length ?? torrent.totalSize) / 1024 / 1024).toStringAsFixed(2)} MB');
+  print('  Pieces: ${torrent.pieces?.length ?? 0}');
   print('  Files: ${torrent.files.length}');
 }

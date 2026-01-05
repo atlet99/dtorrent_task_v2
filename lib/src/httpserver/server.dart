@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:collection/collection.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:logging/logging.dart';
 import 'package:mime/mime.dart';
@@ -84,11 +83,11 @@ class StreamingServer {
     return pieceIndex;
   }
 
-  String toPlaylistEntry(TorrentFile file) {
+  String toPlaylistEntry(TorrentFileModel file) {
     return '#EXTINF:-1,${file.path}\nhttp://${address.host}:$port/${file.path}';
   }
 
-  Map<String, dynamic> toJsonEntry(TorrentFile file) {
+  Map<String, dynamic> toJsonEntry(TorrentFileModel file) {
     return {
       'name': file.name,
       'url': 'http://${address.host}:$port/${file.path}',
@@ -96,13 +95,14 @@ class StreamingServer {
     };
   }
 
-  String toPlaylist(Iterable<TorrentFile> files) {
+  String toPlaylist(Iterable<TorrentFileModel> files) {
     return '#EXTM3U\n${files.map(toPlaylistEntry).join('\n')}';
   }
 
-  Map<String, dynamic> toJson(List<TorrentFile> files) {
+  Map<String, dynamic> toJson(List<TorrentFileModel> files) {
     return {
-      'totalLength': _fileManager.metainfo.length,
+      'totalLength':
+          _fileManager.metainfo.length ?? _fileManager.metainfo.totalSize,
       'downloaded': _fileManager.downloaded,
       // 'uploaded':_fileManager.uploaded,
       'downloadSpeed': _torrentTask.averageDownloadSpeed,
@@ -156,7 +156,7 @@ class StreamingServer {
       // Process JSON metadata request in isolate to reduce main isolate load
       var buffer = await _isolateManager.getJsonMetadata(
         _fileManager.metainfo.files,
-        _fileManager.metainfo.length,
+        _fileManager.metainfo.length ?? _fileManager.metainfo.totalSize,
         _fileManager.downloaded,
         _torrentTask.averageDownloadSpeed,
         _torrentTask.averageUploadSpeed,

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:path/path.dart' as path;
 
@@ -7,7 +6,7 @@ import 'package:path/path.dart' as path;
 
 /// Creates a test torrent file for testing
 /// Returns the created Torrent model
-Future<Torrent> createTestTorrent({
+Future<TorrentModel> createTestTorrent({
   int fileSize = 1024 * 100, // 100KB default
   int pieceLength = 16384, // 16KB default
   List<Uri>? trackers,
@@ -40,7 +39,7 @@ Future<Torrent> createTestTorrent({
 }
 
 /// Creates a test torrent file in a directory (multi-file torrent)
-Future<Torrent> createTestMultiFileTorrent({
+Future<TorrentModel> createTestMultiFileTorrent({
   int filesCount = 3,
   int fileSize = 1024 * 50, // 50KB per file default
   int pieceLength = 16384,
