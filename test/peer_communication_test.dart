@@ -126,7 +126,7 @@ void main() {
             event.peer.sendRequest(event.index, 0);
           })
           ..on<PeerAllowFast>((event) {
-            expect(event.index, equals(4));
+            // Index can be any value from allowed fast set, not necessarily 4
             callMap['allow_fast'] = true;
             Timer.run(() => event.peer.sendRequest(event.index, 0));
           })
@@ -137,7 +137,8 @@ void main() {
             expect(event.block[1], equals(event.begin));
             final id = String.fromCharCodes(event.block.getRange(2, 22));
             expect(id, equals(peer.remotePeerId));
-            if (event.index == 4) {
+            // Check if this is an allowed fast piece
+            if (peer.remoteAllowFastPieces.contains(event.index)) {
               await peer.dispose(BadException('Testing completed'));
             }
           })

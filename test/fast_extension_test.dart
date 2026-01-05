@@ -47,12 +47,6 @@ void main() {
           // Send Have All message
           event.peer.sendHaveAll();
         });
-
-        peerListener.on<PeerHaveAll>((event) {
-          haveAllReceived = true;
-          receivedBitfield = event.peer.remoteBitfield;
-          completer.complete();
-        });
       });
 
       final clientSocket = await Socket.connect('127.0.0.1', serverPort);
@@ -63,6 +57,13 @@ void main() {
         clientSocket,
         PeerSource.manual,
       );
+      final clientListener = clientPeer.createListener();
+
+      clientListener.on<PeerHaveAll>((event) {
+        haveAllReceived = true;
+        receivedBitfield = event.peer.remoteBitfield;
+        completer.complete();
+      });
 
       await clientPeer.connect();
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
@@ -101,12 +102,6 @@ void main() {
           // Send Have None message
           event.peer.sendHaveNone();
         });
-
-        peerListener.on<PeerHaveNone>((event) {
-          haveNoneReceived = true;
-          receivedBitfield = event.peer.remoteBitfield;
-          completer.complete();
-        });
       });
 
       final clientSocket = await Socket.connect('127.0.0.1', serverPort);
@@ -117,6 +112,13 @@ void main() {
         clientSocket,
         PeerSource.manual,
       );
+      final clientListener = clientPeer.createListener();
+
+      clientListener.on<PeerHaveNone>((event) {
+        haveNoneReceived = true;
+        receivedBitfield = event.peer.remoteBitfield;
+        completer.complete();
+      });
 
       await clientPeer.connect();
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
@@ -166,14 +168,6 @@ void main() {
           event.peer.sendChoke(true);
           // Reject should be sent automatically per BEP 6
         });
-
-        peerListener.on<PeerRejectEvent>((event) {
-          rejectReceived = true;
-          rejectedIndex = event.index;
-          rejectedBegin = event.begin;
-          rejectedLength = event.length;
-          completer.complete();
-        });
       });
 
       final clientSocket = await Socket.connect('127.0.0.1', serverPort);
@@ -184,6 +178,15 @@ void main() {
         clientSocket,
         PeerSource.manual,
       );
+      final clientListener = clientPeer.createListener();
+
+      clientListener.on<PeerRejectEvent>((event) {
+        rejectReceived = true;
+        rejectedIndex = event.index;
+        rejectedBegin = event.begin;
+        rejectedLength = event.length;
+        completer.complete();
+      });
 
       await clientPeer.connect();
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
@@ -215,21 +218,14 @@ void main() {
       serverPort = serverSocket!.port;
 
       serverSocket!.listen((socket) {
-        final peer = Peer.newTCPPeer(
+        Peer.newTCPPeer(
           CompactAddress(socket.address, socket.port),
           infoHash,
           piecesNum,
           socket,
           PeerSource.incoming,
         );
-        final peerListener = peer.createListener();
-
-        peerListener.on<PeerAllowFast>((event) {
-          allowedFastPieces.add(event.index);
-          if (allowedFastPieces.length >= 10) {
-            completer.complete();
-          }
-        });
+        // Server will automatically generate and send allowed fast set after handshake
       });
 
       final clientSocket = await Socket.connect('127.0.0.1', serverPort);
@@ -240,6 +236,14 @@ void main() {
         clientSocket,
         PeerSource.manual,
       );
+      final clientListener = clientPeer.createListener();
+
+      clientListener.on<PeerAllowFast>((event) {
+        allowedFastPieces.add(event.index);
+        if (allowedFastPieces.length >= 10) {
+          completer.complete();
+        }
+      });
 
       await clientPeer.connect();
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
@@ -325,8 +329,9 @@ void main() {
       await clientPeer.connect();
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
 
-      // Wait for bitfield and allowed fast
-      await Future.delayed(const Duration(milliseconds: 1000));
+      // Wait for bitfield and allowed fast to be generated and sent
+      // Allowed fast is generated automatically after handshake
+      await Future.delayed(const Duration(milliseconds: 1500));
 
       // Get allowed fast pieces
       final allowedFast = clientPeer.remoteAllowFastPieces;
@@ -370,12 +375,6 @@ void main() {
           // Send Suggest Piece message
           event.peer.sendSuggestPiece(5);
         });
-
-        peerListener.on<PeerSuggestPiece>((event) {
-          suggestReceived = true;
-          suggestedIndex = event.index;
-          completer.complete();
-        });
       });
 
       final clientSocket = await Socket.connect('127.0.0.1', serverPort);
@@ -386,6 +385,13 @@ void main() {
         clientSocket,
         PeerSource.manual,
       );
+      final clientListener = clientPeer.createListener();
+
+      clientListener.on<PeerSuggestPiece>((event) {
+        suggestReceived = true;
+        suggestedIndex = event.index;
+        completer.complete();
+      });
 
       await clientPeer.connect();
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
