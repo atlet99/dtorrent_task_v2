@@ -121,9 +121,10 @@ void main() {
 
       final config = SequentialConfig.forVideoStreaming();
       final selector = AdvancedSequentialPieceSelector(config);
-      selector.initialize(torrent.pieces.length, torrent.pieceLength);
+      selector.initialize(torrent.pieces?.length ?? 0, torrent.pieceLength);
 
-      final bitfield = Bitfield.createEmptyBitfield(torrent.pieces.length);
+      final bitfield =
+          Bitfield.createEmptyBitfield(torrent.pieces?.length ?? 0);
       final pieceManager = PieceManager.createPieceManager(
         selector,
         torrent,
@@ -131,7 +132,7 @@ void main() {
       );
 
       expect(pieceManager, isNotNull);
-      expect(pieceManager.length, equals(torrent.pieces.length));
+      expect(pieceManager.length, equals(torrent.pieces?.length ?? 0));
     });
 
     test('should prioritize pieces sequentially', () async {
@@ -142,9 +143,10 @@ void main() {
 
       final config = SequentialConfig.forVideoStreaming();
       final selector = AdvancedSequentialPieceSelector(config);
-      selector.initialize(torrent.pieces.length, torrent.pieceLength);
+      selector.initialize(torrent.pieces?.length ?? 0, torrent.pieceLength);
 
-      final bitfield = Bitfield.createEmptyBitfield(torrent.pieces.length);
+      final bitfield =
+          Bitfield.createEmptyBitfield(torrent.pieces?.length ?? 0);
       final pieceManager = PieceManager.createPieceManager(
         selector,
         torrent,
@@ -155,13 +157,13 @@ void main() {
       final peer = Peer.newTCPPeer(
         CompactAddress(InternetAddress('127.0.0.1'), 6881),
         List<int>.generate(20, (i) => i),
-        torrent.pieces.length,
+        torrent.pieces?.length ?? 0,
         null,
         PeerSource.manual,
       );
 
       // Set remote bitfield to indicate peer has all pieces
-      for (var i = 0; i < torrent.pieces.length; i++) {
+      for (var i = 0; i < (torrent.pieces?.length ?? 0); i++) {
         peer.updateRemoteBitfield(i, true);
       }
 

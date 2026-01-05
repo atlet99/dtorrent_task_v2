@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:args/args.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:logging/logging.dart';
 
@@ -61,7 +60,7 @@ void main(List<String> args) async {
   }
 
   try {
-    final torrent = await Torrent.parse(torrentFile);
+    final torrent = await TorrentModel.parse(torrentFile);
     _log.info('Loaded torrent: ${torrent.name}');
 
     // Ensure save directory exists
@@ -73,8 +72,7 @@ void main(List<String> args) async {
 
     // Load or create state file
     _log.info('Loading state file...');
-    final stateFile =
-        await StateFileV2.getStateFile(savePath, torrent as TorrentModel);
+    final stateFile = await StateFileV2.getStateFile(savePath, torrent);
 
     if (stateFile.isValid) {
       _log.info('State file is valid (version: ${stateFile.version})');

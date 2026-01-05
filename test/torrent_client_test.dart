@@ -6,7 +6,6 @@ import 'dart:typed_data';
 
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:test/test.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:path/path.dart' as path;
 
@@ -171,7 +170,7 @@ void main() {
 
   group('StateFile Test - ', () {
     var directory = path.canonicalize(path.join('..', 'tmp'));
-    Torrent? torrent;
+    TorrentModel? torrent;
     setUpAll(() async {
       final torrentFile =
           File(path.join(torrentsPath, 'big-buck-bunny.torrent'));
@@ -179,7 +178,7 @@ void main() {
         // Skip tests if torrent file doesn't exist
         return;
       }
-      torrent = await Torrent.parse(torrentFile.path);
+      torrent = await TorrentModel.parse(torrentFile.path);
       var f = File(path.join(directory, '${torrent!.infoHash}.bt.state'));
       if (await f.exists()) await f.delete();
     });
@@ -189,19 +188,25 @@ void main() {
         return;
       }
       var stateFile = await StateFile.getStateFile(directory, torrent!);
-      var b = torrent!.pieces.length ~/ 8;
-      if (b * 8 != torrent!.pieces.length) b++;
+      if (torrent!.pieces == null) {
+        return; // Skip for v2-only torrents
+      }
+      var b = torrent!.pieces!.length ~/ 8;
+      if (b * 8 != torrent!.pieces!.length) b++;
       assert(stateFile.bitfield.length == b);
-      assert(stateFile.bitfield.piecesNum == torrent!.pieces.length);
+      assert(stateFile.bitfield.piecesNum == torrent!.pieces!.length);
       assert(!stateFile.bitfield.haveCompletePiece());
 
       await stateFile.close();
       // To test reading the contents of an empty file after creating it.
       stateFile = await StateFile.getStateFile(directory, torrent!);
-      b = torrent!.pieces.length ~/ 8;
-      if (b * 8 != torrent!.pieces.length) b++;
+      if (torrent!.pieces == null) {
+        return; // Skip for v2-only torrents
+      }
+      b = torrent!.pieces!.length ~/ 8;
+      if (b * 8 != torrent!.pieces!.length) b++;
       assert(stateFile.bitfield.length == b);
-      assert(stateFile.bitfield.piecesNum == torrent!.pieces.length);
+      assert(stateFile.bitfield.piecesNum == torrent!.pieces!.length);
       assert(!stateFile.bitfield.haveCompletePiece());
       assert(stateFile.downloaded == 0);
       assert(stateFile.uploaded == 0);
@@ -243,8 +248,11 @@ void main() {
       await locker.future;
 
       stateFile = await StateFile.getStateFile(directory, torrent!);
-      b = torrent!.pieces.length ~/ 8;
-      if (b * 8 != torrent!.pieces.length) b++;
+      if (torrent!.pieces == null) {
+        return; // Skip for v2-only torrents
+      }
+      b = torrent!.pieces!.length ~/ 8;
+      if (b * 8 != torrent!.pieces!.length) b++;
       assert(stateFile.bitfield.length == b);
       var sd = stateFile.bitfield.completedPieces.length * torrent!.pieceLength;
       sd = sd - (torrent!.pieceLength - torrent!.lastPieceLength);

@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:test/test.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+import 'package:dtorrent_common/dtorrent_common.dart';
 
 void main() {
   group('Bitfield Unchoke Race Condition Tests', () {
-    late Torrent mockTorrent;
+    late TorrentModel mockTorrent;
     late File tempFile;
     late String savePath;
     late TorrentTask task;
@@ -69,8 +68,8 @@ void main() {
 
       // Create a bitfield where peer has all pieces
       final peerBitfield =
-          Bitfield.createEmptyBitfield(mockTorrent.pieces.length);
-      for (var i = 0; i < mockTorrent.pieces.length; i++) {
+          Bitfield.createEmptyBitfield(mockTorrent.pieces?.length ?? 0);
+      for (var i = 0; i < (mockTorrent.pieces?.length ?? 0); i++) {
         peerBitfield.setBit(i, true);
       }
 
@@ -78,7 +77,7 @@ void main() {
       final peer = Peer.newTCPPeer(
         address,
         mockTorrent.infoHashBuffer,
-        mockTorrent.pieces.length,
+        mockTorrent.pieces?.length ?? 0,
         null,
         PeerSource.manual,
       );
@@ -127,8 +126,8 @@ void main() {
       final address = CompactAddress(InternetAddress('127.0.0.1'), 6882);
 
       final peerBitfield =
-          Bitfield.createEmptyBitfield(mockTorrent.pieces.length);
-      for (var i = 0; i < mockTorrent.pieces.length; i++) {
+          Bitfield.createEmptyBitfield(mockTorrent.pieces?.length ?? 0);
+      for (var i = 0; i < (mockTorrent.pieces?.length ?? 0); i++) {
         peerBitfield.setBit(i, true);
       }
 
@@ -136,7 +135,7 @@ void main() {
       final peer = Peer.newTCPPeer(
         address,
         mockTorrent.infoHashBuffer,
-        mockTorrent.pieces.length,
+        mockTorrent.pieces?.length ?? 0,
         null,
         PeerSource.manual,
       );
@@ -167,8 +166,8 @@ void main() {
       final address = CompactAddress(InternetAddress('127.0.0.1'), 6883);
 
       final peerBitfield =
-          Bitfield.createEmptyBitfield(mockTorrent.pieces.length);
-      for (var i = 0; i < mockTorrent.pieces.length; i++) {
+          Bitfield.createEmptyBitfield(mockTorrent.pieces?.length ?? 0);
+      for (var i = 0; i < (mockTorrent.pieces?.length ?? 0); i++) {
         peerBitfield.setBit(i, true);
       }
 
@@ -176,7 +175,7 @@ void main() {
       final peer = Peer.newTCPPeer(
         address,
         mockTorrent.infoHashBuffer,
-        mockTorrent.pieces.length,
+        mockTorrent.pieces?.length ?? 0,
         null,
         PeerSource.manual,
       );

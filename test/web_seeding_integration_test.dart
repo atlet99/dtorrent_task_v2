@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:test/test.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 
 // Helper function to check if error is a port conflict
@@ -22,7 +21,7 @@ bool _isPortConflict(dynamic e) {
 // when running with other tests that use LSD (port 6771)
 void main() {
   group('Web Seeding Integration Tests', () {
-    late Torrent mockTorrent;
+    late TorrentModel mockTorrent;
     late File tempFile;
     late String savePath;
     late TorrentTask task;

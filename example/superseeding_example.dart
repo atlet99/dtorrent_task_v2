@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:args/args.dart';
 import 'package:crypto/crypto.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:logging/logging.dart';
 
@@ -99,11 +98,11 @@ void main(List<String> args) async {
   }
 
   try {
-    final torrent = await Torrent.parse(torrentFile);
+    final torrent = await TorrentModel.parse(torrentFile);
     _log.info('Loaded torrent: ${torrent.name}');
     _log.info(
-        'Total size: ${(torrent.length / 1024 / 1024).toStringAsFixed(2)} MB');
-    _log.info('Pieces: ${torrent.pieces.length}');
+        'Total size: ${((torrent.length ?? torrent.totalSize) / 1024 / 1024).toStringAsFixed(2)} MB');
+    _log.info('Pieces: ${torrent.pieces?.length ?? 0}');
 
     // Ensure save directory exists
     final saveDir = Directory(savePath);
@@ -116,7 +115,7 @@ void main(List<String> args) async {
 
     // Create task (must be in seeding mode - all files complete)
     _log.info('Creating torrent task...');
-    final task = TorrentTask.newTask(torrent as TorrentModel, savePath);
+    final task = TorrentTask.newTask(torrent, savePath);
 
     // Start task to initialize fileManager and pieceManager
     try {
@@ -158,8 +157,9 @@ void main(List<String> args) async {
       final isEmpty = task.fileManager == null ||
           task.fileManager!.localBitfield.completedPieces.isEmpty;
       final isAlmostEmpty = task.fileManager != null &&
+          torrent.pieces != null &&
           task.fileManager!.localBitfield.completedPieces.length <
-              (torrent.pieces.length * 0.01); // Less than 1% complete
+              (torrent.pieces!.length * 0.01); // Less than 1% complete
 
       // If validate flag is set or bitfield is empty/almost empty, validate files
       final shouldValidate = validate || isEmpty || isAlmostEmpty;
@@ -193,7 +193,7 @@ void main(List<String> args) async {
             }
 
             // Quick validation first
-            final validator = FileValidator(torrent as TorrentModel,
+            final validator = FileValidator(torrent,
                 task.pieceManager!.pieces.values.toList(), normalizedSavePath);
             final quickValid = await validator.quickValidate();
             if (!quickValid) {
@@ -212,16 +212,18 @@ void main(List<String> args) async {
             var invalidCount = 0;
             var skippedCount = 0;
 
-            for (var i = 0; i < torrent.pieces.length; i++) {
+            if (torrent.pieces == null) {
+              _log.warning(
+                  'Cannot validate: torrent has no pieces (v2-only torrent?)');
+              return;
+            }
+            for (var i = 0; i < torrent.pieces!.length; i++) {
               try {
                 // Read piece data directly from files
                 final pieceData = await _readPieceDataFromFiles(
-                    torrent as TorrentModel,
-                    normalizedSavePath,
-                    i,
-                    torrent.pieceLength);
+                    torrent, normalizedSavePath, i, torrent.pieceLength);
                 if (pieceData.length !=
-                    (i == torrent.pieces.length - 1
+                    (i == torrent.pieces!.length - 1
                         ? torrent.lastPieceLength
                         : torrent.pieceLength)) {
                   invalidCount++;
@@ -230,7 +232,7 @@ void main(List<String> args) async {
 
                 // Calculate hash
                 final hash = sha1.convert(pieceData);
-                final expectedHash = torrent.pieces[i];
+                final expectedHash = torrent.pieces![i];
 
                 // Compare hashes
                 if (hash.toString() == expectedHash) {
@@ -251,7 +253,7 @@ void main(List<String> args) async {
               // Progress update every 100 pieces
               if ((i + 1) % 100 == 0) {
                 _log.info(
-                    'Validated ${i + 1}/${torrent.pieces.length} pieces... (valid: $validatedCount, invalid: $invalidCount, skipped: $skippedCount)');
+                    'Validated ${i + 1}/${torrent.pieces!.length} pieces... (valid: $validatedCount, invalid: $invalidCount, skipped: $skippedCount)');
               }
             }
 

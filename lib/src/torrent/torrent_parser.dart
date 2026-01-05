@@ -35,6 +35,16 @@ class TorrentParser {
     return _parseTorrent(data, bytes);
   }
 
+  /// Parse torrent from decoded bencoded dictionary
+  ///
+  /// This is useful when you have already decoded the torrent data
+  /// (e.g., from metadata downloader)
+  static TorrentModel parseFromMap(Map<String, dynamic> torrentMap) {
+    // Re-encode to bytes for hash calculation
+    final encoded = encode(torrentMap);
+    return _parseTorrent(torrentMap, encoded);
+  }
+
   /// Parse torrent from decoded bencoded data
   static TorrentModel _parseTorrent(
       Map<String, dynamic> data, Uint8List? originalBytes) {

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:path/path.dart' as path;
 
@@ -34,9 +33,10 @@ void main(List<String> args) async {
   print('');
 
   // Parse torrent
-  final torrent = await Torrent.parse(torrentFile);
+  final torrent = await TorrentModel.parse(torrentFile);
   print('Torrent: ${torrent.name}');
-  print('Size: ${(torrent.length / 1024 / 1024).toStringAsFixed(2)} MB');
+  print(
+      'Size: ${((torrent.length ?? torrent.totalSize) / 1024 / 1024).toStringAsFixed(2)} MB');
   print('');
 
   // Create save directory in tmp
@@ -61,8 +61,7 @@ void main(List<String> args) async {
   print('');
 
   // Create task
-  final task = TorrentTask.newTask(
-      torrent as TorrentModel, savePath, true, null, null, config);
+  final task = TorrentTask.newTask(torrent, savePath, true, null, null, config);
 
   Timer? seekSimulationTimer;
   final listener = task.createListener();
@@ -74,7 +73,7 @@ void main(List<String> args) async {
       print('');
 
       seekSimulationTimer = Timer.periodic(Duration(seconds: 10), (timer) {
-        final fileSize = torrent.length;
+        final fileSize = torrent.length ?? torrent.totalSize;
         final seekPositions = [
           (fileSize * 0.25).toInt(),
           (fileSize * 0.50).toInt(),

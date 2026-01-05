@@ -108,7 +108,7 @@ void main() async {
       '${tempDir.path}/download_${DateTime.now().millisecondsSinceEpoch}';
   await Directory(savePath).create(recursive: true);
 
-  final task = TorrentTask.newTask(torrent as TorrentModel, savePath);
+  final task = TorrentTask.newTask(torrent, savePath);
   print('  ✓ Task created');
   print('  Save path: $savePath');
   print('');

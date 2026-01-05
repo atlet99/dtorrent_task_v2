@@ -1,13 +1,12 @@
 import 'dart:io';
 import 'package:test/test.dart';
-import 'package:dtorrent_task_v2/src/file/state_file_v2.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'test_helpers.dart';
 
 void main() {
   group('StateFileV2', () {
     late Directory testDir;
-    late Torrent testTorrent;
+    late TorrentModel testTorrent;
 
     setUp(() async {
       testDir = await getTestDownloadDirectory();
@@ -47,7 +46,7 @@ void main() {
 
   group('FileValidator', () {
     late Directory testDir;
-    late Torrent testTorrent;
+    late TorrentModel testTorrent;
 
     setUp(() async {
       testDir = await getTestDownloadDirectory();

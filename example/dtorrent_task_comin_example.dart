@@ -2,11 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dtorrent_common/dtorrent_common.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
-import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
-import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
-import 'package:dtorrent_task_v2/src/task.dart';
-import 'package:dtorrent_task_v2/src/task_events.dart';
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:path/path.dart' as path;
 import 'test_torrent_helper.dart';
@@ -24,11 +20,11 @@ Future<void> main() async {
     torrentFile = await ensureTestTorrentExists();
     print('Using test torrent: $torrentFile');
   }
-  var model = await Torrent.parse(torrentFile);
+  var model = await TorrentModel.parse(torrentFile);
   // No peers retrieval
   model.announces.clear();
-  var task = TorrentTask.newTask(
-      model as TorrentModel, path.join(scriptDir, '..', 'tmp'), true);
+  var task =
+      TorrentTask.newTask(model, path.join(scriptDir, '..', 'tmp'), true);
   Timer? timer;
   EventsListener<TaskEvent> listener = task.createListener();
   listener
@@ -51,7 +47,7 @@ Future<void> main() async {
   timer = Timer.periodic(Duration(seconds: 2), (timer) {
     try {
       print(
-          'Downloaded: ${(task.downloaded ?? 0) / (1024 * 1024)} mb , ${(((task.downloaded ?? 0) / model.length) * 100).toStringAsFixed(2)}%');
+          'Downloaded: ${(task.downloaded ?? 0) / (1024 * 1024)} mb , ${(((task.downloaded ?? 0) / (model.length ?? model.totalSize)) * 100).toStringAsFixed(2)}%');
     } finally {}
   });
 

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:args/args.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:logging/logging.dart';
 
@@ -111,9 +110,9 @@ void main(List<String> args) async {
     }
 
     try {
-      final torrent = await Torrent.parse(torrentFile);
+      final torrent = await TorrentModel.parse(torrentFile);
       final item = TorrentQueueItem(
-        metaInfo: torrent as TorrentModel,
+        metaInfo: torrent,
         savePath: savePath,
         priority: priority,
       );

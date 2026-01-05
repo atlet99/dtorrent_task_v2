@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:dtorrent_task_v2/src/httpserver/streaming_isolate.dart';
-import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 
 void main() {
   group('StreamingIsolate Tests', () {
@@ -29,7 +29,7 @@ void main() {
     test('should get playlist from isolate', () async {
       // Create a mock torrent file list using Torrent.parse if possible
       // For now, we'll test with empty list to verify isolate works
-      final files = <TorrentFile>[];
+      final files = <TorrentFileModel>[];
 
       final address = InternetAddress('127.0.0.1');
       final port = 9090;
@@ -58,7 +58,7 @@ void main() {
     });
 
     test('should get JSON metadata from isolate', () async {
-      final files = <TorrentFile>[];
+      final files = <TorrentFileModel>[];
 
       try {
         final json = await isolateManager.getJsonMetadata(
@@ -92,7 +92,7 @@ void main() {
     });
 
     test('should handle timeout gracefully', () async {
-      final files = <TorrentFile>[];
+      final files = <TorrentFileModel>[];
 
       try {
         // Should return empty result on timeout (or reinitialize)
