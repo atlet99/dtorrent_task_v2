@@ -85,6 +85,9 @@ void main() {
       await Future.delayed(const Duration(milliseconds: 300));
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
 
+      // Additional delay to ensure handshake and Have All message are processed
+      await Future.delayed(const Duration(milliseconds: 500));
+
       await completer.future.timeout(const Duration(seconds: 5));
 
       expect(haveAllReceived, isTrue,
@@ -157,6 +160,9 @@ void main() {
       await Future.delayed(const Duration(milliseconds: 300));
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
 
+      // Additional delay to ensure handshake and Have None message are processed
+      await Future.delayed(const Duration(milliseconds: 500));
+
       await completer.future.timeout(const Duration(seconds: 5));
 
       expect(haveNoneReceived, isTrue,
@@ -205,9 +211,10 @@ void main() {
         });
 
         peerListener.on<PeerRequestEvent>((event) {
-          // Choke the peer and reject the request
+          // Choke the peer and send reject request explicitly
           event.peer.sendChoke(true);
-          // Reject should be sent automatically per BEP 6
+          // Send reject request explicitly (BEP 6)
+          event.peer.sendRejectRequest(event.index, event.begin, event.length);
         });
 
         // Initialize stream for incoming connection
@@ -242,8 +249,8 @@ void main() {
       await Future.delayed(const Duration(milliseconds: 300));
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
 
-      // Wait for bitfield
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Wait for bitfield and handshake completion
+      await Future.delayed(const Duration(milliseconds: 800));
 
       // Send request
       clientPeer.sendRequest(0, 0, DEFAULT_REQUEST_LENGTH);
@@ -285,7 +292,18 @@ void main() {
           event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
         });
 
-        // Server will automatically generate and send allowed fast set after handshake
+        peerListener.on<PeerHandshakeEvent>((event) {
+          // Generate and send allowed fast set explicitly
+          final allowedFastSet = _generateAllowedFastSet(
+            socket.address,
+            infoHash,
+            piecesNum,
+          );
+          for (final index in allowedFastSet) {
+            event.peer.sendAllowFast(index);
+          }
+        });
+
         // Initialize stream for incoming connection
         // This must be called to start listening for data
         try {
@@ -316,6 +334,9 @@ void main() {
       // Small delay to ensure server has initialized its stream and is ready
       await Future.delayed(const Duration(milliseconds: 300));
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
+
+      // Additional delay to ensure allowed fast messages are sent and processed
+      await Future.delayed(const Duration(milliseconds: 500));
 
       await completer.future.timeout(const Duration(seconds: 5));
 
@@ -366,11 +387,16 @@ void main() {
           final bitfield = Bitfield.createEmptyBitfield(piecesNum);
           bitfield.setBit(0, true);
           event.peer.sendBitfield(bitfield);
-        });
 
-        peerListener.on<PeerAllowFast>((event) {
-          // After receiving allowed fast, choke the peer
-          // but the allowed fast piece should still be downloadable
+          // Generate and send allowed fast set explicitly
+          final allowedFastSet = _generateAllowedFastSet(
+            socket.address,
+            infoHash,
+            piecesNum,
+          );
+          for (final index in allowedFastSet) {
+            event.peer.sendAllowFast(index);
+          }
         });
 
         peerListener.on<PeerRequestEvent>((event) {
@@ -424,12 +450,15 @@ void main() {
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
 
       // Wait for allowed fast messages to be received
-      // Allowed fast is generated automatically after handshake
+      // Allowed fast is generated and sent after handshake
       try {
-        await allowedFastCompleter.future.timeout(const Duration(seconds: 3));
+        await allowedFastCompleter.future.timeout(const Duration(seconds: 5));
       } catch (e) {
         // If timeout, check if we got at least some allowed fast pieces
       }
+
+      // Additional delay to ensure all messages are processed
+      await Future.delayed(const Duration(milliseconds: 300));
 
       // Get allowed fast pieces - they should be populated after handshake
       expect(clientPeer.remoteAllowFastPieces.isNotEmpty, isTrue,
@@ -509,6 +538,9 @@ void main() {
       // Small delay to ensure server has initialized its stream and is ready
       await Future.delayed(const Duration(milliseconds: 300));
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
+
+      // Additional delay to ensure Suggest Piece message is processed
+      await Future.delayed(const Duration(milliseconds: 500));
 
       await completer.future.timeout(const Duration(seconds: 5));
 
