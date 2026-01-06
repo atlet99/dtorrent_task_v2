@@ -74,6 +74,11 @@ void main() {
       );
       final clientListener = clientPeer.createListener();
 
+      clientListener.on<PeerConnected>((event) {
+        // Send handshake immediately when connected
+        event.peer.sendHandShake('TEST_PEER_ID_123456789012');
+      });
+
       clientListener.on<PeerHaveAll>((event) {
         haveAllReceived = true;
         receivedBitfield = event.peer.remoteBitfield;
@@ -81,12 +86,6 @@ void main() {
       });
 
       await clientPeer.connect();
-      // Small delay to ensure server has initialized its stream and is ready
-      await Future.delayed(const Duration(milliseconds: 300));
-      clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
-
-      // Additional delay to ensure handshake and Have All message are processed
-      await Future.delayed(const Duration(milliseconds: 500));
 
       await completer.future.timeout(const Duration(seconds: 5));
 
@@ -149,6 +148,11 @@ void main() {
       );
       final clientListener = clientPeer.createListener();
 
+      clientListener.on<PeerConnected>((event) {
+        // Send handshake immediately when connected
+        event.peer.sendHandShake('TEST_PEER_ID_123456789012');
+      });
+
       clientListener.on<PeerHaveNone>((event) {
         haveNoneReceived = true;
         receivedBitfield = event.peer.remoteBitfield;
@@ -156,12 +160,6 @@ void main() {
       });
 
       await clientPeer.connect();
-      // Small delay to ensure server has initialized its stream and is ready
-      await Future.delayed(const Duration(milliseconds: 300));
-      clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
-
-      // Additional delay to ensure handshake and Have None message are processed
-      await Future.delayed(const Duration(milliseconds: 500));
 
       await completer.future.timeout(const Duration(seconds: 5));
 
@@ -236,6 +234,18 @@ void main() {
       );
       final clientListener = clientPeer.createListener();
 
+      clientListener.on<PeerConnected>((event) {
+        // Send handshake immediately when connected
+        event.peer.sendHandShake('TEST_PEER_ID_123456789012');
+      });
+
+      clientListener.on<PeerHandshakeEvent>((event) {
+        // Wait a bit for bitfield, then send request
+        Future.delayed(const Duration(milliseconds: 200), () {
+          event.peer.sendRequest(0, 0, DEFAULT_REQUEST_LENGTH);
+        });
+      });
+
       clientListener.on<PeerRejectEvent>((event) {
         rejectReceived = true;
         rejectedIndex = event.index;
@@ -245,15 +255,6 @@ void main() {
       });
 
       await clientPeer.connect();
-      // Small delay to ensure server has initialized its stream and is ready
-      await Future.delayed(const Duration(milliseconds: 300));
-      clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
-
-      // Wait for bitfield and handshake completion
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      // Send request
-      clientPeer.sendRequest(0, 0, DEFAULT_REQUEST_LENGTH);
 
       await completer.future.timeout(const Duration(seconds: 5));
 
@@ -323,6 +324,11 @@ void main() {
       );
       final clientListener = clientPeer.createListener();
 
+      clientListener.on<PeerConnected>((event) {
+        // Send handshake immediately when connected
+        event.peer.sendHandShake('TEST_PEER_ID_123456789012');
+      });
+
       clientListener.on<PeerAllowFast>((event) {
         allowedFastPieces.add(event.index);
         if (allowedFastPieces.length >= 10) {
@@ -331,12 +337,6 @@ void main() {
       });
 
       await clientPeer.connect();
-      // Small delay to ensure server has initialized its stream and is ready
-      await Future.delayed(const Duration(milliseconds: 300));
-      clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
-
-      // Additional delay to ensure allowed fast messages are sent and processed
-      await Future.delayed(const Duration(milliseconds: 500));
 
       await completer.future.timeout(const Duration(seconds: 5));
 
@@ -436,6 +436,11 @@ void main() {
       final allowedFastCompleter = Completer<void>();
       int allowedFastCount = 0;
 
+      clientListener.on<PeerConnected>((event) {
+        // Send handshake immediately when connected
+        event.peer.sendHandShake('TEST_PEER_ID_123456789012');
+      });
+
       // Listen for allowed fast messages
       clientListener.on<PeerAllowFast>((event) {
         allowedFastCount++;
@@ -445,9 +450,6 @@ void main() {
       });
 
       await clientPeer.connect();
-      // Small delay to ensure server has initialized its stream and is ready
-      await Future.delayed(const Duration(milliseconds: 300));
-      clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
 
       // Wait for allowed fast messages to be received
       // Allowed fast is generated and sent after handshake
@@ -456,9 +458,6 @@ void main() {
       } catch (e) {
         // If timeout, check if we got at least some allowed fast pieces
       }
-
-      // Additional delay to ensure all messages are processed
-      await Future.delayed(const Duration(milliseconds: 300));
 
       // Get allowed fast pieces - they should be populated after handshake
       expect(clientPeer.remoteAllowFastPieces.isNotEmpty, isTrue,
@@ -528,6 +527,11 @@ void main() {
       );
       final clientListener = clientPeer.createListener();
 
+      clientListener.on<PeerConnected>((event) {
+        // Send handshake immediately when connected
+        event.peer.sendHandShake('TEST_PEER_ID_123456789012');
+      });
+
       clientListener.on<PeerSuggestPiece>((event) {
         suggestReceived = true;
         suggestedIndex = event.index;
@@ -535,12 +539,6 @@ void main() {
       });
 
       await clientPeer.connect();
-      // Small delay to ensure server has initialized its stream and is ready
-      await Future.delayed(const Duration(milliseconds: 300));
-      clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
-
-      // Additional delay to ensure Suggest Piece message is processed
-      await Future.delayed(const Duration(milliseconds: 500));
 
       await completer.future.timeout(const Duration(seconds: 5));
 
