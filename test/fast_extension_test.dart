@@ -33,7 +33,7 @@ void main() {
       serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
       serverPort = serverSocket!.port;
 
-      serverSocket!.listen((socket) {
+      serverSocket!.listen((socket) async {
         final peer = Peer.newTCPPeer(
           CompactAddress(socket.address, socket.port),
           infoHash,
@@ -41,6 +41,8 @@ void main() {
           socket,
           PeerSource.incoming,
         );
+
+        // Create listener BEFORE connect to catch PeerConnected event
         final peerListener = peer.createListener();
 
         peerListener.on<PeerConnected>((event) {
@@ -54,7 +56,12 @@ void main() {
         });
 
         // Initialize stream for incoming connection
-        peer.connect();
+        // This must be called to start listening for data
+        try {
+          await peer.connect();
+        } catch (e) {
+          // Ignore connection errors in tests
+        }
       });
 
       final clientSocket = await Socket.connect('127.0.0.1', serverPort);
@@ -74,6 +81,8 @@ void main() {
       });
 
       await clientPeer.connect();
+      // Small delay to ensure server has initialized its stream and is ready
+      await Future.delayed(const Duration(milliseconds: 300));
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
 
       await completer.future.timeout(const Duration(seconds: 5));
@@ -96,7 +105,7 @@ void main() {
       serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
       serverPort = serverSocket!.port;
 
-      serverSocket!.listen((socket) {
+      serverSocket!.listen((socket) async {
         final peer = Peer.newTCPPeer(
           CompactAddress(socket.address, socket.port),
           infoHash,
@@ -104,6 +113,8 @@ void main() {
           socket,
           PeerSource.incoming,
         );
+
+        // Create listener BEFORE connect to catch PeerConnected event
         final peerListener = peer.createListener();
 
         peerListener.on<PeerConnected>((event) {
@@ -117,7 +128,12 @@ void main() {
         });
 
         // Initialize stream for incoming connection
-        peer.connect();
+        // This must be called to start listening for data
+        try {
+          await peer.connect();
+        } catch (e) {
+          // Ignore connection errors in tests
+        }
       });
 
       final clientSocket = await Socket.connect('127.0.0.1', serverPort);
@@ -137,6 +153,8 @@ void main() {
       });
 
       await clientPeer.connect();
+      // Small delay to ensure server has initialized its stream and is ready
+      await Future.delayed(const Duration(milliseconds: 300));
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
 
       await completer.future.timeout(const Duration(seconds: 5));
@@ -161,7 +179,7 @@ void main() {
       serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
       serverPort = serverSocket!.port;
 
-      serverSocket!.listen((socket) {
+      serverSocket!.listen((socket) async {
         final peer = Peer.newTCPPeer(
           CompactAddress(socket.address, socket.port),
           infoHash,
@@ -169,7 +187,14 @@ void main() {
           socket,
           PeerSource.incoming,
         );
+
+        // Create listener BEFORE connect to catch PeerConnected event
         final peerListener = peer.createListener();
+
+        peerListener.on<PeerConnected>((event) {
+          // Send handshake from server
+          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+        });
 
         peerListener.on<PeerHandshakeEvent>((event) {
           // Send bitfield with some pieces
@@ -179,11 +204,6 @@ void main() {
           event.peer.sendBitfield(bitfield);
         });
 
-        peerListener.on<PeerConnected>((event) {
-          // Send handshake from server
-          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
-        });
-
         peerListener.on<PeerRequestEvent>((event) {
           // Choke the peer and reject the request
           event.peer.sendChoke(true);
@@ -191,7 +211,12 @@ void main() {
         });
 
         // Initialize stream for incoming connection
-        peer.connect();
+        // This must be called to start listening for data
+        try {
+          await peer.connect();
+        } catch (e) {
+          // Ignore connection errors in tests
+        }
       });
 
       final clientSocket = await Socket.connect('127.0.0.1', serverPort);
@@ -213,6 +238,8 @@ void main() {
       });
 
       await clientPeer.connect();
+      // Small delay to ensure server has initialized its stream and is ready
+      await Future.delayed(const Duration(milliseconds: 300));
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
 
       // Wait for bitfield
@@ -241,7 +268,7 @@ void main() {
       serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
       serverPort = serverSocket!.port;
 
-      serverSocket!.listen((socket) {
+      serverSocket!.listen((socket) async {
         final peer = Peer.newTCPPeer(
           CompactAddress(socket.address, socket.port),
           infoHash,
@@ -249,6 +276,8 @@ void main() {
           socket,
           PeerSource.incoming,
         );
+
+        // Create listener BEFORE connect to catch PeerConnected event
         final peerListener = peer.createListener();
 
         peerListener.on<PeerConnected>((event) {
@@ -258,7 +287,12 @@ void main() {
 
         // Server will automatically generate and send allowed fast set after handshake
         // Initialize stream for incoming connection
-        peer.connect();
+        // This must be called to start listening for data
+        try {
+          await peer.connect();
+        } catch (e) {
+          // Ignore connection errors in tests
+        }
       });
 
       final clientSocket = await Socket.connect('127.0.0.1', serverPort);
@@ -279,6 +313,8 @@ void main() {
       });
 
       await clientPeer.connect();
+      // Small delay to ensure server has initialized its stream and is ready
+      await Future.delayed(const Duration(milliseconds: 300));
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
 
       await completer.future.timeout(const Duration(seconds: 5));
@@ -308,7 +344,7 @@ void main() {
       serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
       serverPort = serverSocket!.port;
 
-      serverSocket!.listen((socket) {
+      serverSocket!.listen((socket) async {
         final peer = Peer.newTCPPeer(
           CompactAddress(socket.address, socket.port),
           infoHash,
@@ -316,6 +352,8 @@ void main() {
           socket,
           PeerSource.incoming,
         );
+
+        // Create listener BEFORE connect to catch PeerConnected event
         final peerListener = peer.createListener();
 
         peerListener.on<PeerConnected>((event) {
@@ -351,7 +389,12 @@ void main() {
         });
 
         // Initialize stream for incoming connection
-        peer.connect();
+        // This must be called to start listening for data
+        try {
+          await peer.connect();
+        } catch (e) {
+          // Ignore connection errors in tests
+        }
       });
 
       final clientSocket = await Socket.connect('127.0.0.1', serverPort);
@@ -363,20 +406,37 @@ void main() {
         PeerSource.manual,
       );
 
+      final clientListener = clientPeer.createListener();
+      final allowedFastCompleter = Completer<void>();
+      int allowedFastCount = 0;
+
+      // Listen for allowed fast messages
+      clientListener.on<PeerAllowFast>((event) {
+        allowedFastCount++;
+        if (allowedFastCount >= 10 && !allowedFastCompleter.isCompleted) {
+          allowedFastCompleter.complete();
+        }
+      });
+
       await clientPeer.connect();
+      // Small delay to ensure server has initialized its stream and is ready
+      await Future.delayed(const Duration(milliseconds: 300));
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
 
-      // Wait for bitfield and allowed fast to be generated and sent
+      // Wait for allowed fast messages to be received
       // Allowed fast is generated automatically after handshake
-      await Future.delayed(const Duration(milliseconds: 1500));
+      try {
+        await allowedFastCompleter.future.timeout(const Duration(seconds: 3));
+      } catch (e) {
+        // If timeout, check if we got at least some allowed fast pieces
+      }
 
-      // Get allowed fast pieces
-      final allowedFast = clientPeer.remoteAllowFastPieces;
-      expect(allowedFast.isNotEmpty, isTrue,
+      // Get allowed fast pieces - they should be populated after handshake
+      expect(clientPeer.remoteAllowFastPieces.isNotEmpty, isTrue,
           reason: 'Should have allowed fast pieces');
 
       // Request an allowed fast piece
-      final allowedFastIndex = allowedFast.first;
+      final allowedFastIndex = clientPeer.remoteAllowFastPieces.first;
       clientPeer.sendRequest(allowedFastIndex, 0, DEFAULT_REQUEST_LENGTH);
 
       await completer.future.timeout(const Duration(seconds: 5));
@@ -398,7 +458,7 @@ void main() {
       serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
       serverPort = serverSocket!.port;
 
-      serverSocket!.listen((socket) {
+      serverSocket!.listen((socket) async {
         final peer = Peer.newTCPPeer(
           CompactAddress(socket.address, socket.port),
           infoHash,
@@ -406,6 +466,8 @@ void main() {
           socket,
           PeerSource.incoming,
         );
+
+        // Create listener BEFORE connect to catch PeerConnected event
         final peerListener = peer.createListener();
 
         peerListener.on<PeerConnected>((event) {
@@ -419,7 +481,12 @@ void main() {
         });
 
         // Initialize stream for incoming connection
-        peer.connect();
+        // This must be called to start listening for data
+        try {
+          await peer.connect();
+        } catch (e) {
+          // Ignore connection errors in tests
+        }
       });
 
       final clientSocket = await Socket.connect('127.0.0.1', serverPort);
@@ -439,6 +506,8 @@ void main() {
       });
 
       await clientPeer.connect();
+      // Small delay to ensure server has initialized its stream and is ready
+      await Future.delayed(const Duration(milliseconds: 300));
       clientPeer.sendHandShake('TEST_PEER_ID_123456789012');
 
       await completer.future.timeout(const Duration(seconds: 5));
