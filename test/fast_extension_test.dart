@@ -293,17 +293,8 @@ void main() {
           event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
         });
 
-        peerListener.on<PeerHandshakeEvent>((event) {
-          // Generate and send allowed fast set explicitly
-          final allowedFastSet = _generateAllowedFastSet(
-            socket.address,
-            infoHash,
-            piecesNum,
-          );
-          for (final index in allowedFastSet) {
-            event.peer.sendAllowFast(index);
-          }
-        });
+        // Allowed Fast set is auto-generated in _processHandShake()
+        // No need to manually send it!
 
         // Initialize stream for incoming connection
         // This must be called to start listening for data
