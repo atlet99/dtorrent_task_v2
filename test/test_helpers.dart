@@ -14,7 +14,14 @@ Future<TorrentModel> createTestTorrent({
   // Create a temporary file
   final tempFile = File(
       '${Directory.systemTemp.path}/test_file_${DateTime.now().millisecondsSinceEpoch}.dat');
+
+  // Write data and ensure file is flushed to disk
   await tempFile.writeAsBytes(List<int>.generate(fileSize, (i) => i % 256));
+
+  // Verify file exists and is readable
+  if (!await tempFile.exists()) {
+    throw StateError('Test file was not created');
+  }
 
   // Create torrent
   final options = TorrentCreationOptions(
@@ -24,9 +31,10 @@ Future<TorrentModel> createTestTorrent({
     createdBy: 'dtorrent_task_v2_test',
   );
 
+  // Create torrent while file still exists
   final torrent = await TorrentCreator.createTorrent(tempFile.path, options);
 
-  // Clean up temp file
+  // Clean up temp file after torrent is created
   try {
     if (await tempFile.exists()) {
       await tempFile.delete();

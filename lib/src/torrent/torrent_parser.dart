@@ -59,8 +59,16 @@ class TorrentParser {
     final version = _detectVersion(info, data);
     _log.info('Detected torrent version: $version');
 
-    // Parse name
-    final name = info['name'] as String?;
+    // Parse name - can be String or Uint8List from bencode
+    final nameRaw = info['name'];
+    String? name;
+    if (nameRaw is String) {
+      name = nameRaw;
+    } else if (nameRaw is Uint8List) {
+      name = String.fromCharCodes(nameRaw);
+    } else if (nameRaw is List<int>) {
+      name = String.fromCharCodes(nameRaw);
+    }
     if (name == null || name.isEmpty) {
       throw FormatException(
           'Invalid torrent file: missing name in info dictionary');
@@ -251,11 +259,19 @@ class TorrentParser {
         for (var tier in announceList) {
           if (tier is List) {
             for (var url in tier) {
+              String? urlString;
               if (url is String) {
+                urlString = url;
+              } else if (url is Uint8List) {
+                urlString = String.fromCharCodes(url);
+              } else if (url is List<int>) {
+                urlString = String.fromCharCodes(url);
+              }
+              if (urlString != null) {
                 try {
-                  announces.add(Uri.parse(url));
+                  announces.add(Uri.parse(urlString));
                 } catch (e) {
-                  _log.warning('Invalid announce URL: $url', e);
+                  _log.warning('Invalid announce URL: $urlString', e);
                 }
               }
             }
@@ -266,7 +282,15 @@ class TorrentParser {
 
     // Fallback to single announce
     if (announces.isEmpty && data.containsKey('announce')) {
-      final announce = data['announce'] as String?;
+      final announceRaw = data['announce'];
+      String? announce;
+      if (announceRaw is String) {
+        announce = announceRaw;
+      } else if (announceRaw is Uint8List) {
+        announce = String.fromCharCodes(announceRaw);
+      } else if (announceRaw is List<int>) {
+        announce = String.fromCharCodes(announceRaw);
+      }
       if (announce != null) {
         try {
           announces.add(Uri.parse(announce));
@@ -288,7 +312,15 @@ class TorrentParser {
       if (nodesData is List) {
         for (var node in nodesData) {
           if (node is List && node.length == 2) {
-            final host = node[0] as String?;
+            final hostRaw = node[0];
+            String? host;
+            if (hostRaw is String) {
+              host = hostRaw;
+            } else if (hostRaw is Uint8List) {
+              host = String.fromCharCodes(hostRaw);
+            } else if (hostRaw is List<int>) {
+              host = String.fromCharCodes(hostRaw);
+            }
             final port = node[1] as int?;
             if (host != null && port != null) {
               try {
@@ -319,7 +351,17 @@ class TorrentParser {
       final pathList = fileData['path'] as List?;
       String path;
       if (pathList != null && pathList.isNotEmpty) {
-        path = pathList.map((p) => p.toString()).join('/');
+        path = pathList.map((p) {
+          if (p is String) {
+            return p;
+          } else if (p is Uint8List) {
+            return String.fromCharCodes(p);
+          } else if (p is List<int>) {
+            return String.fromCharCodes(p);
+          } else {
+            return p.toString();
+          }
+        }).join('/');
         if (basePath.isNotEmpty) {
           path = '$basePath/$path';
         }
