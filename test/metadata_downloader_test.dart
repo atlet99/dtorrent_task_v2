@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart' show sha1;
 import 'package:test/test.dart';
 import 'package:dtorrent_task_v2/src/metadata/metadata_downloader.dart';
 import 'package:dtorrent_task_v2/src/metadata/metadata_downloader_events.dart';
@@ -215,8 +216,8 @@ void main() {
         }
       });
 
-      const infoHash = '0123456789abcdef0123456789abcdef01234567';
       final cachedData = List<int>.generate(128, (i) => (255 - i) % 256);
+      final infoHash = sha1.convert(cachedData).toString();
       await File('${cacheDir.path}/$infoHash.torrent').writeAsBytes(cachedData);
       MetadataDownloader.setCacheDirectory(cacheDir.path);
 
@@ -237,6 +238,43 @@ void main() {
       );
       expect(result, equals(cachedData));
       expect(downloader.progress, equals(0));
+
+      listener.dispose();
+      await downloader.stop();
+    });
+
+    test('should ignore corrupted cache with mismatched hash', () async {
+      final cacheDir =
+          await Directory.systemTemp.createTemp('metadata_cache_corrupt_');
+      addTearDown(() async {
+        MetadataDownloader.setCacheDirectory(null);
+        if (await cacheDir.exists()) {
+          await cacheDir.delete(recursive: true);
+        }
+      });
+
+      const infoHash = '0123456789abcdef0123456789abcdef01234567';
+      final corruptedData = List<int>.generate(64, (i) => i);
+      await File('${cacheDir.path}/$infoHash.torrent')
+          .writeAsBytes(corruptedData);
+      MetadataDownloader.setCacheDirectory(cacheDir.path);
+
+      final downloader = MetadataDownloader(infoHash);
+      final listener = downloader.createListener();
+      final completeCompleter = Completer<List<int>>();
+
+      listener.on<MetaDataDownloadComplete>((event) {
+        if (!completeCompleter.isCompleted) {
+          completeCompleter.complete(event.data);
+        }
+      });
+
+      await downloader.startDownload();
+
+      await expectLater(
+        completeCompleter.future.timeout(const Duration(milliseconds: 300)),
+        throwsA(isA<TimeoutException>()),
+      );
 
       listener.dispose();
       await downloader.stop();
