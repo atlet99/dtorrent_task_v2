@@ -345,5 +345,30 @@ void main() {
       expect(magnet, isNotNull);
       expect(magnet!.selectedFileIndices, equals([2, 3, 5]));
     });
+
+    test('should parse uppercase query parameter keys', () {
+      final magnetUri =
+          'magnet:?XT=urn:btih:0123456789abcdef0123456789abcdef01234567&DN=Upper+Case&TR=http://tracker.example.com&WS=http://webseed.example.com/file&AS=http://source.example.com/file&SO=4';
+      final magnet = MagnetParser.parse(magnetUri);
+
+      expect(magnet, isNotNull);
+      expect(magnet!.displayName, equals('Upper Case'));
+      expect(magnet.trackers.length, equals(1));
+      expect(magnet.webSeeds.length, equals(1));
+      expect(magnet.acceptableSources.length, equals(1));
+      expect(magnet.selectedFileIndices, equals([4]));
+    });
+
+    test('should keep repeated numbered tracker entries in same tier', () {
+      final magnetUri =
+          'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&tr.1=http://tracker1.com&tr.1=http://tracker2.com&tr.2=http://tracker3.com';
+      final magnet = MagnetParser.parse(magnetUri);
+
+      expect(magnet, isNotNull);
+      expect(magnet!.trackerTiers.length, equals(2));
+      expect(magnet.trackerTiers[0].trackers.length, equals(2));
+      expect(magnet.trackerTiers[1].trackers.length, equals(1));
+      expect(magnet.trackers.length, equals(3));
+    });
   });
 }

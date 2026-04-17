@@ -115,37 +115,28 @@ class MagnetParser {
       }
 
       final uri = Uri.parse(magnetUri);
-      // Parse query parameters manually to handle multiple parameters
-      final params = <String, String>{};
-      final multiValueParams =
-          <String, List<String>>{}; // For so, ws, as parameters
+      // Parse query parameters manually to preserve duplicates and normalize
+      // key casing.
+      final params = <String, List<String>>{};
       final queryString = uri.query;
       if (queryString.isNotEmpty) {
         final pairs = queryString.split('&');
         for (final pair in pairs) {
-          final parts = pair.split('=');
-          if (parts.length == 2) {
-            final key = Uri.decodeComponent(parts[0]);
-            final value = Uri.decodeComponent(parts[1]);
-            // For multiple 'tr' parameters, combine them with comma
-            if (key == 'tr' && params.containsKey('tr')) {
-              params['tr'] = '${params['tr']},$value';
-            } else if (key == 'so' || key == 'ws' || key == 'as') {
-              // Collect multiple values for so, ws, as parameters
-              multiValueParams.putIfAbsent(key, () => []).add(value);
-              // Also store in params for backward compatibility
-              if (!params.containsKey(key)) {
-                params[key] = value;
-              }
-            } else {
-              params[key] = value;
-            }
-          }
+          final separatorIndex = pair.indexOf('=');
+          if (separatorIndex <= 0) continue;
+          final key =
+              Uri.decodeQueryComponent(pair.substring(0, separatorIndex))
+                  .toLowerCase();
+          final value =
+              Uri.decodeQueryComponent(pair.substring(separatorIndex + 1));
+          params.putIfAbsent(key, () => []).add(value);
         }
       }
 
       // Parse info hash from xt parameter (required)
-      final xt = params['xt'];
+      final xtValues = params['xt'];
+      final xt =
+          xtValues != null && xtValues.isNotEmpty ? xtValues.first : null;
       if (xt == null || xt.isEmpty) {
         _log.warning('Magnet URI missing required "xt" parameter');
         return null;
@@ -196,8 +187,11 @@ class MagnetParser {
       }
 
       // Parse display name (URL decode it)
+      final displayNameValues = params['dn'];
       final displayName =
-          params['dn'] != null ? Uri.decodeComponent(params['dn']!) : null;
+          displayNameValues != null && displayNameValues.isNotEmpty
+              ? displayNameValues.first
+              : null;
 
       // Parse trackers with support for tiers (BEP 0012)
       // Trackers can be:
@@ -211,23 +205,27 @@ class MagnetParser {
       final trParams = params['tr'];
       if (trParams != null) {
         final tier0Trackers = <Uri>[];
-        // Can be single value or comma-separated
-        final trackerUrls =
-            trParams.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty);
-        for (final url in trackerUrls) {
-          try {
-            final trackerUri = Uri.parse(url);
-            if (trackerUri.hasScheme &&
-                (trackerUri.scheme == 'http' ||
-                    trackerUri.scheme == 'https' ||
-                    trackerUri.scheme == 'udp')) {
-              trackers.add(trackerUri);
-              tier0Trackers.add(trackerUri);
-            } else {
-              _log.warning('Invalid tracker URL: $url');
+        for (final trValue in trParams) {
+          // Can be single value or comma-separated
+          final trackerUrls = trValue
+              .split(',')
+              .map((s) => s.trim())
+              .where((s) => s.isNotEmpty);
+          for (final url in trackerUrls) {
+            try {
+              final trackerUri = Uri.parse(url);
+              if (trackerUri.hasScheme &&
+                  (trackerUri.scheme == 'http' ||
+                      trackerUri.scheme == 'https' ||
+                      trackerUri.scheme == 'udp')) {
+                trackers.add(trackerUri);
+                tier0Trackers.add(trackerUri);
+              } else {
+                _log.warning('Invalid tracker URL: $url');
+              }
+            } catch (e) {
+              _log.warning('Failed to parse tracker URL: $url', e);
             }
-          } catch (e) {
-            _log.warning('Failed to parse tracker URL: $url', e);
           }
         }
         if (tier0Trackers.isNotEmpty) {
@@ -236,24 +234,27 @@ class MagnetParser {
       }
 
       // Parse numbered tracker parameters (tr.1, tr.2, etc.) - each is a separate tier
-      for (final key in params.keys) {
+      for (final entry in params.entries) {
+        final key = entry.key;
         if (key.startsWith('tr.') && key.length > 3) {
           try {
             final tierNumberStr = key.substring(3);
             final tierNumber = int.tryParse(tierNumberStr);
             if (tierNumber == null) continue;
 
-            final trackerUri = Uri.parse(params[key]!);
-            if (trackerUri.hasScheme &&
-                (trackerUri.scheme == 'http' ||
-                    trackerUri.scheme == 'https' ||
-                    trackerUri.scheme == 'udp')) {
-              trackers.add(trackerUri);
-              tierMap.putIfAbsent(tierNumber, () => []).add(trackerUri);
+            for (final trackerUrl in entry.value) {
+              final trackerUri = Uri.parse(trackerUrl);
+              if (trackerUri.hasScheme &&
+                  (trackerUri.scheme == 'http' ||
+                      trackerUri.scheme == 'https' ||
+                      trackerUri.scheme == 'udp')) {
+                trackers.add(trackerUri);
+                tierMap.putIfAbsent(tierNumber, () => []).add(trackerUri);
+              }
             }
           } catch (e) {
             _log.warning(
-                'Failed to parse tracker URL from $key: ${params[key]}', e);
+                'Failed to parse tracker URL from $key: ${entry.value}', e);
           }
         }
       }
@@ -272,7 +273,9 @@ class MagnetParser {
 
       // Parse exact length
       int? exactLength;
-      final xl = params['xl'];
+      final xlValues = params['xl'];
+      final xl =
+          xlValues != null && xlValues.isNotEmpty ? xlValues.first : null;
       if (xl != null && xl.isNotEmpty) {
         exactLength = int.tryParse(xl);
         if (exactLength == null) {
@@ -282,9 +285,7 @@ class MagnetParser {
 
       // Parse web seeds (BEP 0019) - parameter 'ws'
       final webSeeds = <Uri>[];
-      // Use multiValueParams if available, otherwise fall back to params
-      final wsValues = multiValueParams['ws'] ??
-          (params['ws'] != null ? [params['ws']!] : []);
+      final wsValues = params['ws'] ?? [];
       for (final url in wsValues) {
         try {
           final wsUri = Uri.parse(url);
@@ -301,28 +302,29 @@ class MagnetParser {
         }
       }
       // Also check for numbered ws parameters (ws.1, ws.2, etc.)
-      for (final key in params.keys) {
+      for (final entry in params.entries) {
+        final key = entry.key;
         if (key.startsWith('ws.') && key.length > 3) {
           try {
-            final wsUri = Uri.parse(params[key]!);
-            if (wsUri.hasScheme &&
-                (wsUri.scheme == 'http' ||
-                    wsUri.scheme == 'https' ||
-                    wsUri.scheme == 'ftp')) {
-              webSeeds.add(wsUri);
+            for (final wsValue in entry.value) {
+              final wsUri = Uri.parse(wsValue);
+              if (wsUri.hasScheme &&
+                  (wsUri.scheme == 'http' ||
+                      wsUri.scheme == 'https' ||
+                      wsUri.scheme == 'ftp')) {
+                webSeeds.add(wsUri);
+              }
             }
           } catch (e) {
             _log.warning(
-                'Failed to parse web seed URL from $key: ${params[key]}', e);
+                'Failed to parse web seed URL from $key: ${entry.value}', e);
           }
         }
       }
 
       // Parse acceptable sources (BEP 0019) - parameter 'as'
       final acceptableSources = <Uri>[];
-      // Use multiValueParams if available, otherwise fall back to params
-      final asValues = multiValueParams['as'] ??
-          (params['as'] != null ? [params['as']!] : []);
+      final asValues = params['as'] ?? [];
       for (final url in asValues) {
         try {
           final asUri = Uri.parse(url);
@@ -339,19 +341,22 @@ class MagnetParser {
         }
       }
       // Also check for numbered as parameters (as.1, as.2, etc.)
-      for (final key in params.keys) {
+      for (final entry in params.entries) {
+        final key = entry.key;
         if (key.startsWith('as.') && key.length > 3) {
           try {
-            final asUri = Uri.parse(params[key]!);
-            if (asUri.hasScheme &&
-                (asUri.scheme == 'http' ||
-                    asUri.scheme == 'https' ||
-                    asUri.scheme == 'ftp')) {
-              acceptableSources.add(asUri);
+            for (final asValue in entry.value) {
+              final asUri = Uri.parse(asValue);
+              if (asUri.hasScheme &&
+                  (asUri.scheme == 'http' ||
+                      asUri.scheme == 'https' ||
+                      asUri.scheme == 'ftp')) {
+                acceptableSources.add(asUri);
+              }
             }
           } catch (e) {
             _log.warning(
-                'Failed to parse acceptable source URL from $key: ${params[key]}',
+                'Failed to parse acceptable source URL from $key: ${entry.value}',
                 e);
           }
         }
@@ -359,9 +364,7 @@ class MagnetParser {
 
       // Parse selected file indices (BEP 0053) - parameter 'so'
       final selectedFileIndices = <int>[];
-      // Use multiValueParams if available, otherwise fall back to params
-      final soValues = multiValueParams['so'] ??
-          (params['so'] != null ? [params['so']!] : []);
+      final soValues = params['so'] ?? [];
       for (final value in soValues) {
         if (value.isNotEmpty) {
           final index = int.tryParse(value);
@@ -373,15 +376,17 @@ class MagnetParser {
         }
       }
       // Also check for numbered so parameters (so.1, so.2, etc.)
-      for (final key in params.keys) {
+      for (final entry in params.entries) {
+        final key = entry.key;
         if (key.startsWith('so.') && key.length > 3) {
-          final value = params[key];
-          if (value != null && value.isNotEmpty) {
-            final index = int.tryParse(value);
-            if (index != null && index >= 0) {
-              selectedFileIndices.add(index);
-            } else {
-              _log.warning('Invalid file index in $key: $value');
+          for (final value in entry.value) {
+            if (value.isNotEmpty) {
+              final index = int.tryParse(value);
+              if (index != null && index >= 0) {
+                selectedFileIndices.add(index);
+              } else {
+                _log.warning('Invalid file index in $key: $value');
+              }
             }
           }
         }
