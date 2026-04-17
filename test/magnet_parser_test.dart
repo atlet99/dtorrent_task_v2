@@ -106,6 +106,24 @@ void main() {
       expect(magnet!.infoHash.length, equals(20));
     });
 
+    test('should handle uppercase BTIH namespace', () {
+      final magnetUri =
+          'magnet:?xt=urn:BTIH:0123456789abcdef0123456789abcdef01234567';
+      final magnet = MagnetParser.parse(magnetUri);
+
+      expect(magnet, isNotNull);
+      expect(magnet!.infoHash.length, equals(20));
+    });
+
+    test('should parse lowercase Base32 infohash', () {
+      final magnetUri = 'magnet:?xt=urn:btih:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+      final magnet = MagnetParser.parse(magnetUri);
+
+      expect(magnet, isNotNull);
+      expect(magnet!.infoHash.length, equals(20));
+      expect(magnet.infoHash.every((b) => b == 0), isTrue);
+    });
+
     test('should handle URL-encoded display name', () {
       final magnetUri =
           'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Test%20File%20Name';
@@ -317,6 +335,15 @@ void main() {
       expect(magnet!.selectedFileIndices, isNotNull);
       expect(magnet.selectedFileIndices!.length, equals(1));
       expect(magnet.selectedFileIndices, contains(0));
+    });
+
+    test('should deduplicate and sort selected file indices', () {
+      final magnetUri =
+          'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&so=5&so=2&so=5&so.1=3&so.2=2';
+      final magnet = MagnetParser.parse(magnetUri);
+
+      expect(magnet, isNotNull);
+      expect(magnet!.selectedFileIndices, equals([2, 3, 5]));
     });
   });
 }

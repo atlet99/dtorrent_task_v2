@@ -109,7 +109,7 @@ class MagnetParser {
   /// Returns null if the URI is invalid or missing required parameters
   static MagnetLink? parse(String magnetUri) {
     try {
-      if (!magnetUri.startsWith('magnet:?')) {
+      if (!magnetUri.toLowerCase().startsWith('magnet:?')) {
         _log.warning('Invalid magnet URI format: must start with "magnet:?"');
         return null;
       }
@@ -150,9 +150,10 @@ class MagnetParser {
         _log.warning('Magnet URI missing required "xt" parameter');
         return null;
       }
+      final xtLower = xt.toLowerCase();
 
       Uint8List? infoHash;
-      if (xt.startsWith('urn:btih:')) {
+      if (xtLower.startsWith('urn:btih:')) {
         // Hex format: urn:btih:40-character hex string
         final hexHash = xt.substring(9);
         if (hexHash.length == 40) {
@@ -174,7 +175,7 @@ class MagnetParser {
           _log.warning('Invalid info hash length: ${hexHash.length}');
           return null;
         }
-      } else if (xt.startsWith('urn:sha1:')) {
+      } else if (xtLower.startsWith('urn:sha1:')) {
         // SHA1 format
         final hexHash = xt.substring(9);
         if (hexHash.length == 40) {

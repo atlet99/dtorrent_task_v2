@@ -365,11 +365,11 @@ abstract class Peer
 
   /// Connect remote peer
   Future connect([int timeout = DEFAULT_CONNECT_TIMEOUT]) async {
-    print('[PEER CONNECT] Starting connect for $address, source=$source');
+    _log.fine('Connecting to peer $address (source: $source)');
     try {
       _init();
       var stream = await connectRemote(timeout);
-      print('[PEER CONNECT] Got stream for $address, starting listener');
+      _log.fine('Connected stream established for peer $address');
       startSpeedCalculator();
       _streamChunk = stream?.listen(_processReceiveData, onDone: () {
         _log.info('Connection is closed $address');
@@ -387,7 +387,7 @@ abstract class Peer
           dispose(e);
         }
       });
-      print('[PEER CONNECT] Emitting PeerConnected event for $address');
+      _log.fine('Emitting PeerConnected event for peer $address');
       events.emit(PeerConnected(this));
     } catch (e) {
       if (e is TCPConnectException) return dispose(e);
