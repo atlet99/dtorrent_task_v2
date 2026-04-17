@@ -235,7 +235,7 @@ void main(List<String> args) async {
                 final expectedHash = torrent.pieces![i];
 
                 // Compare hashes
-                if (hash.toString() == expectedHash) {
+                if (_bytesEqual(hash.bytes, expectedHash)) {
                   // Piece is valid, mark it as complete
                   await task.fileManager!.updateBitfield(i, true);
                   validatedCount++;
@@ -398,6 +398,18 @@ void main(List<String> args) async {
     _log.severe('Error', e, stackTrace);
     exit(1);
   }
+}
+
+bool _bytesEqual(List<int> left, List<int> right) {
+  if (left.length != right.length) {
+    return false;
+  }
+  for (var i = 0; i < left.length; i++) {
+    if (left[i] != right[i]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /// Helper function to read piece data directly from files

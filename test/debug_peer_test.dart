@@ -13,15 +13,14 @@ void main() {
     final piecesNum = 100;
 
     final completer = Completer<void>();
-    bool serverHandshakeReceived = false;
-    bool clientHandshakeReceived = false;
+    var serverHandshakeReceived = false;
+    var clientHandshakeReceived = false;
 
     // Start server
     final serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     final serverPort = serverSocket.port;
 
     serverSocket.listen((socket) async {
-      print('[SERVER] Connection accepted');
       final serverPeer = Peer.newTCPPeer(
         CompactAddress(socket.address, socket.port),
         infoHash,
@@ -33,32 +32,18 @@ void main() {
       final serverListener = serverPeer.createListener();
 
       serverListener.on<PeerConnected>((event) {
-        print('[SERVER] PeerConnected event');
-        event.peer.sendHandShake('SERVER_PEER_ID_00000000');
+        event.peer.sendHandShake(_normalizePeerId('SERVER'));
       });
 
       serverListener.on<PeerHandshakeEvent>((event) {
-        print('[SERVER] PeerHandshakeEvent - received client handshake');
-        print(
-            '[SERVER] remoteEnableFastPeer: ${event.peer.remoteEnableFastPeer}');
-        print(
-            '[SERVER] localEnableFastPeer: ${event.peer.localEnableFastPeer}');
         serverHandshakeReceived = true;
-
-        // Try to send HaveAll
-        print('[SERVER] Attempting to send HaveAll...');
         event.peer.sendHaveAll();
-        print('[SERVER] sendHaveAll() called');
       });
 
       await serverPeer.connect();
-      print('[SERVER] Peer connected');
     });
 
-    // Connect client
-    print('[CLIENT] Connecting to server...');
     final clientSocket = await Socket.connect('127.0.0.1', serverPort);
-    print('[CLIENT] Socket connected');
 
     final clientPeer = Peer.newTCPPeer(
       CompactAddress(InternetAddress('127.0.0.1'), serverPort),
@@ -71,43 +56,35 @@ void main() {
     final clientListener = clientPeer.createListener();
 
     clientListener.on<PeerConnected>((event) {
-      print('[CLIENT] PeerConnected event');
-      // Send handshake immediately when connected
-      print('[CLIENT] Sending handshake...');
-      event.peer.sendHandShake('CLIENT_PEER_ID_00000000');
+      event.peer.sendHandShake(_normalizePeerId('CLIENT'));
     });
 
     clientListener.on<PeerHandshakeEvent>((event) {
-      print('[CLIENT] PeerHandshakeEvent - received server handshake');
-      print(
-          '[CLIENT] remoteEnableFastPeer: ${event.peer.remoteEnableFastPeer}');
-      print('[CLIENT] localEnableFastPeer: ${event.peer.localEnableFastPeer}');
       clientHandshakeReceived = true;
     });
 
     clientListener.on<PeerHaveAll>((event) {
-      print('[CLIENT] PeerHaveAll event received!');
-      print('[CLIENT] remoteBitfield: ${event.peer.remoteBitfield}');
-      completer.complete();
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
     });
 
     await clientPeer.connect();
-    print('[CLIENT] Peer connected');
 
-    // Wait for HaveAll
-    print('[TEST] Waiting for HaveAll event...');
     await completer.future.timeout(
       const Duration(seconds: 10),
       onTimeout: () {
-        print('[TEST] TIMEOUT! Events received:');
-        print('  - Server handshake received: $serverHandshakeReceived');
-        print('  - Client handshake received: $clientHandshakeReceived');
         throw TimeoutException('Did not receive HaveAll');
       },
     );
 
-    print('[TEST] TEST PASSED!');
+    expect(serverHandshakeReceived, isTrue);
+    expect(clientHandshakeReceived, isTrue);
     await clientPeer.dispose();
     await serverSocket.close();
   });
+}
+
+String _normalizePeerId(String seed) {
+  return seed.padRight(20, '0').substring(0, 20);
 }

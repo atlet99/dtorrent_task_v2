@@ -46,8 +46,7 @@ void main() {
         final peerListener = peer.createListener();
 
         peerListener.on<PeerConnected>((event) {
-          // Send handshake from server
-          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+          event.peer.sendHandShake(_normalizePeerId('SERVER'));
         });
 
         peerListener.on<PeerHandshakeEvent>((event) {
@@ -75,8 +74,7 @@ void main() {
       final clientListener = clientPeer.createListener();
 
       clientListener.on<PeerConnected>((event) {
-        // Send handshake immediately when connected
-        event.peer.sendHandShake('TEST_PEER_ID_123456789012');
+        event.peer.sendHandShake(_normalizePeerId('CLIENT'));
       });
 
       clientListener.on<PeerHaveAll>((event) {
@@ -120,8 +118,7 @@ void main() {
         final peerListener = peer.createListener();
 
         peerListener.on<PeerConnected>((event) {
-          // Send handshake from server
-          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+          event.peer.sendHandShake(_normalizePeerId('SERVER'));
         });
 
         peerListener.on<PeerHandshakeEvent>((event) {
@@ -149,8 +146,7 @@ void main() {
       final clientListener = clientPeer.createListener();
 
       clientListener.on<PeerConnected>((event) {
-        // Send handshake immediately when connected
-        event.peer.sendHandShake('TEST_PEER_ID_123456789012');
+        event.peer.sendHandShake(_normalizePeerId('CLIENT'));
       });
 
       clientListener.on<PeerHaveNone>((event) {
@@ -196,8 +192,7 @@ void main() {
         final peerListener = peer.createListener();
 
         peerListener.on<PeerConnected>((event) {
-          // Send handshake from server
-          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+          event.peer.sendHandShake(_normalizePeerId('SERVER'));
         });
 
         peerListener.on<PeerHandshakeEvent>((event) {
@@ -206,6 +201,8 @@ void main() {
           bitfield.setBit(0, true);
           bitfield.setBit(1, true);
           event.peer.sendBitfield(bitfield);
+          // Allow one request first, then choke+reject after request arrives.
+          event.peer.sendChoke(false);
         });
 
         peerListener.on<PeerRequestEvent>((event) {
@@ -235,15 +232,17 @@ void main() {
       final clientListener = clientPeer.createListener();
 
       clientListener.on<PeerConnected>((event) {
-        // Send handshake immediately when connected
-        event.peer.sendHandShake('TEST_PEER_ID_123456789012');
+        event.peer.sendHandShake(_normalizePeerId('CLIENT'));
       });
 
       clientListener.on<PeerHandshakeEvent>((event) {
-        // Wait a bit for bitfield, then send request
-        Future.delayed(const Duration(milliseconds: 200), () {
+        // Wait for explicit unchoke before requesting.
+      });
+
+      clientListener.on<PeerChokeChanged>((event) {
+        if (!event.choked) {
           event.peer.sendRequest(0, 0, DEFAULT_REQUEST_LENGTH);
-        });
+        }
       });
 
       clientListener.on<PeerRejectEvent>((event) {
@@ -289,8 +288,7 @@ void main() {
         final peerListener = peer.createListener();
 
         peerListener.on<PeerConnected>((event) {
-          // Send handshake from server
-          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+          event.peer.sendHandShake(_normalizePeerId('SERVER'));
         });
 
         // Allowed Fast set is auto-generated in _processHandShake()
@@ -316,8 +314,7 @@ void main() {
       final clientListener = clientPeer.createListener();
 
       clientListener.on<PeerConnected>((event) {
-        // Send handshake immediately when connected
-        event.peer.sendHandShake('TEST_PEER_ID_123456789012');
+        event.peer.sendHandShake(_normalizePeerId('CLIENT'));
       });
 
       clientListener.on<PeerAllowFast>((event) {
@@ -350,7 +347,7 @@ void main() {
 
     test('Allowed Fast pieces can be downloaded when choked', () async {
       final completer = Completer<void>();
-      bool pieceReceived = false;
+      var pieceReceived = false;
       int? receivedIndex;
 
       serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
@@ -369,8 +366,7 @@ void main() {
         final peerListener = peer.createListener();
 
         peerListener.on<PeerConnected>((event) {
-          // Send handshake from server
-          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+          event.peer.sendHandShake(_normalizePeerId('SERVER'));
         });
 
         peerListener.on<PeerHandshakeEvent>((event) {
@@ -399,12 +395,6 @@ void main() {
           event.peer.sendPiece(event.index, event.begin, block);
         });
 
-        peerListener.on<PeerPieceEvent>((event) {
-          pieceReceived = true;
-          receivedIndex = event.index;
-          completer.complete();
-        });
-
         // Initialize stream for incoming connection
         // This must be called to start listening for data
         try {
@@ -428,8 +418,7 @@ void main() {
       int allowedFastCount = 0;
 
       clientListener.on<PeerConnected>((event) {
-        // Send handshake immediately when connected
-        event.peer.sendHandShake('TEST_PEER_ID_123456789012');
+        event.peer.sendHandShake(_normalizePeerId('CLIENT'));
       });
 
       // Listen for allowed fast messages
@@ -440,19 +429,21 @@ void main() {
         }
       });
 
+      clientListener.on<PeerPieceEvent>((event) {
+        pieceReceived = true;
+        receivedIndex = event.index;
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
+      });
+
       await clientPeer.connect();
 
-      // Wait for allowed fast messages to be received
-      // Allowed fast is generated and sent after handshake
-      try {
-        await allowedFastCompleter.future.timeout(const Duration(seconds: 5));
-      } catch (e) {
-        // If timeout, check if we got at least some allowed fast pieces
-      }
-
-      // Get allowed fast pieces - they should be populated after handshake
-      expect(clientPeer.remoteAllowFastPieces.isNotEmpty, isTrue,
-          reason: 'Should have allowed fast pieces');
+      await allowedFastCompleter.future.timeout(const Duration(seconds: 5));
+      await _waitForCondition(
+        () => clientPeer.remoteAllowFastPieces.isNotEmpty,
+        timeout: const Duration(seconds: 3),
+      );
 
       // Request an allowed fast piece
       final allowedFastIndex = clientPeer.remoteAllowFastPieces.first;
@@ -490,8 +481,7 @@ void main() {
         final peerListener = peer.createListener();
 
         peerListener.on<PeerConnected>((event) {
-          // Send handshake from server
-          event.peer.sendHandShake('SERVER_PEER_ID_123456789012');
+          event.peer.sendHandShake(_normalizePeerId('SERVER'));
         });
 
         peerListener.on<PeerHandshakeEvent>((event) {
@@ -519,8 +509,7 @@ void main() {
       final clientListener = clientPeer.createListener();
 
       clientListener.on<PeerConnected>((event) {
-        // Send handshake immediately when connected
-        event.peer.sendHandShake('TEST_PEER_ID_123456789012');
+        event.peer.sendHandShake(_normalizePeerId('CLIENT'));
       });
 
       clientListener.on<PeerSuggestPiece>((event) {
@@ -566,6 +555,24 @@ void main() {
           reason: 'Different IP should produce different allowed fast set');
     });
   });
+}
+
+String _normalizePeerId(String seed) {
+  return seed.padRight(20, '0').substring(0, 20);
+}
+
+Future<void> _waitForCondition(
+  bool Function() condition, {
+  Duration timeout = const Duration(seconds: 5),
+  Duration interval = const Duration(milliseconds: 50),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (!condition()) {
+    if (DateTime.now().isAfter(deadline)) {
+      throw TimeoutException('Condition not met within $timeout');
+    }
+    await Future<void>.delayed(interval);
+  }
 }
 
 /// Generate Allowed Fast set using canonical algorithm from BEP 6

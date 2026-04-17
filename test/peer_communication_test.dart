@@ -50,8 +50,6 @@ void main() {
     });
 
     test('should handle full peer communication protocol', () async {
-      final completer = Completer<void>();
-
       serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
       serverPort = serverSocket!.port;
 
@@ -142,17 +140,6 @@ void main() {
             expect(event.block[1], equals(event.begin));
             final id = String.fromCharCodes(event.block.getRange(2, 22));
             expect(id, equals(peer.remotePeerId));
-            // Check if this is an allowed fast piece
-            if (peer.remoteAllowFastPieces.contains(event.index)) {
-              await peer.dispose(BadException('Testing completed'));
-            }
-          })
-          ..on<PeerDisposeEvent>((event) async {
-            await serverSocket?.close();
-            serverSocket = null;
-            if (!completer.isCompleted) {
-              completer.complete();
-            }
           });
 
         // Initialize stream for incoming connection
@@ -218,23 +205,15 @@ void main() {
           event.peer.sendChoke(true); // Testing "allow fast".
           event.peer.sendAllowFast(4);
         })
-        ..on<PeerDisposeEvent>((event) async {
-          await serverSocket?.close();
-          serverSocket = null;
-          if (!completer.isCompleted) {
-            completer.complete();
-          }
-        });
+        ..on<PeerDisposeEvent>((event) async {});
 
       await peer.connect();
 
-      // Wait for test completion with timeout
-      await completer.future.timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw TimeoutException('Peer communication test timed out');
-        },
-      );
+      await _waitForCallMap(callMap, const Duration(seconds: 10));
+
+      await peer.dispose(BadException('Peer communication test completed'));
+      await serverSocket?.close();
+      serverSocket = null;
 
       // Verify all events were called
       final allCalled = callMap.values.every((value) => value);
@@ -250,4 +229,22 @@ void main() {
       }
     }, timeout: Timeout(const Duration(seconds: 15)));
   });
+}
+
+Future<void> _waitForCallMap(
+    Map<String, bool> callMap, Duration timeout) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    if (callMap.values.every((value) => value)) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+
+  final notCalled = callMap.entries
+      .where((entry) => !entry.value)
+      .map((entry) => entry.key)
+      .join(', ');
+  throw TimeoutException(
+      'Peer communication test timed out. Missing events: $notCalled');
 }

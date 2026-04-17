@@ -1,19 +1,9 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
 
 void main() {
   group('BEP 52 Hash Messages Tests', () {
-    late List<int> testInfoHash;
-    late CompactAddress testAddress;
-
-    setUp(() {
-      testInfoHash = List.filled(20, 0);
-      testAddress = CompactAddress(InternetAddress('127.0.0.1'), 6881);
-    });
-
     test('Peer sends hash request message', () {
       final piecesRoot = Uint8List.fromList(List.generate(32, (i) => i));
       final baseLayer = 0;
