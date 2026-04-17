@@ -1,5 +1,9 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:test/test.dart';
 import 'package:dtorrent_task_v2/src/metadata/metadata_downloader.dart';
+import 'package:dtorrent_task_v2/src/metadata/metadata_downloader_events.dart';
 import 'package:dtorrent_task_v2/src/metadata/magnet_parser.dart';
 
 void main() {
@@ -11,6 +15,20 @@ void main() {
       expect(downloader, isNotNull);
       expect(downloader.progress, equals(0));
       expect(downloader.metaDataSize, isNull);
+    });
+
+    test('should throw for invalid info hash length in constructor', () {
+      expect(
+        () => MetadataDownloader('0123456789abcdef'),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('should throw for non-hex info hash in constructor', () {
+      expect(
+        () => MetadataDownloader('zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz'),
+        throwsA(isA<ArgumentError>()),
+      );
     });
 
     test('should create from magnet URI', () {
@@ -145,6 +163,92 @@ void main() {
       expect(downloader, isNotNull);
       // Selected file indices are parsed but not used in MetadataDownloader
       // They should be passed to TorrentTask instead
+    });
+
+    test('should return null when metadata cache file is missing', () async {
+      final cacheDir =
+          await Directory.systemTemp.createTemp('metadata_cache_missing_');
+      addTearDown(() async {
+        MetadataDownloader.setCacheDirectory(null);
+        if (await cacheDir.exists()) {
+          await cacheDir.delete(recursive: true);
+        }
+      });
+
+      MetadataDownloader.setCacheDirectory(cacheDir.path);
+      final loaded = await MetadataDownloader.loadFromCache(
+        '0123456789abcdef0123456789abcdef01234567',
+      );
+      expect(loaded, isNull);
+    });
+
+    test('should load metadata bytes from cache', () async {
+      final cacheDir =
+          await Directory.systemTemp.createTemp('metadata_cache_load_');
+      addTearDown(() async {
+        MetadataDownloader.setCacheDirectory(null);
+        if (await cacheDir.exists()) {
+          await cacheDir.delete(recursive: true);
+        }
+      });
+
+      const infoHash = '0123456789abcdef0123456789abcdef01234567';
+      final expectedData = List<int>.generate(256, (i) => i % 256);
+      final cacheFile = File('${cacheDir.path}/$infoHash.torrent');
+      await cacheFile.writeAsBytes(expectedData);
+
+      MetadataDownloader.setCacheDirectory(cacheDir.path);
+      final loaded = await MetadataDownloader.loadFromCache(infoHash);
+
+      expect(loaded, isNotNull);
+      expect(loaded, equals(expectedData));
+    });
+
+    test('should emit complete event from cache without network download',
+        () async {
+      final cacheDir =
+          await Directory.systemTemp.createTemp('metadata_cache_start_');
+      addTearDown(() async {
+        MetadataDownloader.setCacheDirectory(null);
+        if (await cacheDir.exists()) {
+          await cacheDir.delete(recursive: true);
+        }
+      });
+
+      const infoHash = '0123456789abcdef0123456789abcdef01234567';
+      final cachedData = List<int>.generate(128, (i) => (255 - i) % 256);
+      await File('${cacheDir.path}/$infoHash.torrent').writeAsBytes(cachedData);
+      MetadataDownloader.setCacheDirectory(cacheDir.path);
+
+      final downloader = MetadataDownloader(infoHash);
+      final listener = downloader.createListener();
+      final completeCompleter = Completer<List<int>>();
+
+      listener.on<MetaDataDownloadComplete>((event) {
+        if (!completeCompleter.isCompleted) {
+          completeCompleter.complete(event.data);
+        }
+      });
+
+      await downloader.startDownload();
+
+      final result = await completeCompleter.future.timeout(
+        const Duration(seconds: 2),
+      );
+      expect(result, equals(cachedData));
+      expect(downloader.progress, equals(0));
+
+      listener.dispose();
+      await downloader.stop();
+    });
+
+    test('should create from magnet URI with uppercase BTIH namespace', () {
+      final magnetUri =
+          'magnet:?xt=urn:BTIH:0123456789abcdef0123456789abcdef01234567';
+      final downloader = MetadataDownloader.fromMagnet(magnetUri);
+
+      expect(downloader, isNotNull);
+      expect(downloader.progress, equals(0));
     });
   });
 }

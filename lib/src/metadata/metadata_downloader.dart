@@ -182,9 +182,20 @@ class MetadataDownloader
   MetadataDownloader(this._infoHashString,
       {List<Uri>? trackers, List<TrackerTier>? trackerTiers}) {
     _localPeerId = generatePeerId();
-    _infoHashBuffer = hexString2Buffer(_infoHashString)!;
-    assert(_infoHashBuffer.isNotEmpty && _infoHashBuffer.length == 20,
-        'Info Hash String is incorrect');
+    List<int>? parsedHash;
+    try {
+      parsedHash = hexString2Buffer(_infoHashString);
+    } on FormatException {
+      parsedHash = null;
+    }
+    if (parsedHash == null || parsedHash.length != 20) {
+      throw ArgumentError.value(
+        _infoHashString,
+        'infoHashString',
+        'Must be a 40-character hex info hash',
+      );
+    }
+    _infoHashBuffer = parsedHash;
     if (trackers != null) {
       _magnetTrackers.addAll(trackers);
     }
