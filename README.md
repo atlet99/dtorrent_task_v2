@@ -36,7 +36,7 @@ This package implements the regular BitTorrent Protocol and manages the above pa
 This package no longer requires the external `dtorrent_parser` dependency (built-in since 0.4.8):
 ```yaml
 dependencies:
-  dtorrent_task_v2: ^0.4.8
+  dtorrent_task_v2: ^0.4.9
 ```
 
 Download from: [DTORRENT_TASK_V2](https://pub.dev/packages/dtorrent_task_v2)
@@ -186,6 +186,16 @@ task.applySelectedFiles([0, 2, 5]); // Only download files at indices 0, 2, and 
 // This is especially useful with magnet links:
 // magnet:?xt=urn:btih:...&so=0&so=2&so=5
 ```
+
+### Test and Validation Improvements (NEW in 0.4.9)
+
+Version `0.4.9` focuses on reliability for real-world magnet/metadata and peer scenarios:
+
+- More deterministic peer communication tests with mock socket infrastructure
+- Event-driven handshake/request orchestration in tests (less race-prone than fixed delays)
+- Stronger inbound peer message validation tests (negative/oversized/fragmented payloads)
+- Hardened metadata cache validation and malformed metadata message handling
+- More robust magnet parsing for case-insensitive keys and repeated/numbered parameters
 
 ### BitTorrent Protocol v2 Support (NEW in 0.4.6)
 
@@ -796,6 +806,7 @@ These metrics help monitor uTP protocol stability and debug RangeError crashes, 
   - Detailed error tracking and metrics
   - Extensive test coverage (stress tests, reordering, extreme values, long sessions)
 - **Critical Bug Fixes**: Fixed race condition in bitfield processing that prevented downloads from starting (see [issue #4](https://github.com/atlet99/dtorrent_task_v2/issues/4))
+- **Metadata Validation Hardening**: Added strict infohash validation, cache hash verification, and malformed metadata boundary guards
 
 ### Protocol Support
 - Full BitTorrent protocol implementation
@@ -842,7 +853,9 @@ These metrics help monitor uTP protocol stability and debug RangeError crashes, 
 ### Magnet Link Features
 - Automatic metadata download from magnet links
 - Support for Base32 and hex infohash formats (RFC 4648)
+- Case-insensitive magnet query parsing for `xt`/`dn`/`tr`/`ws`/`as`/`so`
 - Tracker tier support (BEP 0012) with tier-by-tier announcement
+- Stable handling for duplicate and numbered parameters (`tr.N`, `ws.N`, `as.N`, `so.N`)
 - Web seed URL parsing and integration (BEP 0019)
 - Acceptable source URL support
 - Selected file indices parsing (BEP 0053)
