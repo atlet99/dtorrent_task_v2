@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_parser.dart';
 import 'package:logging/logging.dart';
 
 var _log = Logger('TorrentCreator');
@@ -123,21 +124,10 @@ class TorrentCreator {
         options.creationDate ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
     torrent['encoding'] = 'UTF-8';
 
-    // Save to temporary file and parse it
-    final tempFile = File(
-        '${Directory.systemTemp.path}/torrent_${DateTime.now().millisecondsSinceEpoch}.torrent');
+    // Parse directly from bytes to avoid temp-file race conditions
+    // under parallel test execution.
     final encoded = encode(torrent);
-    await tempFile.writeAsBytes(encoded);
-    final parsed = await TorrentModel.parse(tempFile.path);
-    // Clean up temp file if it still exists
-    try {
-      if (await tempFile.exists()) {
-        await tempFile.delete();
-      }
-    } catch (e) {
-      // Ignore errors when deleting temp file
-    }
-    return parsed;
+    return TorrentParser.parseBytes(Uint8List.fromList(encoded));
   }
 
   /// Create torrent for multiple files (directory)
@@ -217,21 +207,10 @@ class TorrentCreator {
         options.creationDate ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
     torrent['encoding'] = 'UTF-8';
 
-    // Save to temporary file and parse it
-    final tempFile = File(
-        '${Directory.systemTemp.path}/torrent_${DateTime.now().millisecondsSinceEpoch}.torrent');
+    // Parse directly from bytes to avoid temp-file race conditions
+    // under parallel test execution.
     final encoded = encode(torrent);
-    await tempFile.writeAsBytes(encoded);
-    final parsed = await TorrentModel.parse(tempFile.path);
-    // Clean up temp file if it still exists
-    try {
-      if (await tempFile.exists()) {
-        await tempFile.delete();
-      }
-    } catch (e) {
-      // Ignore errors when deleting temp file
-    }
-    return parsed;
+    return TorrentParser.parseBytes(Uint8List.fromList(encoded));
   }
 
   /// Calculate SHA1 hashes for all pieces in a file

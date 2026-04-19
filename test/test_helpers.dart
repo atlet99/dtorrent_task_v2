@@ -11,9 +11,9 @@ Future<TorrentModel> createTestTorrent({
   int pieceLength = 16384, // 16KB default
   List<Uri>? trackers,
 }) async {
-  // Create a temporary file
-  final tempFile = File(
-      '${Directory.systemTemp.path}/test_file_${DateTime.now().millisecondsSinceEpoch}.dat');
+  // Create unique temp directory to avoid path collisions in parallel tests.
+  final tempDir = await Directory.systemTemp.createTemp('dtorrent_test_file_');
+  final tempFile = File(path.join(tempDir.path, 'test_input.dat'));
 
   // Write data and ensure file is flushed to disk
   await tempFile.writeAsBytes(List<int>.generate(fileSize, (i) => i % 256));
@@ -34,13 +34,13 @@ Future<TorrentModel> createTestTorrent({
   // Create torrent while file still exists
   final torrent = await TorrentCreator.createTorrent(tempFile.path, options);
 
-  // Clean up temp file after torrent is created
+  // Clean up temporary directory after torrent is created
   try {
-    if (await tempFile.exists()) {
-      await tempFile.delete();
+    if (await tempDir.exists()) {
+      await tempDir.delete(recursive: true);
     }
   } catch (e) {
-    // Ignore errors when deleting temp file (may already be deleted)
+    // Ignore cleanup errors in tests.
   }
 
   return torrent;
@@ -53,10 +53,8 @@ Future<TorrentModel> createTestMultiFileTorrent({
   int pieceLength = 16384,
   List<Uri>? trackers,
 }) async {
-  // Create a temporary directory
-  final tempDir = Directory(
-      '${Directory.systemTemp.path}/test_dir_${DateTime.now().millisecondsSinceEpoch}');
-  await tempDir.create();
+  // Create a unique temporary directory for parallel-safe test execution.
+  final tempDir = await Directory.systemTemp.createTemp('dtorrent_test_dir_');
 
   // Create multiple files
   for (var i = 0; i < filesCount; i++) {
