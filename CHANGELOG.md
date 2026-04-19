@@ -1,3 +1,9 @@
+## Unreleased (0.5.0)
+- migrate `dtorrent_common` to built-in standalone module (`lib/src/standalone/dtorrent_common.dart`)
+- migrate `dtorrent_tracker` to built-in standalone module (`lib/src/standalone/dtorrent_tracker.dart`)
+- remove direct dependencies on external `dtorrent_common` and `dtorrent_tracker` packages
+- add standalone tracker migration regression tests (`standalone_tracker_migration_test.dart`)
+
 ## 0.4.9
 - improve test reliability and coverage for peer communication, fast extension, and metadata flows
 - add mock socket test infrastructure (`MockSocket`, `MockServerSocket`) for deterministic TCP peer tests
@@ -276,4 +282,3 @@
 ## 0.0.1
 
 - Initial version
-

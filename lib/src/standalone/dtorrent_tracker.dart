@@ -1,6 +1,7 @@
-/// Temporary standalone facade for tracker stack migration.
-///
-/// Stage 2 will replace these re-exports with fully in-repo implementations.
+/// Standalone in-repo tracker implementation.
 library;
 
-export 'package:dtorrent_tracker/dtorrent_tracker.dart';
+export 'dtorrent_tracker/tracker/tracker_base.dart';
+export 'dtorrent_tracker/torrent_tracker_base.dart';
+export 'dtorrent_tracker/torrent_announce_events.dart';
+export 'dtorrent_tracker/tracker/tracker_events.dart';

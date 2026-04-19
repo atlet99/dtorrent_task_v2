@@ -8,7 +8,6 @@ environment:
   sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
-  dtorrent_tracker: ^1.3.18
   bittorrent_dht: ^0.0.12
   b_encode_decode: ^1.0.4
   utp_protocol: ^1.0.4
