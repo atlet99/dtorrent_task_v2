@@ -23,7 +23,7 @@ import 'package:dtorrent_task_v2/src/standalone/dtorrent_tracker.dart'
     as tracker;
 import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/src/standalone/compact_address_bridge.dart';
-import 'package:bittorrent_dht/bittorrent_dht.dart';
+import 'package:dtorrent_task_v2/src/standalone/dht/standalone_dht.dart';
 import 'package:logging/logging.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'file/download_file_manager.dart';
@@ -119,7 +119,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
 
   // The dht instance
 
-  DHT? get dht;
+  StandaloneDHT? get dht;
 
   int get allPeersNumber;
 
@@ -392,11 +392,11 @@ class _TorrentTask
   SSLConfig? _sslConfig;
   ProtocolEncryptionConfig? _encryptionConfig;
 
-  DHT? _dht = DHT();
+  StandaloneDHT? _dht = StandaloneDHT();
 
   @override
   // The Dht instance
-  DHT? get dht => _dht;
+  StandaloneDHT? get dht => _dht;
 
   LSD? _lsd;
 
@@ -492,7 +492,7 @@ class _TorrentTask
   EventsListener<DownloadFileManagerEvent>? fileManagerListener;
   EventsListener<PieceManagerEvent>? pieceManagerListener;
   EventsListener<LSDEvent>? lsdListener;
-  EventsListener<DHTEvent>? _dhtListener;
+  EventsListener<StandaloneDHTEvent>? _dhtListener;
 
   /// Debouncer for progress events (StateFileUpdated) - reduces UI update frequency
   /// Default delay: 300ms (between 250-500ms as recommended)
@@ -563,6 +563,9 @@ class _TorrentTask
   String? _infoHashString;
 
   Timer? _dhtRepeatTimer;
+
+  int _dhtRetryEvents = 0;
+  int _dhtErrorEvents = 0;
 
   Future<PeersManager> _init(TorrentModel model, String savePath) async {
     _lsd ??= LSD(model.infoHash, _peerId);
@@ -811,7 +814,7 @@ class _TorrentTask
     _peersManager?.addNewPeerAddress(compact, source);
   }
 
-  void _processDHTPeer(NewPeerEvent event) {
+  void _processDHTPeer(StandaloneDHTNewPeerEvent event) {
     final compact = compactAddressFromExternal(event.address);
     _log.fine(
       "Got new peer from $compact DHT for infohash: ${Uint8List.fromList(event.infoHash.codeUnits).toHexString()}",
@@ -819,6 +822,19 @@ class _TorrentTask
     if (event.infoHash == _infoHashString) {
       _processNewPeerFound(compact, PeerSource.dht);
     }
+  }
+
+  void _processDHTRetry(StandaloneDHTRetryEvent event) {
+    _dhtRetryEvents++;
+    _log.warning(
+      'DHT retry event #$_dhtRetryEvents (attempt ${event.attempt}) for ${event.operation} in '
+      '${event.delay.inMilliseconds}ms: ${event.error}',
+    );
+  }
+
+  void _processDHTError(StandaloneDHTErrorEvent event) {
+    _dhtErrorEvents++;
+    _log.warning('DHT error #$_dhtErrorEvents: ${event.message}');
   }
 
   void _hookInPeer(Socket socket) {
@@ -1134,11 +1150,23 @@ class _TorrentTask
       }
     }
     _dhtListener = _dht?.createListener();
-    _dhtListener?.on<NewPeerEvent>(_processDHTPeer);
-    _dht?.announce(
-        String.fromCharCodes(_metaInfo.infoHashBuffer), _serverSocket!.port);
-
-    _dht?.bootstrap();
+    _dhtListener
+      ?..on<StandaloneDHTNewPeerEvent>(_processDHTPeer)
+      ..on<StandaloneDHTRetryEvent>(_processDHTRetry)
+      ..on<StandaloneDHTErrorEvent>(_processDHTError);
+    try {
+      final dhtPort = await _dht?.bootstrap();
+      if (dhtPort != null) {
+        _dht?.announce(
+          String.fromCharCodes(_metaInfo.infoHashBuffer),
+          _serverSocket!.port,
+        );
+      } else {
+        _log.warning('DHT bootstrap returned null port, announce is skipped');
+      }
+    } catch (e, stackTrace) {
+      _log.warning('DHT bootstrap failed', e, stackTrace);
+    }
 
     if (_fileManager != null && _fileManager!.isAllComplete) {
       _tracker?.complete();
@@ -1589,6 +1617,8 @@ class _TorrentTask
     events.dispose();
     _dhtRepeatTimer?.cancel();
     _dhtRepeatTimer = null;
+    _dhtRetryEvents = 0;
+    _dhtErrorEvents = 0;
     trackerListener?.dispose();
     fileManagerListener?.dispose();
     peersManagerListener?.dispose();

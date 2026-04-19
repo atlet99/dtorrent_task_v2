@@ -6,6 +6,7 @@ import 'package:test/test.dart';
 import 'package:dtorrent_task_v2/src/metadata/metadata_downloader.dart';
 import 'package:dtorrent_task_v2/src/metadata/metadata_downloader_events.dart';
 import 'package:dtorrent_task_v2/src/metadata/magnet_parser.dart';
+import 'package:dtorrent_task_v2/src/standalone/dht/standalone_dht.dart';
 
 void main() {
   group('MetadataDownloader Tests', () {
@@ -117,6 +118,7 @@ void main() {
       final downloader = MetadataDownloader(infoHash);
 
       expect(downloader.dht, isNotNull);
+      expect(downloader.dht, isA<StandaloneDHT>());
     });
 
     test('should track metadata size when set', () {

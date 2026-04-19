@@ -3,6 +3,11 @@
 - migrate `dtorrent_tracker` to built-in standalone module (`lib/src/standalone/dtorrent_tracker.dart`)
 - remove direct dependencies on external `dtorrent_common` and `dtorrent_tracker` packages
 - add standalone tracker migration regression tests (`standalone_tracker_migration_test.dart`)
+- migrate DHT integration to built-in standalone facade/driver (`lib/src/standalone/dht/standalone_dht.dart`)
+- remove direct dependency on external `bittorrent_dht` package
+- add retry/backoff policy and graceful shutdown handling for standalone DHT operations
+- add standalone DHT regression tests for bootstrap failures, retry paths, idempotent stop, and peer-event flood handling (`test/standalone_dht_test.dart`)
+- improve DHT runtime diagnostics in `TorrentTask` and `MetadataDownloader` (retry/error observability)
 
 ## 0.4.9
 - improve test reliability and coverage for peer communication, fast extension, and metadata flows
