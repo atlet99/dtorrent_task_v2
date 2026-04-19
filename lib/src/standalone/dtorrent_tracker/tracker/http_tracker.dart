@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:b_encode_decode/b_encode_decode.dart';
-import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 import 'package:logging/logging.dart';
+import 'announce_response_parser.dart';
 import 'peer_event.dart';
 import 'http_tracker_base.dart';
 import 'tracker.dart';
@@ -119,96 +117,17 @@ class HttpTracker extends Tracker with HttpTrackerBase {
   /// - Sometimes , the remote will return 'failer reason', then need to throw a exception
   @override
   PeerEvent processResponseData(Uint8List data) {
-    var result = decode(data) as Map;
-    // You cuo wu , jiu tao chu qu
-    if (result['failure reason'] != null) {
-      var errorMsg = String.fromCharCodes(result['failure reason']);
-      throw errorMsg;
+    final parsed = AnnounceResponseParser.parseHttpAnnounce(
+      data: data,
+      infoHash: infoHash,
+      trackerUrl: url,
+      trackerId: id,
+      logger: _log,
+    );
+    if (parsed.trackerId != null) {
+      _trackerId = parsed.trackerId;
     }
-    // If 'tracker id' is existed, record it
-    if (result['tracker id'] != null) {
-      _trackerId = result['tracker id'];
-    }
-
-    var event = PeerEvent(infoHash, url);
-    result.forEach((key, value) {
-      if (key == 'min interval') {
-        event.minInterval = value;
-        return;
-      }
-      if (key == 'interval') {
-        event.interval = value;
-        return;
-      }
-      if (key == 'warning message' && value != null) {
-        event.warning = String.fromCharCodes(value);
-        return;
-      }
-      if (key == 'complete') {
-        event.complete = value;
-        return;
-      }
-      if (key == 'incomplete') {
-        event.incomplete = value;
-        return;
-      }
-      if (key == 'downloaded') {
-        event.downloaded = value;
-        return;
-      }
-      if (key == 'peers' && value != null) {
-        _fillPeers(event, value);
-        return;
-      }
-      // BEP0048
-      if (key == 'peers6' && value != null) {
-        _fillPeers(event, value, InternetAddressType.IPv6);
-        return;
-      }
-      // record the values don't process
-      event.setInfo(key, value);
-    });
-    return event;
-  }
-
-  void _fillPeers(PeerEvent event, dynamic value,
-      [InternetAddressType type = InternetAddressType.IPv4]) {
-    if (value is Uint8List) {
-      if (type == InternetAddressType.IPv6) {
-        try {
-          var peers = CompactAddress.parseIPv6Addresses(value);
-          for (var peer in peers) {
-            event.addPeer(peer);
-          }
-        } catch (e) {
-          //
-        }
-      } else if (type == InternetAddressType.IPv4) {
-        try {
-          var peers = CompactAddress.parseIPv4Addresses(value);
-          for (var peer in peers) {
-            event.addPeer(peer);
-          }
-        } catch (e) {
-          //
-        }
-      }
-    } else {
-      if (value is List) {
-        for (var peer in value) {
-          var ip = peer['ip'];
-          var port = peer['port'];
-          var address = InternetAddress.tryParse(ip);
-          if (address != null) {
-            try {
-              event.addPeer(CompactAddress(address, port));
-            } catch (e) {
-              _log.warning('parse peer address error', e);
-            }
-          }
-        }
-      }
-    }
+    return parsed.event;
   }
 
   @override

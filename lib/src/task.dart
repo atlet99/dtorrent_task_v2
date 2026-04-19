@@ -19,7 +19,8 @@ import 'package:dtorrent_task_v2/src/piece/sequential_config.dart';
 import 'package:dtorrent_task_v2/src/piece/sequential_stats.dart';
 import 'package:dtorrent_task_v2/src/piece/advanced_sequential_selector.dart';
 import 'package:dtorrent_task_v2/src/task_events.dart';
-import 'package:dtorrent_task_v2/src/standalone/dtorrent_tracker.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_tracker.dart'
+    as tracker;
 import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/src/standalone/compact_address_bridge.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';
@@ -374,11 +375,11 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
 
 class _TorrentTask
     with EventsEmittable<TaskEvent>
-    implements TorrentTask, AnnounceOptionsProvider {
+    implements TorrentTask, tracker.AnnounceOptionsProvider {
   static InternetAddress LOCAL_ADDRESS =
       InternetAddress.fromRawAddress(Uint8List.fromList([127, 0, 0, 1]));
 
-  TorrentAnnounceTracker? _tracker;
+  tracker.TorrentAnnounceTracker? _tracker;
 
   scrape.ScrapeClient? _scrapeClient;
   TrackerClient? _trackerClient;
@@ -486,7 +487,7 @@ class _TorrentTask
 
   final Set<InternetAddress> _comingIp = {};
 
-  EventsListener<TorrentAnnounceEvent>? trackerListener;
+  EventsListener<tracker.TorrentAnnounceEvent>? trackerListener;
   EventsListener<peer_events.PeerEvent>? peersManagerListener;
   EventsListener<DownloadFileManagerEvent>? fileManagerListener;
   EventsListener<PieceManagerEvent>? pieceManagerListener;
@@ -566,7 +567,7 @@ class _TorrentTask
   Future<PeersManager> _init(TorrentModel model, String savePath) async {
     _lsd ??= LSD(model.infoHash, _peerId);
     _infoHashString ??= String.fromCharCodes(model.infoHashBuffer);
-    _tracker ??= TorrentAnnounceTracker(this);
+    _tracker ??= tracker.TorrentAnnounceTracker(this);
     _stateFile ??= await StateFileV2.getStateFile(savePath, model);
 
     // Initialize file priority manager
@@ -775,14 +776,28 @@ class _TorrentTask
     events.emit(TaskFileCompleted(event.file));
   }
 
-  void _processTrackerPeerEvent(AnnouncePeerEventEvent event) {
+  void _processTrackerPeerEvent(tracker.AnnouncePeerEventEvent event) {
     if (event.event == null) return;
+    _applyTrackerExternalIp(event.event!);
     var ps = event.event!.peers;
     if (ps.isNotEmpty) {
       for (var url in ps) {
         _processNewPeerFound(url, PeerSource.tracker);
       }
     }
+  }
+
+  void _applyTrackerExternalIp(tracker.PeerEvent trackerEvent) {
+    final externalIp = trackerEvent.externalIp;
+    if (externalIp == null) return;
+    if (externalIp.isLoopback ||
+        externalIp.isMulticast ||
+        externalIp == InternetAddress.anyIPv4 ||
+        externalIp == InternetAddress.anyIPv6) {
+      return;
+    }
+    _peersManager?.localExternalIP = externalIp;
+    _log.fine('Tracker reported external IP: $externalIp');
   }
 
   void _processLSDPeerEvent(LSDNewPeer event) {
@@ -1074,7 +1089,7 @@ class _TorrentTask
     fileManagerListener = _fileManager?.createListener();
     pieceManagerListener = _pieceManager?.createListener();
     lsdListener = _lsd?.createListener();
-    trackerListener?.on<AnnouncePeerEventEvent>(_processTrackerPeerEvent);
+    trackerListener?.on<tracker.AnnouncePeerEventEvent>(_processTrackerPeerEvent);
 
     peersManagerListener
       ?..on<PeerAllowFast>(_processAllowFast)
@@ -1130,7 +1145,7 @@ class _TorrentTask
       await announcePausedToTrackers(_metaInfo.announces);
     } else {
       _tracker?.runTrackers(_metaInfo.announces, _metaInfo.infoHashBuffer,
-          event: EVENT_STARTED);
+          event: tracker.EVENT_STARTED);
     }
     events.emit(TaskStarted());
     return map;

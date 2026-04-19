@@ -3,13 +3,19 @@
 class TrackerException implements Exception {
   final dynamic failureReason;
   final String id;
-  TrackerException(this.id, this.failureReason);
+  final int? retryIn;
+
+  TrackerException(this.id, this.failureReason, {this.retryIn});
 
   @override
   String toString() {
     if (failureReason == null) {
       return 'TrackerException($id) - Unknown track error';
     }
-    return 'TrackerException($id) - $failureReason';
+    var suffix = '';
+    if (retryIn != null) {
+      suffix = ' (retry in: ${retryIn}s)';
+    }
+    return 'TrackerException($id) - $failureReason$suffix';
   }
 }

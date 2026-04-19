@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 
 import 'tracker_event_base.dart';
@@ -35,6 +36,12 @@ class PeerEvent extends TrackerEventBase {
   /// Similar to failure reason, but the response still gets processed normally. The warning message is shown just like an error.
   String? warning;
 
+  /// BEP 24: external IP returned by tracker.
+  InternetAddress? externalIp;
+
+  /// BEP 31: retry interval (in seconds) suggested by tracker on failures.
+  int? retryIn;
+
   /// peer uri set
   Set<CompactAddress> peers = <CompactAddress>{};
 
@@ -43,7 +50,9 @@ class PeerEvent extends TrackerEventBase {
       this.incomplete,
       this.interval,
       this.minInterval,
-      this.warning});
+      this.warning,
+      this.externalIp,
+      this.retryIn});
 
   /// Add a peer uri
   bool addPeer(CompactAddress peer) {
