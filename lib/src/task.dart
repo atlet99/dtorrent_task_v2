@@ -552,6 +552,10 @@ class _TorrentTask
     _fileManager ??= await DownloadFileManager.createFileManager(
         model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
     _peersManager ??= PeersManager(_peerId, model, ipFilter: _ipFilter);
+    _advancedSelector?.setLocalPeerEndpoint(
+      _peersManager?.localExternalIP,
+      port: _serverSocket?.port ?? 0,
+    );
 
     // Initialize SuperSeeder if superseeding is enabled
     if (_superseedingEnabled && _superseeder == null && model.pieces != null) {
@@ -1412,6 +1416,10 @@ class _TorrentTask
 
   void requestPieces(Peer peer, [int pieceIndex = -1]) async {
     if (_pieceManager == null || _peersManager == null) return;
+    _advancedSelector?.setLocalPeerEndpoint(
+      _peersManager?.localExternalIP,
+      port: _serverSocket?.port ?? 0,
+    );
     if (_peersManager!.addPausedRequest(peer, pieceIndex)) return;
     Piece? piece;
     if (pieceIndex != -1) {

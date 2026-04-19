@@ -12,6 +12,7 @@ import 'package:logging/logging.dart';
 import '../protocol/peer.dart';
 import '../extensions/pex.dart';
 import '../extensions/holepunch.dart';
+import '../peer_priority.dart';
 import '../../torrent/torrent_version.dart';
 import '../../filter/ip_filter.dart';
 import '../../proxy/proxy_manager.dart';
@@ -197,6 +198,34 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     if (_activePeers.isEmpty) return 0.0;
     return _activePeers.fold(
         0.0, (p, element) => p + element.averageUploadSpeed);
+  }
+
+  /// Returns peers ordered by BEP 40 canonical priority for this torrent.
+  ///
+  /// Larger priority value means higher rank.
+  List<Peer> getCanonicalPriorityPeers({Iterable<Peer>? peers}) {
+    final source = (peers ?? _activePeers).where((p) => !p.isDisposed).toList();
+    final clientIp = localExternalIP;
+    if (clientIp == null || source.length <= 1) {
+      return source;
+    }
+
+    source.sort((a, b) {
+      final ap = PeerPriority.canonicalPriority(
+        clientIp: clientIp,
+        clientPort: 0,
+        peerIp: a.address.address,
+        peerPort: a.address.port,
+      );
+      final bp = PeerPriority.canonicalPriority(
+        clientIp: clientIp,
+        clientPort: 0,
+        peerIp: b.address.address,
+        peerPort: b.address.port,
+      );
+      return bp.compareTo(ap);
+    });
+    return source;
   }
 
   void _hookPeer(Peer peer) {

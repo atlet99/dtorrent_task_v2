@@ -169,7 +169,8 @@ class MockSocket extends Stream<Uint8List> implements Socket {
     void Function(StreamSubscription<Uint8List> subscription)? onListen,
     void Function(StreamSubscription<Uint8List> subscription)? onCancel,
   }) =>
-      _controller.stream.asBroadcastStream(onListen: onListen, onCancel: onCancel);
+      _controller.stream
+          .asBroadcastStream(onListen: onListen, onCancel: onCancel);
 
   @override
   Stream<E> asyncExpand<E>(Stream<E>? Function(Uint8List event) convert) =>
@@ -186,7 +187,8 @@ class MockSocket extends Stream<Uint8List> implements Socket {
   Future<bool> contains(Object? needle) => _controller.stream.contains(needle);
 
   @override
-  Stream<Uint8List> distinct([bool Function(Uint8List previous, Uint8List next)? equals]) =>
+  Stream<Uint8List> distinct(
+          [bool Function(Uint8List previous, Uint8List next)? equals]) =>
       _controller.stream.distinct(equals);
 
   @override
@@ -196,7 +198,8 @@ class MockSocket extends Stream<Uint8List> implements Socket {
   Future<Uint8List> elementAt(int index) => _controller.stream.elementAt(index);
 
   @override
-  Future<bool> every(bool Function(Uint8List element) test) => _controller.stream.every(test);
+  Future<bool> every(bool Function(Uint8List element) test) =>
+      _controller.stream.every(test);
 
   @override
   Stream<S> expand<S>(Iterable<S> Function(Uint8List element) convert) =>
@@ -206,18 +209,22 @@ class MockSocket extends Stream<Uint8List> implements Socket {
   Future<Uint8List> get first => _controller.stream.first;
 
   @override
-  Future<Uint8List> firstWhere(bool Function(Uint8List element) test, {Uint8List Function()? orElse}) =>
+  Future<Uint8List> firstWhere(bool Function(Uint8List element) test,
+          {Uint8List Function()? orElse}) =>
       _controller.stream.firstWhere(test, orElse: orElse);
 
   @override
-  Future<S> fold<S>(S initialValue, S Function(S previous, Uint8List element) combine) =>
+  Future<S> fold<S>(
+          S initialValue, S Function(S previous, Uint8List element) combine) =>
       _controller.stream.fold(initialValue, combine);
 
   @override
-  Future forEach(void Function(Uint8List element) action) => _controller.stream.forEach(action);
+  Future forEach(void Function(Uint8List element) action) =>
+      _controller.stream.forEach(action);
 
   @override
-  Stream<Uint8List> handleError(Function onError, {bool Function(dynamic error)? test}) =>
+  Stream<Uint8List> handleError(Function onError,
+          {bool Function(dynamic error)? test}) =>
       _controller.stream.handleError(onError, test: test);
 
   @override
@@ -227,33 +234,39 @@ class MockSocket extends Stream<Uint8List> implements Socket {
   Future<bool> get isEmpty => _controller.stream.isEmpty;
 
   @override
-  Future<String> join([String separator = ""]) => _controller.stream.join(separator);
+  Future<String> join([String separator = ""]) =>
+      _controller.stream.join(separator);
 
   @override
   Future<Uint8List> get last => _controller.stream.last;
 
   @override
-  Future<Uint8List> lastWhere(bool Function(Uint8List element) test, {Uint8List Function()? orElse}) =>
+  Future<Uint8List> lastWhere(bool Function(Uint8List element) test,
+          {Uint8List Function()? orElse}) =>
       _controller.stream.lastWhere(test, orElse: orElse);
 
   @override
   Future<int> get length => _controller.stream.length;
 
   @override
-  Stream<S> map<S>(S Function(Uint8List event) convert) => _controller.stream.map(convert);
+  Stream<S> map<S>(S Function(Uint8List event) convert) =>
+      _controller.stream.map(convert);
 
   @override
-  Future pipe(StreamConsumer<Uint8List> streamConsumer) => _controller.stream.pipe(streamConsumer);
+  Future pipe(StreamConsumer<Uint8List> streamConsumer) =>
+      _controller.stream.pipe(streamConsumer);
 
   @override
-  Future<Uint8List> reduce(Uint8List Function(Uint8List previous, Uint8List element) combine) =>
+  Future<Uint8List> reduce(
+          Uint8List Function(Uint8List previous, Uint8List element) combine) =>
       _controller.stream.reduce(combine);
 
   @override
   Future<Uint8List> get single => _controller.stream.single;
 
   @override
-  Future<Uint8List> singleWhere(bool Function(Uint8List element) test, {Uint8List Function()? orElse}) =>
+  Future<Uint8List> singleWhere(bool Function(Uint8List element) test,
+          {Uint8List Function()? orElse}) =>
       _controller.stream.singleWhere(test, orElse: orElse);
 
   @override
@@ -271,7 +284,8 @@ class MockSocket extends Stream<Uint8List> implements Socket {
       _controller.stream.takeWhile(test);
 
   @override
-  Stream<Uint8List> timeout(Duration timeLimit, {void Function(EventSink<Uint8List> sink)? onTimeout}) =>
+  Stream<Uint8List> timeout(Duration timeLimit,
+          {void Function(EventSink<Uint8List> sink)? onTimeout}) =>
       _controller.stream.timeout(timeLimit, onTimeout: onTimeout);
 
   @override
@@ -285,12 +299,14 @@ class MockSocket extends Stream<Uint8List> implements Socket {
       _controller.stream.transform(streamTransformer);
 
   @override
-  Stream<Uint8List> where(bool Function(Uint8List event) test) => _controller.stream.where(test);
+  Stream<Uint8List> where(bool Function(Uint8List event) test) =>
+      _controller.stream.where(test);
 }
 
 /// Mock ServerSocket implementation for testing
 class MockServerSocket extends Stream<Socket> implements ServerSocket {
-  final StreamController<Socket> _connectionController = StreamController<Socket>();
+  final StreamController<Socket> _connectionController =
+      StreamController<Socket>();
   final int _port;
   final InternetAddress _address;
   bool _closed = false;
@@ -305,7 +321,9 @@ class MockServerSocket extends Stream<Socket> implements ServerSocket {
     bool v6Only = false,
     bool shared = false,
   }) async {
-    final addr = address is String ? InternetAddress(address) : address as InternetAddress;
+    final addr = address is String
+        ? InternetAddress(address)
+        : address as InternetAddress;
     return MockServerSocket._(addr, port);
   }
 
@@ -358,14 +376,16 @@ class MockServerSocket extends Stream<Socket> implements ServerSocket {
 
   // Delegate all Stream methods
   @override
-  Future<bool> any(bool Function(Socket element) test) => _connectionController.stream.any(test);
+  Future<bool> any(bool Function(Socket element) test) =>
+      _connectionController.stream.any(test);
 
   @override
   Stream<Socket> asBroadcastStream({
     void Function(StreamSubscription<Socket> subscription)? onListen,
     void Function(StreamSubscription<Socket> subscription)? onCancel,
   }) =>
-      _connectionController.stream.asBroadcastStream(onListen: onListen, onCancel: onCancel);
+      _connectionController.stream
+          .asBroadcastStream(onListen: onListen, onCancel: onCancel);
 
   @override
   Stream<E> asyncExpand<E>(Stream<E>? Function(Socket event) convert) =>
@@ -379,20 +399,25 @@ class MockServerSocket extends Stream<Socket> implements ServerSocket {
   Stream<R> cast<R>() => _connectionController.stream.cast<R>();
 
   @override
-  Future<bool> contains(Object? needle) => _connectionController.stream.contains(needle);
+  Future<bool> contains(Object? needle) =>
+      _connectionController.stream.contains(needle);
 
   @override
-  Stream<Socket> distinct([bool Function(Socket previous, Socket next)? equals]) =>
+  Stream<Socket> distinct(
+          [bool Function(Socket previous, Socket next)? equals]) =>
       _connectionController.stream.distinct(equals);
 
   @override
-  Future<E> drain<E>([E? futureValue]) => _connectionController.stream.drain(futureValue);
+  Future<E> drain<E>([E? futureValue]) =>
+      _connectionController.stream.drain(futureValue);
 
   @override
-  Future<Socket> elementAt(int index) => _connectionController.stream.elementAt(index);
+  Future<Socket> elementAt(int index) =>
+      _connectionController.stream.elementAt(index);
 
   @override
-  Future<bool> every(bool Function(Socket element) test) => _connectionController.stream.every(test);
+  Future<bool> every(bool Function(Socket element) test) =>
+      _connectionController.stream.every(test);
 
   @override
   Stream<S> expand<S>(Iterable<S> Function(Socket element) convert) =>
@@ -402,18 +427,22 @@ class MockServerSocket extends Stream<Socket> implements ServerSocket {
   Future<Socket> get first => _connectionController.stream.first;
 
   @override
-  Future<Socket> firstWhere(bool Function(Socket element) test, {Socket Function()? orElse}) =>
+  Future<Socket> firstWhere(bool Function(Socket element) test,
+          {Socket Function()? orElse}) =>
       _connectionController.stream.firstWhere(test, orElse: orElse);
 
   @override
-  Future<S> fold<S>(S initialValue, S Function(S previous, Socket element) combine) =>
+  Future<S> fold<S>(
+          S initialValue, S Function(S previous, Socket element) combine) =>
       _connectionController.stream.fold(initialValue, combine);
 
   @override
-  Future forEach(void Function(Socket element) action) => _connectionController.stream.forEach(action);
+  Future forEach(void Function(Socket element) action) =>
+      _connectionController.stream.forEach(action);
 
   @override
-  Stream<Socket> handleError(Function onError, {bool Function(dynamic error)? test}) =>
+  Stream<Socket> handleError(Function onError,
+          {bool Function(dynamic error)? test}) =>
       _connectionController.stream.handleError(onError, test: test);
 
   @override
@@ -423,33 +452,39 @@ class MockServerSocket extends Stream<Socket> implements ServerSocket {
   Future<bool> get isEmpty => _connectionController.stream.isEmpty;
 
   @override
-  Future<String> join([String separator = ""]) => _connectionController.stream.join(separator);
+  Future<String> join([String separator = ""]) =>
+      _connectionController.stream.join(separator);
 
   @override
   Future<Socket> get last => _connectionController.stream.last;
 
   @override
-  Future<Socket> lastWhere(bool Function(Socket element) test, {Socket Function()? orElse}) =>
+  Future<Socket> lastWhere(bool Function(Socket element) test,
+          {Socket Function()? orElse}) =>
       _connectionController.stream.lastWhere(test, orElse: orElse);
 
   @override
   Future<int> get length => _connectionController.stream.length;
 
   @override
-  Stream<S> map<S>(S Function(Socket event) convert) => _connectionController.stream.map(convert);
+  Stream<S> map<S>(S Function(Socket event) convert) =>
+      _connectionController.stream.map(convert);
 
   @override
-  Future pipe(StreamConsumer<Socket> streamConsumer) => _connectionController.stream.pipe(streamConsumer);
+  Future pipe(StreamConsumer<Socket> streamConsumer) =>
+      _connectionController.stream.pipe(streamConsumer);
 
   @override
-  Future<Socket> reduce(Socket Function(Socket previous, Socket element) combine) =>
+  Future<Socket> reduce(
+          Socket Function(Socket previous, Socket element) combine) =>
       _connectionController.stream.reduce(combine);
 
   @override
   Future<Socket> get single => _connectionController.stream.single;
 
   @override
-  Future<Socket> singleWhere(bool Function(Socket element) test, {Socket Function()? orElse}) =>
+  Future<Socket> singleWhere(bool Function(Socket element) test,
+          {Socket Function()? orElse}) =>
       _connectionController.stream.singleWhere(test, orElse: orElse);
 
   @override
@@ -467,7 +502,8 @@ class MockServerSocket extends Stream<Socket> implements ServerSocket {
       _connectionController.stream.takeWhile(test);
 
   @override
-  Stream<Socket> timeout(Duration timeLimit, {void Function(EventSink<Socket> sink)? onTimeout}) =>
+  Stream<Socket> timeout(Duration timeLimit,
+          {void Function(EventSink<Socket> sink)? onTimeout}) =>
       _connectionController.stream.timeout(timeLimit, onTimeout: onTimeout);
 
   @override
@@ -481,5 +517,6 @@ class MockServerSocket extends Stream<Socket> implements ServerSocket {
       _connectionController.stream.transform(streamTransformer);
 
   @override
-  Stream<Socket> where(bool Function(Socket event) test) => _connectionController.stream.where(test);
+  Stream<Socket> where(bool Function(Socket event) test) =>
+      _connectionController.stream.where(test);
 }
