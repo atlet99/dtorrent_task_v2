@@ -120,6 +120,35 @@ class PieceManager
     return piece;
   }
 
+  /// Select the rarest piece available from this peer.
+  ///
+  /// Useful for partial-swarm optimization where prioritizing rarer pieces
+  /// improves availability in the swarm.
+  Piece? selectRarestAvailablePiece(Peer peer) {
+    Piece? rarest;
+    var minAvailability = 0x7fffffff;
+
+    for (final pieceIndex in peer.remoteCompletePieces) {
+      final piece = _pieces[pieceIndex];
+      if (piece == null ||
+          piece.isCompleted ||
+          !piece.haveAvailableSubPiece()) {
+        continue;
+      }
+
+      final availability = piece.availablePeersCount;
+      if (availability < minAvailability) {
+        minAvailability = availability;
+        rarest = piece;
+      }
+    }
+
+    if (rarest != null) {
+      processDownloadingPiece(rarest.index);
+    }
+    return rarest;
+  }
+
   void processDownloadingPiece(int pieceIndex) {
     _downloadingPieces.add(pieceIndex);
   }
