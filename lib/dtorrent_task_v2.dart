@@ -40,6 +40,10 @@ export 'src/file/file_validator.dart';
 export 'src/file/state_recovery.dart';
 export 'src/tracker/tracker_client.dart';
 export 'src/tracker/scrape_client.dart';
+export 'src/ssl/ssl_config.dart';
+export 'src/encryption/protocol_encryption.dart';
+export 'src/encryption/rc4_encryption.dart';
+export 'src/encryption/bep8_tracker_obfuscation.dart';
 
 /// Peer ID prefix
 const ID_PREFIX = '-DT0201-';
