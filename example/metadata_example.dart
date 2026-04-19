@@ -2,9 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
-import 'package:dtorrent_tracker/dtorrent_tracker.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_tracker.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as path;

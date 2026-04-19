@@ -1,12 +1,54 @@
+![Pub Version](https://img.shields.io/pub/v/dtorrent_task_v2?label=pub.dev)
+![Dart](https://img.shields.io/badge/dart-%3E%3D3.0.0-0175C2)
+![Platform](https://img.shields.io/badge/platform-dart%20vm-0A0A0A)
+
 # About
 Dart library for implementing BitTorrent client.
 
+> [!IMPORTANT]
+> Since `0.5.0` (currently in `Unreleased`), tracker/common internals are fully standalone in this repository.
+
+> [!TIP]
+> For quick onboarding, start with [How to use](#how-to-use), then jump to [Using Magnet Links](#using-magnet-links).
+
+## Quick Navigation
+
+| Section | Description |
+|---|---|
+| [About](#about) | High-level package overview |
+| [BEP Support](#bep-support) | Implemented BEP specifications |
+| [How to use](#how-to-use) | Minimal setup and first download |
+| [Using Magnet Links](#using-magnet-links) | Metadata-first magnet workflow |
+| [Advanced Features](#advanced-features) | Streaming, queue, proxy, scrape, filtering |
+| [Monitoring and Error Tracking](#monitoring-and-error-tracking) | Runtime diagnostics |
+| [Features](#features) | Full capability summary |
+
+<details>
+<summary>Architecture Snapshot</summary>
+
+```mermaid
+flowchart LR
+    A["TorrentModel / Magnet"] --> B["TorrentTask"]
+    B --> C["PieceManager"]
+    B --> D["PeersManager"]
+    B --> E["Standalone Tracker"]
+    B --> F["DHT"]
+    B --> G["uTP/TCP"]
+    C --> H["DownloadFileManager"]
+    E --> D
+    F --> D
+    G --> D
+    H --> I["StateFileV2 / Recovery"]
+```
+
+</details>
+
 The Dart Torrent client consists of several parts:
 - [Bencode](https://pub.dev/packages/b_encode_decode) 
-- [Tracker](https://pub.dev/packages/dtorrent_tracker)
+- Built-in tracker stack (`lib/src/standalone/dtorrent_tracker`) - no external dependency required since 0.4.9
 - [DHT](https://pub.dev/packages/bittorrent_dht)
 - [Built-in Torrent parser](https://github.com/atlet99/dtorrent_task_v2/blob/main/lib/src/torrent/torrent_parser.dart) (TorrentParser/TorrentModel) - no external dependency required since 0.4.8
-- [Common library](https://pub.dev/packages/dtorrent_common)
+- Built-in common utilities (`lib/src/standalone/dtorrent_common`) - no external dependency required since 0.4.9
 - [UTP](https://pub.dev/packages/utp_protocol)
 
 This package implements the regular BitTorrent Protocol and manages the above packages to work together for downloading.
@@ -747,7 +789,7 @@ listener.on<StateFileUpdated>((event) {
 You can add peer addresses manually:
 
 ```dart
-import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 
 // Add a peer by address
 final peerAddress = CompactAddress(

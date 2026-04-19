@@ -7,11 +7,15 @@ import 'package:logging/logging.dart';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dart_ipify/dart_ipify.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/compact_address_bridge.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';
 import 'package:dtorrent_task_v2/src/metadata/metadata_downloader_events.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
-import 'package:dtorrent_tracker/dtorrent_tracker.dart' hide PeerEvent;
+import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart'
+    as peer_events;
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_tracker.dart'
+    as tracker;
 import 'package:events_emitter2/events_emitter2.dart';
 
 import '../peer/protocol/peer.dart';
@@ -34,7 +38,7 @@ class MetadataDownloader
         PEX,
         MetaDataMessenger,
         EventsEmittable<MetadataDownloaderEvent>
-    implements AnnounceOptionsProvider {
+    implements tracker.AnnounceOptionsProvider {
   /// IP addresses that should be ignored for peer connections
   final List<InternetAddress> ignoreIps = [
     InternetAddress.anyIPv4,
@@ -78,7 +82,7 @@ class MetadataDownloader
   final Set<Peer> _availablePeers = {};
 
   /// Map of peer event listeners
-  final Map<Peer, EventsListener<PeerEvent>> _peerListeners = {};
+  final Map<Peer, EventsListener<peer_events.PeerEvent>> _peerListeners = {};
 
   /// Set of all known peer addresses
   final Set<CompactAddress> _peersAddress = {};
@@ -119,7 +123,7 @@ class MetadataDownloader
   bool _isPrivate = false;
 
   /// Tracker client for announcing to trackers
-  TorrentAnnounceTracker? _tracker;
+  tracker.TorrentAnnounceTracker? _tracker;
 
   /// Tracker event listener
   EventsListener? _trackerListener;
@@ -263,12 +267,13 @@ class MetadataDownloader
     if (_magnetTrackers.isNotEmpty) {
       _log.info('Using ${_magnetTrackers.length} trackers from magnet link');
       try {
-        _tracker ??= TorrentAnnounceTracker(this);
+        _tracker ??= tracker.TorrentAnnounceTracker(this);
         _trackerListener ??= _tracker!.createListener();
 
         // Listen for peers from tracker
-        _trackerListener!.on<AnnouncePeerEventEvent>((event) {
+        _trackerListener!.on<tracker.AnnouncePeerEventEvent>((event) {
           if (event.event != null) {
+            _applyTrackerExternalIp(event.event!);
             final peers = event.event!.peers;
             _log.info('Got ${peers.length} peer(s) from tracker');
             for (var peer in peers) {
@@ -355,7 +360,8 @@ class MetadataDownloader
 
   void _processDHTPeer(NewPeerEvent event) {
     if (event.infoHash == String.fromCharCodes(_infoHashBuffer)) {
-      addNewPeerAddress(event.address, PeerSource.dht);
+      final address = compactAddressFromExternal(event.address);
+      addNewPeerAddress(address, PeerSource.dht);
     }
   }
 
@@ -401,6 +407,18 @@ class MetadataDownloader
           _processExtendedMessage(peer, event.eventName, event.data));
     _registerExtended(peer);
     peer.connect();
+  }
+
+  void _applyTrackerExternalIp(tracker.PeerEvent trackerEvent) {
+    final externalIp = trackerEvent.externalIp;
+    if (externalIp == null) return;
+    if (ignoreIps.contains(externalIp) ||
+        externalIp.isMulticast ||
+        externalIp == InternetAddress.anyIPv6) {
+      return;
+    }
+    localExternalIP = externalIp;
+    _log.fine('Tracker reported external IP: $externalIp');
   }
 
   bool _peerExist(Peer id) {

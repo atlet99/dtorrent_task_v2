@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 import 'package:test/test.dart';
 
 void main() {

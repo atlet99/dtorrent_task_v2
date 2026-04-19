@@ -4,7 +4,6 @@ import 'package:test/test.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:dtorrent_task_v2/src/piece/piece_manager_events.dart';
 import 'package:dtorrent_task_v2/src/piece/base_piece_selector.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
 
 void main() {
   group('PieceManager Tests', () {

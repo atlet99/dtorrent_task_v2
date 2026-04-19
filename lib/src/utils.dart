@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 
 String generatePeerId([String prefix = ID_PREFIX]) {

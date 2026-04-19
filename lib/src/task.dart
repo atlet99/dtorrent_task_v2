@@ -19,8 +19,10 @@ import 'package:dtorrent_task_v2/src/piece/sequential_config.dart';
 import 'package:dtorrent_task_v2/src/piece/sequential_stats.dart';
 import 'package:dtorrent_task_v2/src/piece/advanced_sequential_selector.dart';
 import 'package:dtorrent_task_v2/src/task_events.dart';
-import 'package:dtorrent_tracker/dtorrent_tracker.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_tracker.dart'
+    as tracker;
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/compact_address_bridge.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';
 import 'package:logging/logging.dart';
 import 'package:events_emitter2/events_emitter2.dart';
@@ -236,7 +238,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
 
   /// Add known Peer addresses.
   void addPeer(CompactAddress address, PeerSource source,
-      {PeerType? type, Socket socket});
+      {PeerType? type, Socket? socket});
 
   Stream<List<int>>? createStream({
     int filePosition = 0,
@@ -373,11 +375,11 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
 
 class _TorrentTask
     with EventsEmittable<TaskEvent>
-    implements TorrentTask, AnnounceOptionsProvider {
+    implements TorrentTask, tracker.AnnounceOptionsProvider {
   static InternetAddress LOCAL_ADDRESS =
       InternetAddress.fromRawAddress(Uint8List.fromList([127, 0, 0, 1]));
 
-  TorrentAnnounceTracker? _tracker;
+  tracker.TorrentAnnounceTracker? _tracker;
 
   scrape.ScrapeClient? _scrapeClient;
   TrackerClient? _trackerClient;
@@ -485,7 +487,7 @@ class _TorrentTask
 
   final Set<InternetAddress> _comingIp = {};
 
-  EventsListener<TorrentAnnounceEvent>? trackerListener;
+  EventsListener<tracker.TorrentAnnounceEvent>? trackerListener;
   EventsListener<peer_events.PeerEvent>? peersManagerListener;
   EventsListener<DownloadFileManagerEvent>? fileManagerListener;
   EventsListener<PieceManagerEvent>? pieceManagerListener;
@@ -565,7 +567,7 @@ class _TorrentTask
   Future<PeersManager> _init(TorrentModel model, String savePath) async {
     _lsd ??= LSD(model.infoHash, _peerId);
     _infoHashString ??= String.fromCharCodes(model.infoHashBuffer);
-    _tracker ??= TorrentAnnounceTracker(this);
+    _tracker ??= tracker.TorrentAnnounceTracker(this);
     _stateFile ??= await StateFileV2.getStateFile(savePath, model);
 
     // Initialize file priority manager
@@ -774,8 +776,9 @@ class _TorrentTask
     events.emit(TaskFileCompleted(event.file));
   }
 
-  void _processTrackerPeerEvent(AnnouncePeerEventEvent event) {
+  void _processTrackerPeerEvent(tracker.AnnouncePeerEventEvent event) {
     if (event.event == null) return;
+    _applyTrackerExternalIp(event.event!);
     var ps = event.event!.peers;
     if (ps.isNotEmpty) {
       for (var url in ps) {
@@ -784,23 +787,37 @@ class _TorrentTask
     }
   }
 
+  void _applyTrackerExternalIp(tracker.PeerEvent trackerEvent) {
+    final externalIp = trackerEvent.externalIp;
+    if (externalIp == null) return;
+    if (externalIp.isLoopback ||
+        externalIp.isMulticast ||
+        externalIp == InternetAddress.anyIPv4 ||
+        externalIp == InternetAddress.anyIPv6) {
+      return;
+    }
+    _peersManager?.localExternalIP = externalIp;
+    _log.fine('Tracker reported external IP: $externalIp');
+  }
+
   void _processLSDPeerEvent(LSDNewPeer event) {
     print('There is LSD! !');
   }
 
-  void _processNewPeerFound(CompactAddress url, PeerSource source) {
+  void _processNewPeerFound(CompactAddress compact, PeerSource source) {
     _log.info(
-      "Add new peer ${url.toString()} from ${source.name} to peersManager",
+      "Add new peer ${compact.toString()} from ${source.name} to peersManager",
     );
-    _peersManager?.addNewPeerAddress(url, source);
+    _peersManager?.addNewPeerAddress(compact, source);
   }
 
-  void _processDHTPeer(CompactAddress peer, String infoHash) {
+  void _processDHTPeer(NewPeerEvent event) {
+    final compact = compactAddressFromExternal(event.address);
     _log.fine(
-      "Got new peer from $peer DHT for infohash: ${Uint8List.fromList(infoHash.codeUnits).toHexString()}",
+      "Got new peer from $compact DHT for infohash: ${Uint8List.fromList(event.infoHash.codeUnits).toHexString()}",
     );
-    if (infoHash == _infoHashString) {
-      _processNewPeerFound(peer, PeerSource.dht);
+    if (event.infoHash == _infoHashString) {
+      _processNewPeerFound(compact, PeerSource.dht);
     }
   }
 
@@ -1072,7 +1089,8 @@ class _TorrentTask
     fileManagerListener = _fileManager?.createListener();
     pieceManagerListener = _pieceManager?.createListener();
     lsdListener = _lsd?.createListener();
-    trackerListener?.on<AnnouncePeerEventEvent>(_processTrackerPeerEvent);
+    trackerListener
+        ?.on<tracker.AnnouncePeerEventEvent>(_processTrackerPeerEvent);
 
     peersManagerListener
       ?..on<PeerAllowFast>(_processAllowFast)
@@ -1116,8 +1134,7 @@ class _TorrentTask
       }
     }
     _dhtListener = _dht?.createListener();
-    _dhtListener?.on<NewPeerEvent>(
-        (event) => _processDHTPeer(event.address, event.infoHash));
+    _dhtListener?.on<NewPeerEvent>(_processDHTPeer);
     _dht?.announce(
         String.fromCharCodes(_metaInfo.infoHashBuffer), _serverSocket!.port);
 
@@ -1129,7 +1146,7 @@ class _TorrentTask
       await announcePausedToTrackers(_metaInfo.announces);
     } else {
       _tracker?.runTrackers(_metaInfo.announces, _metaInfo.infoHashBuffer,
-          event: EVENT_STARTED);
+          event: tracker.EVENT_STARTED);
     }
     events.emit(TaskStarted());
     return map;
