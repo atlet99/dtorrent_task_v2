@@ -1,9 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
-import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
+
+import '../proxy/proxy_config.dart';
+import '../proxy/proxy_manager.dart';
+import '../ssl/ssl_config.dart';
+import '../encryption/bep8_tracker_obfuscation.dart';
 
 /// Result of BEP 21 paused announce.
 class PausedAnnounceResult {
@@ -35,12 +40,16 @@ class TrackerClient {
   static final _log = Logger('TrackerClient');
 
   final Duration timeout;
-  final http.Client _httpClient;
+  final ProxyManager? proxyManager;
+  final SSLConfig? sslConfig;
+  final bool enableBep8TrackerObfuscation;
 
   TrackerClient({
     this.timeout = const Duration(seconds: 10),
-    http.Client? httpClient,
-  }) : _httpClient = httpClient ?? http.Client();
+    this.proxyManager,
+    this.sslConfig,
+    this.enableBep8TrackerObfuscation = false,
+  });
 
   /// Build paused announce URL for HTTP/HTTPS tracker.
   Uri? buildPausedAnnounceUri({
@@ -69,11 +78,45 @@ class TrackerClient {
     add('peer_id', options['peerId'] ?? options['peer_id'] ?? '');
     add('event', 'paused');
 
-    final encodedInfoHash = Uri.encodeQueryComponent(
-      String.fromCharCodes(infoHash),
-      encoding: latin1,
-    );
-    queryParts.add('info_hash=$encodedInfoHash');
+    if (enableBep8TrackerObfuscation) {
+      final shaIh = Bep8TrackerObfuscation.shaIh(infoHash);
+      final encodedShaIh = Uri.encodeQueryComponent(
+        String.fromCharCodes(shaIh),
+        encoding: latin1,
+      );
+      queryParts.add('sha_ih=$encodedShaIh');
+
+      final rawPort = options['port'];
+      final port = rawPort is int ? rawPort : int.tryParse('$rawPort') ?? 0;
+      final obscuredPort = Bep8TrackerObfuscation.obfuscateAnnouncePort(
+        infoHash: infoHash,
+        port: port,
+      );
+      queryParts.removeWhere((e) => e.startsWith('port='));
+      add('port', obscuredPort);
+
+      final ipValue = options['ip'];
+      if (ipValue is String) {
+        final ip = InternetAddress.tryParse(ipValue);
+        if (ip != null) {
+          final obscuredIp = Bep8TrackerObfuscation.obfuscateAnnounceIp(
+            infoHash: infoHash,
+            ip: ip,
+          );
+          final encodedIp = Uri.encodeQueryComponent(
+            String.fromCharCodes(obscuredIp),
+            encoding: latin1,
+          );
+          queryParts.add('ip=$encodedIp');
+        }
+      }
+    } else {
+      final encodedInfoHash = Uri.encodeQueryComponent(
+        String.fromCharCodes(infoHash),
+        encoding: latin1,
+      );
+      queryParts.add('info_hash=$encodedInfoHash');
+    }
 
     return trackerUrl.replace(query: queryParts.join('&'));
   }
@@ -100,10 +143,18 @@ class TrackerClient {
     }
 
     try {
-      final response = await _httpClient.get(uri,
-          headers: {'User-Agent': 'dtorrent_task_v2/1.0'}).timeout(timeout);
+      final client = _createHttpClient();
+      final request = await client.getUrl(uri).timeout(timeout);
+      request.headers.set(HttpHeaders.userAgentHeader, 'dtorrent_task_v2/1.0');
+      final response = await request.close().timeout(timeout);
+      final body = await response.fold<BytesBuilder>(
+        BytesBuilder(),
+        (builder, data) => builder..add(data),
+      );
+      final bytes = body.takeBytes();
+      client.close(force: true);
 
-      if (response.statusCode != 200) {
+      if (response.statusCode != HttpStatus.ok) {
         return PausedAnnounceResult(
           trackerUrl: trackerUrl,
           isSuccess: false,
@@ -111,7 +162,7 @@ class TrackerClient {
         );
       }
 
-      final decoded = decode(response.bodyBytes);
+      final decoded = decode(bytes);
       if (decoded is! Map) {
         return PausedAnnounceResult(
           trackerUrl: trackerUrl,
@@ -152,5 +203,26 @@ class TrackerClient {
         error: e.toString(),
       );
     }
+  }
+
+  HttpClient _createHttpClient() {
+    final client = HttpClient();
+    client.connectionTimeout = timeout;
+
+    if (sslConfig != null) {
+      client.badCertificateCallback = (cert, host, port) {
+        return sslConfig!.onBadCertificate(cert);
+      };
+    }
+
+    if (proxyManager != null &&
+        proxyManager!.shouldUseForTrackers() &&
+        (proxyManager!.config?.type == ProxyType.http ||
+            proxyManager!.config?.type == ProxyType.https)) {
+      final cfg = proxyManager!.config!;
+      client.findProxy = (uri) => 'PROXY ${cfg.host}:${cfg.port}';
+    }
+
+    return client;
   }
 }

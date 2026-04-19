@@ -260,11 +260,27 @@ abstract class Peer
   /// Torrent version support (v1, v2, or hybrid)
   /// Used to set handshake reserved bits for v2 support
   TorrentVersion? _torrentVersion;
+  ProtocolEncryptionSession? _protocolEncryptionSession;
 
   /// Set torrent version for this peer connection
   /// This affects handshake reserved bits for v2/hybrid support
   void setTorrentVersion(TorrentVersion version) {
     _torrentVersion = version;
+  }
+
+  void setProtocolEncryptionConfig(ProtocolEncryptionConfig? config) {
+    if (config == null || !config.isEnabled) {
+      _protocolEncryptionSession = null;
+      return;
+    }
+    final secret = <int>[
+      ..._infoHashBuffer,
+      ...address.toContactEncodingString().codeUnits,
+    ];
+    _protocolEncryptionSession = ProtocolEncryptionSession.fromSharedSecret(
+      config: config,
+      sharedSecret: secret,
+    );
   }
 
   /// [_id] is used to differentiate between different peers. It is different from
@@ -291,18 +307,26 @@ abstract class Peer
       int piecesNum, Socket? socket, PeerSource source,
       {bool enableExtend = true,
       bool enableFast = true,
-      ProxyManager? proxyManager}) {
+      ProxyManager? proxyManager,
+      SSLConfig? sslConfig,
+      ProtocolEncryptionConfig? protocolEncryptionConfig}) {
     return _TCPPeer(address, infoHashBuffer, piecesNum, socket, source,
         enableExtend: enableExtend,
         enableFast: enableFast,
-        proxyManager: proxyManager);
+        proxyManager: proxyManager,
+        sslConfig: sslConfig,
+        protocolEncryptionConfig: protocolEncryptionConfig);
   }
 
   factory Peer.newUTPPeer(CompactAddress address, List<int> infoHashBuffer,
       int piecesNum, UTPSocket? socket, PeerSource source,
-      {bool enableExtend = true, bool enableFast = true}) {
+      {bool enableExtend = true,
+      bool enableFast = true,
+      ProtocolEncryptionConfig? protocolEncryptionConfig}) {
     return _UTPPeer(address, infoHashBuffer, piecesNum, socket, source,
-        enableExtend: enableExtend, enableFast: enableFast);
+        enableExtend: enableExtend,
+        enableFast: enableFast,
+        protocolEncryptionConfig: protocolEncryptionConfig);
   }
 
   /// The remote peer's bitfield.
@@ -371,7 +395,9 @@ abstract class Peer
       var stream = await connectRemote(timeout);
       _log.fine('Connected stream established for peer $address');
       startSpeedCalculator();
-      _streamChunk = stream?.listen(_processReceiveData, onDone: () {
+      _streamChunk = stream?.listen((event) {
+        _processReceiveData(_decodeIncoming(event));
+      }, onDone: () {
         _log.info('Connection is closed $address');
         dispose(BadException('The remote peer closed the connection'));
       }, onError: (e) {
@@ -393,6 +419,18 @@ abstract class Peer
       if (e is TCPConnectException) return dispose(e);
       return dispose(BadException(e));
     }
+  }
+
+  Uint8List _decodeIncoming(Uint8List data) {
+    final session = _protocolEncryptionSession;
+    if (session == null || data.isEmpty) return data;
+    return session.decryptInbound(data);
+  }
+
+  List<int> encodeOutgoing(List<int> bytes) {
+    final session = _protocolEncryptionSession;
+    if (session == null || bytes.isEmpty) return bytes;
+    return session.encryptOutbound(Uint8List.fromList(bytes));
   }
 
   /// Initialize some basic data.
@@ -1904,17 +1942,23 @@ class TCPConnectException implements Exception {
 class _TCPPeer extends Peer {
   Socket? _socket;
   final ProxyManager? _proxyManager;
+  final SSLConfig? _sslConfig;
 
   _TCPPeer(CompactAddress address, List<int> infoHashBuffer, int piecesNum,
       this._socket, PeerSource source,
       {bool enableExtend = true,
       bool enableFast = true,
-      ProxyManager? proxyManager})
+      ProxyManager? proxyManager,
+      SSLConfig? sslConfig,
+      ProtocolEncryptionConfig? protocolEncryptionConfig})
       : _proxyManager = proxyManager,
+        _sslConfig = sslConfig,
         super(address, infoHashBuffer, piecesNum, source,
             type: PeerType.TCP,
             localEnableExtended: enableExtend,
-            localEnableFastPeer: enableFast);
+            localEnableFastPeer: enableFast) {
+    setProtocolEncryptionConfig(protocolEncryptionConfig);
+  }
 
   @override
   Future<Stream<Uint8List>?> connectRemote(int? timeout) async {
@@ -1922,19 +1966,32 @@ class _TCPPeer extends Peer {
     try {
       if (_socket != null) return _socket;
 
+      Socket rawSocket;
+
       // Use proxy if configured and enabled for peers
       if (_proxyManager != null && _proxyManager!.shouldUseForPeers()) {
-        _socket = await _proxyManager!.connectThroughProxy(
+        rawSocket = await _proxyManager!.connectThroughProxy(
           address.address,
           address.port,
           timeout: Duration(seconds: timeout),
         );
       } else {
-        _socket = await Socket.connect(
+        rawSocket = await Socket.connect(
           address.address,
           address.port,
           timeout: Duration(seconds: timeout),
         );
+      }
+
+      if (_sslConfig != null && _sslConfig!.enableForPeers) {
+        _socket = await SecureSocket.secure(
+          rawSocket,
+          host: address.address.address,
+          context: _sslConfig!.buildSecurityContext(),
+          onBadCertificate: _sslConfig!.onBadCertificate,
+        );
+      } else {
+        _socket = rawSocket;
       }
       return _socket;
     } on Exception catch (e) {
@@ -1945,7 +2002,7 @@ class _TCPPeer extends Peer {
   @override
   void sendByteMessage(List<int> bytes) {
     try {
-      _socket?.add(bytes);
+      _socket?.add(encodeOutgoing(bytes));
     } catch (e) {
       dispose(e);
     }
@@ -1980,10 +2037,12 @@ class _UTPPeer extends Peer {
     PeerSource source, {
     bool enableExtend = true,
     bool enableFast = true,
+    ProtocolEncryptionConfig? protocolEncryptionConfig,
   }) : super(address, infoHashBuffer, piecesNum, source,
             type: PeerType.UTP,
             localEnableExtended: enableExtend,
             localEnableFastPeer: enableFast) {
+    setProtocolEncryptionConfig(protocolEncryptionConfig);
     // Initialize uTP with optimized congestion window for better performance
     initializeUtpCwnd();
   }
@@ -2028,7 +2087,7 @@ class _UTPPeer extends Peer {
       }
 
       try {
-        _socket?.add(Uint8List.fromList(bytes));
+        _socket?.add(Uint8List.fromList(encodeOutgoing(bytes)));
 
         // Log successful send for uTP debugging (only in fine mode to avoid spam)
         if (type == PeerType.UTP) {

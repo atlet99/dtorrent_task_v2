@@ -41,6 +41,8 @@ import 'nat/port_forwarding_manager.dart';
 import 'filter/ip_filter.dart';
 import 'proxy/proxy_config.dart';
 import 'proxy/proxy_manager.dart';
+import 'ssl/ssl_config.dart';
+import 'encryption/protocol_encryption.dart';
 import 'seeding/superseeder.dart';
 import 'file/file_priority.dart';
 import 'file/file_priority_manager.dart';
@@ -83,6 +85,8 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
     SequentialConfig? sequentialConfig,
     ProxyConfig? proxyConfig,
     bool partialSeedingEnabled = false,
+    SSLConfig? sslConfig,
+    ProtocolEncryptionConfig? encryptionConfig,
   ]) {
     return _TorrentTask(
       metaInfo,
@@ -93,6 +97,8 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
       sequentialConfig: sequentialConfig,
       proxyConfig: proxyConfig,
       partialSeedingEnabled: partialSeedingEnabled,
+      sslConfig: sslConfig,
+      encryptionConfig: encryptionConfig,
     );
   }
   void startAnnounceUrl(Uri url, Uint8List infoHash);
@@ -295,6 +301,18 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   /// Partial-seed status for UI/statistics.
   PartialSeedStatus getPartialSeedStatus();
 
+  /// Set SSL/TLS configuration for peer/tracker connectivity.
+  void setSSLConfig(SSLConfig? config);
+
+  /// Get current SSL/TLS configuration.
+  SSLConfig? get sslConfig;
+
+  /// Set protocol encryption configuration.
+  void setEncryptionConfig(ProtocolEncryptionConfig? config);
+
+  /// Get current protocol encryption configuration.
+  ProtocolEncryptionConfig? get encryptionConfig;
+
   /// Set IP filter for blocking/allowing peer connections
   ///
   /// [filter] - IP filter instance. Set to null to disable filtering.
@@ -369,6 +387,8 @@ class _TorrentTask
   IPFilter? _ipFilter;
 
   ProxyManager? _proxyManager;
+  SSLConfig? _sslConfig;
+  ProtocolEncryptionConfig? _encryptionConfig;
 
   DHT? _dht = DHT();
 
@@ -482,11 +502,15 @@ class _TorrentTask
       List<Uri>? acceptableSources,
       SequentialConfig? sequentialConfig,
       ProxyConfig? proxyConfig,
-      bool partialSeedingEnabled = false})
+      bool partialSeedingEnabled = false,
+      SSLConfig? sslConfig,
+      ProtocolEncryptionConfig? encryptionConfig})
       : _webSeeds = webSeeds ?? [],
         _acceptableSources = acceptableSources ?? [],
         _sequentialConfig = sequentialConfig,
         _partialSeedingEnabled = partialSeedingEnabled {
+    _sslConfig = sslConfig;
+    _encryptionConfig = encryptionConfig;
     if (proxyConfig != null) {
       _proxyManager = ProxyManager(proxyConfig);
     }
@@ -610,6 +634,8 @@ class _TorrentTask
     _fileManager ??= await DownloadFileManager.createFileManager(
         model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
     _peersManager ??= PeersManager(_peerId, model, ipFilter: _ipFilter);
+    _peersManager?.setSSLConfig(_sslConfig);
+    _peersManager?.setProtocolEncryptionConfig(_encryptionConfig);
     _advancedSelector?.setLocalPeerEndpoint(
       _peersManager?.localExternalIP,
       port: _serverSocket?.port ?? 0,
@@ -1728,8 +1754,28 @@ class _TorrentTask
   void setProxyConfig(ProxyConfig? config) {
     _proxyManager = config != null ? ProxyManager(config) : null;
     _peersManager?.setProxyManager(_proxyManager);
+    _trackerClient = null;
     _log.info('Proxy ${config != null ? "enabled" : "disabled"}');
   }
+
+  @override
+  void setSSLConfig(SSLConfig? config) {
+    _sslConfig = config;
+    _peersManager?.setSSLConfig(config);
+    _trackerClient = null;
+  }
+
+  @override
+  SSLConfig? get sslConfig => _sslConfig;
+
+  @override
+  void setEncryptionConfig(ProtocolEncryptionConfig? config) {
+    _encryptionConfig = config;
+    _peersManager?.setProtocolEncryptionConfig(config);
+  }
+
+  @override
+  ProtocolEncryptionConfig? get encryptionConfig => _encryptionConfig;
 
   @override
   void enableSuperseeding() {
@@ -1801,7 +1847,10 @@ class _TorrentTask
     final announceList = trackers?.toList() ?? _metaInfo.announces.toList();
     if (announceList.isEmpty) return;
 
-    _trackerClient ??= TrackerClient();
+    _trackerClient ??= TrackerClient(
+      proxyManager: _proxyManager,
+      sslConfig: _sslConfig,
+    );
     final infoHash = Uint8List.fromList(_metaInfo.infoHashBuffer);
 
     for (final trackerUrl in announceList) {

@@ -16,6 +16,8 @@ import '../peer_priority.dart';
 import '../../torrent/torrent_version.dart';
 import '../../filter/ip_filter.dart';
 import '../../proxy/proxy_manager.dart';
+import '../../ssl/ssl_config.dart';
+import '../../encryption/protocol_encryption.dart';
 
 const MAX_ACTIVE_PEERS = 50;
 
@@ -51,6 +53,8 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   IPFilter? _ipFilter;
 
   ProxyManager? _proxyManager;
+  SSLConfig? _sslConfig;
+  ProtocolEncryptionConfig? _protocolEncryptionConfig;
 
   final TorrentModel _metaInfo;
 
@@ -115,6 +119,20 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   /// Get current proxy manager
   ProxyManager? get proxyManager => _proxyManager;
+
+  /// Set SSL config for peer connections
+  void setSSLConfig(SSLConfig? config) {
+    _sslConfig = config;
+    _log.info(
+        'Peer TLS ${config?.enableForPeers == true ? "enabled" : "disabled"}');
+  }
+
+  /// Set protocol encryption config for peer connections
+  void setProtocolEncryptionConfig(ProtocolEncryptionConfig? config) {
+    _protocolEncryptionConfig = config;
+    _log.info(
+        'Protocol encryption ${config?.isEnabled == true ? "enabled" : "disabled"}');
+  }
 
   Future<void> _init() async {
     try {
@@ -330,6 +348,8 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
           socket,
           source,
           proxyManager: _proxyManager,
+          sslConfig: _sslConfig,
+          protocolEncryptionConfig: _protocolEncryptionConfig,
         );
       }
       if (type == PeerType.UTP) {
@@ -339,7 +359,8 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
           return;
         }
         peer = Peer.newUTPPeer(address, _metaInfo.infoHashBuffer,
-            _metaInfo.pieces!.length, socket, source);
+            _metaInfo.pieces!.length, socket, source,
+            protocolEncryptionConfig: _protocolEncryptionConfig);
       }
       if (peer != null) {
         // Set torrent version for v2/hybrid support in handshake
