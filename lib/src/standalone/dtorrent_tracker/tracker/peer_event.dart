@@ -41,6 +41,7 @@ class PeerEvent extends TrackerEventBase {
 
   /// BEP 31: retry interval (in seconds) suggested by tracker on failures.
   int? retryIn;
+  bool neverRetry;
 
   /// peer uri set
   Set<CompactAddress> peers = <CompactAddress>{};
@@ -52,7 +53,8 @@ class PeerEvent extends TrackerEventBase {
       this.minInterval,
       this.warning,
       this.externalIp,
-      this.retryIn});
+      this.retryIn,
+      this.neverRetry = false});
 
   /// Add a peer uri
   bool addPeer(CompactAddress peer) {

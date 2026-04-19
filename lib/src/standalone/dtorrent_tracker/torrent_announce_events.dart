@@ -45,3 +45,25 @@ class AnnounceTrackerStartEvent implements TorrentAnnounceEvent {
 
   AnnounceTrackerStartEvent(this.source);
 }
+
+class AnnounceRetryPolicyEvent implements TorrentAnnounceEvent {
+  final Tracker source;
+  final int? requestedRetryInSeconds;
+  final int? effectiveRetryInSeconds;
+  final bool neverRetry;
+  final bool fromError;
+  final bool clamped;
+  final bool warningBased;
+  final String? warning;
+
+  AnnounceRetryPolicyEvent({
+    required this.source,
+    required this.requestedRetryInSeconds,
+    required this.effectiveRetryInSeconds,
+    required this.neverRetry,
+    required this.fromError,
+    required this.clamped,
+    required this.warningBased,
+    this.warning,
+  });
+}

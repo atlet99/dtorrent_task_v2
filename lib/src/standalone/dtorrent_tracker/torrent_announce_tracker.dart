@@ -13,6 +13,40 @@ import 'tracker/tracker_events.dart';
 import 'tracker/tracker_exception.dart';
 import 'tracker_generator.dart';
 
+class TrackerRetryState {
+  final int? requestedRetryInSeconds;
+  final int? effectiveRetryInSeconds;
+  final bool neverRetry;
+  final bool fromError;
+  final bool warningBased;
+  final bool clamped;
+  final String? warning;
+  final DateTime updatedAt;
+
+  const TrackerRetryState({
+    required this.requestedRetryInSeconds,
+    required this.effectiveRetryInSeconds,
+    required this.neverRetry,
+    required this.fromError,
+    required this.warningBased,
+    required this.clamped,
+    required this.updatedAt,
+    this.warning,
+  });
+}
+
+class _RetrySchedule {
+  final int? requested;
+  final int? effective;
+  final bool clamped;
+
+  const _RetrySchedule({
+    required this.requested,
+    required this.effective,
+    required this.clamped,
+  });
+}
+
 /// Torrent announce tracker.
 ///
 /// Create announce trackers from torrent model. This class can start/stop
@@ -24,6 +58,7 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
   final Map<Uri, Tracker> _trackers = {};
   final Map<Tracker, EventsListener<TrackerEvent>> trackerEventListeners = {};
   final Map<Uri, InternetAddress> _externalIpByTracker = {};
+  final Map<Uri, TrackerRetryState> _retryStateByTracker = {};
 
   TrackerGenerator? trackerGenerator;
 
@@ -34,6 +69,14 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
   final int maxRetryTime;
 
   final int _retryAfter = 5;
+  final int minRetryDelaySeconds;
+  final int maxRetryDelaySeconds;
+  final double retryJitterRatio;
+  final Random _random;
+  int _retryDirectiveCount = 0;
+  int _retryNeverCount = 0;
+  int _retrySuppressedCount = 0;
+  int _retryClampedCount = 0;
 
   // final Set<String> _announceOverTrackers = {};
 
@@ -91,7 +134,13 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
   /// }
   /// ```
   TorrentAnnounceTracker(this.provider,
-      {this.trackerGenerator, this.maxRetryTime = 3}) {
+      {this.trackerGenerator,
+      this.maxRetryTime = 3,
+      this.minRetryDelaySeconds = 1,
+      this.maxRetryDelaySeconds = 24 * 60 * 60,
+      this.retryJitterRatio = 0.1,
+      Random? random})
+      : _random = random ?? Random() {
     trackerGenerator ??= TrackerGenerator.base();
   }
 
@@ -103,6 +152,12 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
 
   Map<Uri, InternetAddress> get externalIpByTracker =>
       Map.unmodifiable(_externalIpByTracker);
+  Map<Uri, TrackerRetryState> get retryStateByTracker =>
+      Map.unmodifiable(_retryStateByTracker);
+  int get retryDirectiveCount => _retryDirectiveCount;
+  int get retryNeverCount => _retryNeverCount;
+  int get retrySuppressedCount => _retrySuppressedCount;
+  int get retryClampedCount => _retryClampedCount;
 
   Future<List<bool>> restartAll() {
     var list = <Future<bool>>[];
@@ -115,6 +170,7 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
   void removeTracker(Uri url) {
     var tracker = _trackers.remove(url);
     _externalIpByTracker.remove(url);
+    _retryStateByTracker.remove(url);
     tracker?.dispose();
   }
 
@@ -123,10 +179,99 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
     events.dispose();
     _trackers.clear();
     _externalIpByTracker.clear();
+    _retryStateByTracker.clear();
     _announceRetryTimers.forEach((key, record) {
       record[0].cancel();
     });
     _announceRetryTimers.clear();
+  }
+
+  _RetrySchedule _normalizeRetryDelay(int requestedSeconds) {
+    var effective = requestedSeconds;
+    var clamped = false;
+    if (effective < minRetryDelaySeconds) {
+      effective = minRetryDelaySeconds;
+      clamped = true;
+    }
+    if (effective > maxRetryDelaySeconds) {
+      effective = maxRetryDelaySeconds;
+      clamped = true;
+    }
+
+    if (effective > 0 && retryJitterRatio > 0) {
+      final maxJitter = (effective * retryJitterRatio).round();
+      if (maxJitter > 0) {
+        final shift = _random.nextInt(maxJitter * 2 + 1) - maxJitter;
+        effective += shift;
+      }
+      if (effective < minRetryDelaySeconds) {
+        effective = minRetryDelaySeconds;
+        clamped = true;
+      }
+      if (effective > maxRetryDelaySeconds) {
+        effective = maxRetryDelaySeconds;
+        clamped = true;
+      }
+    }
+
+    if (clamped) _retryClampedCount++;
+    return _RetrySchedule(
+      requested: requestedSeconds,
+      effective: effective,
+      clamped: clamped,
+    );
+  }
+
+  void _emitRetryPolicyEvent(
+    Tracker tracker, {
+    required int? requestedRetryInSeconds,
+    required int? effectiveRetryInSeconds,
+    required bool neverRetry,
+    required bool fromError,
+    required bool warningBased,
+    required bool clamped,
+    String? warning,
+  }) {
+    _retryDirectiveCount++;
+    if (neverRetry) _retryNeverCount++;
+    final uri = tracker.announceUrl;
+    _retryStateByTracker[uri] = TrackerRetryState(
+      requestedRetryInSeconds: requestedRetryInSeconds,
+      effectiveRetryInSeconds: effectiveRetryInSeconds,
+      neverRetry: neverRetry,
+      fromError: fromError,
+      warningBased: warningBased,
+      clamped: clamped,
+      warning: warning,
+      updatedAt: DateTime.now(),
+    );
+    events.emit(AnnounceRetryPolicyEvent(
+      source: tracker,
+      requestedRetryInSeconds: requestedRetryInSeconds,
+      effectiveRetryInSeconds: effectiveRetryInSeconds,
+      neverRetry: neverRetry,
+      fromError: fromError,
+      clamped: clamped,
+      warningBased: warningBased,
+      warning: warning,
+    ));
+  }
+
+  void _scheduleTrackerRetry(
+    Tracker tracker, {
+    required int seconds,
+    required int retryTimes,
+  }) {
+    final timer = Timer(Duration(seconds: seconds), () {
+      if (tracker.isDisposed || isDisposed) return;
+      _unHookTracker(tracker);
+      final url = tracker.announceUrl;
+      final infoHash = tracker.infoHashBuffer;
+      _trackers.remove(url);
+      tracker.dispose();
+      runTracker(url, infoHash);
+    });
+    _announceRetryTimers[tracker] = [timer, retryTimes];
   }
 
   Tracker? _createTracker(Uri announce, Uint8List infohash) {
@@ -202,21 +347,60 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
 
     int? retryIn;
     if (event.error is TrackerException) {
-      retryIn = (event.error as TrackerException).retryIn;
+      final trackerError = event.error as TrackerException;
+      if (trackerError.neverRetry) {
+        _log.warning(
+          'Tracker ${event.source.announceUrl} requested no retry (retry in = never)',
+        );
+        _emitRetryPolicyEvent(
+          event.source,
+          requestedRetryInSeconds: null,
+          effectiveRetryInSeconds: null,
+          neverRetry: true,
+          fromError: true,
+          warningBased: false,
+          clamped: false,
+        );
+        _retrySuppressedCount++;
+        event.source.dispose('Tracker requested no retry (retry in = never)');
+        return;
+      }
+      retryIn = trackerError.retryIn;
       if (retryIn == 0) {
         _log.warning(
           'Tracker ${event.source.announceUrl} requested no retry (retry in = 0)',
         );
+        _emitRetryPolicyEvent(
+          event.source,
+          requestedRetryInSeconds: 0,
+          effectiveRetryInSeconds: 0,
+          neverRetry: false,
+          fromError: true,
+          warningBased: false,
+          clamped: false,
+        );
+        _retrySuppressedCount++;
         event.source.dispose('Tracker requested no retry (retry in = 0)');
         return;
       }
     }
 
-    var reTime = retryIn ?? (_retryAfter * pow(2, times) as int);
-    if (reTime < 1) reTime = 1;
+    final requested = retryIn ?? (_retryAfter * pow(2, times) as int);
+    final schedule = _normalizeRetryDelay(requested);
+    final reTime = schedule.effective!;
+    _emitRetryPolicyEvent(
+      event.source,
+      requestedRetryInSeconds: schedule.requested,
+      effectiveRetryInSeconds: schedule.effective,
+      neverRetry: false,
+      fromError: true,
+      warningBased: false,
+      clamped: schedule.clamped,
+    );
     if (retryIn != null) {
       _log.info(
-        'Tracker ${event.source.announceUrl} requested retry in ${retryIn}s '
+        'Tracker ${event.source.announceUrl} requested retry in ${retryIn}s, '
+        'effective ${reTime}s '
         '(attempt ${times + 1}/$maxRetryTime)',
       );
     } else {
@@ -225,17 +409,8 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
         '(attempt ${times + 1}/$maxRetryTime)',
       );
     }
-    var timer = Timer(Duration(seconds: reTime), () {
-      if (event.source.isDisposed || isDisposed) return;
-      _unHookTracker(event.source);
-      var url = event.source.announceUrl;
-      var infoHash = event.source.infoHashBuffer;
-      _trackers.remove(url);
-      event.source.dispose();
-      runTracker(url, infoHash);
-    });
     times++;
-    _announceRetryTimers[event.source] = [timer, times];
+    _scheduleTrackerRetry(event.source, seconds: reTime, retryTimes: times);
     events.emit(AnnounceErrorEvent(event.source, event.error));
   }
 
@@ -255,6 +430,41 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
     final externalIp = event.peerEvent.externalIp;
     if (externalIp != null) {
       _externalIpByTracker[event.source.announceUrl] = externalIp;
+    }
+    if (event.peerEvent.warning != null &&
+        (event.peerEvent.retryIn != null || event.peerEvent.neverRetry)) {
+      if (event.peerEvent.neverRetry) {
+        _emitRetryPolicyEvent(
+          event.source,
+          requestedRetryInSeconds: null,
+          effectiveRetryInSeconds: null,
+          neverRetry: true,
+          fromError: false,
+          warningBased: true,
+          clamped: false,
+          warning: event.peerEvent.warning,
+        );
+        _retrySuppressedCount++;
+        event.source.stopIntervalAnnounce();
+      } else {
+        final schedule = _normalizeRetryDelay(event.peerEvent.retryIn!);
+        _emitRetryPolicyEvent(
+          event.source,
+          requestedRetryInSeconds: schedule.requested,
+          effectiveRetryInSeconds: schedule.effective,
+          neverRetry: false,
+          fromError: false,
+          warningBased: true,
+          clamped: schedule.clamped,
+          warning: event.peerEvent.warning,
+        );
+        event.source.stopIntervalAnnounce();
+        _scheduleTrackerRetry(
+          event.source,
+          seconds: schedule.effective!,
+          retryTimes: 0,
+        );
+      }
     }
     events.emit(AnnouncePeerEventEvent(event.source, event.peerEvent));
   }
@@ -281,6 +491,7 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
       record[0].cancel();
     }
     _externalIpByTracker.remove(event.source.announceUrl);
+    _retryStateByTracker.remove(event.source.announceUrl);
     _trackers.remove(event.source.announceUrl);
     events.emit(AnnounceTrackerDisposedEvent(event.source, event.reason));
   }
