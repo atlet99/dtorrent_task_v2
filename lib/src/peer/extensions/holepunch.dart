@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 import 'package:logging/logging.dart';
 
 enum HolepunchType { rendezvous, connect, error }

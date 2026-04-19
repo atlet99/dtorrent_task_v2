@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 
 import '../protocol/peer.dart';
 

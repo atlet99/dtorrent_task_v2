@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
 import 'package:dtorrent_task_v2/src/peer/swarm/peers_manager_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';

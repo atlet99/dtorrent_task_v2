@@ -20,9 +20,9 @@ linter:
     non_constant_identifier_names: false
     camel_case_types: true
 
-# analyzer:
-#   exclude:
-#     - path/to/excluded/files/**
+analyzer:
+  exclude:
+    - test_results/vendor_sources/**
 
 # For more information about the core and recommended set of lints, see
 # https://dart.dev/go/core-lints

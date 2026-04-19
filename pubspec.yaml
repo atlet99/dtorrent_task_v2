@@ -10,7 +10,6 @@ environment:
 dependencies:
   dtorrent_tracker: ^1.3.18
   bittorrent_dht: ^0.0.12
-  dtorrent_common: ^1.0.7
   b_encode_decode: ^1.0.4
   utp_protocol: ^1.0.4
   dart_ipify: ^1.1.1

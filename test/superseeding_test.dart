@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 import 'package:dtorrent_task_v2/src/seeding/superseeder.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 
 /// Helper to create test peers with unique addresses
 /// Uses different IP addresses to ensure peers are considered different

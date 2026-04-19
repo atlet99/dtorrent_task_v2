@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
 

@@ -19,8 +19,8 @@ import 'package:dtorrent_task_v2/src/piece/sequential_config.dart';
 import 'package:dtorrent_task_v2/src/piece/sequential_stats.dart';
 import 'package:dtorrent_task_v2/src/piece/advanced_sequential_selector.dart';
 import 'package:dtorrent_task_v2/src/task_events.dart';
-import 'package:dtorrent_tracker/dtorrent_tracker.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_tracker.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';
 import 'package:logging/logging.dart';
 import 'package:events_emitter2/events_emitter2.dart';
@@ -235,7 +235,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   void addDHTNode(Uri uri);
 
   /// Add known Peer addresses.
-  void addPeer(CompactAddress address, PeerSource source,
+  void addPeer(dynamic address, PeerSource source,
       {PeerType? type, Socket socket});
 
   Stream<List<int>>? createStream({
@@ -757,9 +757,10 @@ class _TorrentTask
   int? get _pieceLength => _metaInfo.pieceLength;
 
   @override
-  void addPeer(CompactAddress address, PeerSource source,
+  void addPeer(dynamic address, PeerSource source,
       {PeerType? type, Socket? socket}) {
-    _peersManager?.addNewPeerAddress(address, source,
+    final compact = _normalizeCompactAddress(address);
+    _peersManager?.addNewPeerAddress(compact, source,
         type: type, socket: socket);
   }
 
@@ -788,19 +789,21 @@ class _TorrentTask
     print('There is LSD! !');
   }
 
-  void _processNewPeerFound(CompactAddress url, PeerSource source) {
+  void _processNewPeerFound(dynamic url, PeerSource source) {
+    final compact = _normalizeCompactAddress(url);
     _log.info(
-      "Add new peer ${url.toString()} from ${source.name} to peersManager",
+      "Add new peer ${compact.toString()} from ${source.name} to peersManager",
     );
-    _peersManager?.addNewPeerAddress(url, source);
+    _peersManager?.addNewPeerAddress(compact, source);
   }
 
-  void _processDHTPeer(CompactAddress peer, String infoHash) {
+  void _processDHTPeer(dynamic peer, String infoHash) {
+    final compact = _normalizeCompactAddress(peer);
     _log.fine(
-      "Got new peer from $peer DHT for infohash: ${Uint8List.fromList(infoHash.codeUnits).toHexString()}",
+      "Got new peer from $compact DHT for infohash: ${Uint8List.fromList(infoHash.codeUnits).toHexString()}",
     );
     if (infoHash == _infoHashString) {
-      _processNewPeerFound(peer, PeerSource.dht);
+      _processNewPeerFound(compact, PeerSource.dht);
     }
   }
 
@@ -821,6 +824,28 @@ class _TorrentTask
         PeerSource.incoming,
         type: PeerType.TCP,
         socket: socket);
+  }
+
+  CompactAddress _normalizeCompactAddress(dynamic address) {
+    if (address is CompactAddress) return address;
+
+    try {
+      final raw = (address as dynamic).toBytes(false) as List<int>;
+      final v4 = CompactAddress.parseIPv4Address(raw, 0);
+      if (v4 != null && raw.length == 6) return v4;
+      final v6 = CompactAddress.parseIPv6Address(raw, 0);
+      if (v6 != null && raw.length == 18) return v6;
+    } catch (_) {
+      // fallback below
+    }
+
+    try {
+      final ip = (address as dynamic).address as InternetAddress;
+      final port = (address as dynamic).port as int;
+      return CompactAddress(ip, port);
+    } catch (_) {
+      throw ArgumentError('Unsupported compact address type: $address');
+    }
   }
 
   @override
