@@ -45,6 +45,7 @@ export 'src/encryption/protocol_encryption.dart';
 export 'src/encryption/rc4_encryption.dart';
 export 'src/encryption/bep8_tracker_obfuscation.dart';
 export 'src/standalone/dtorrent_common.dart';
+export 'src/standalone/dht/standalone_dht.dart';
 
 /// Peer ID prefix
 const ID_PREFIX = '-DT0201-';

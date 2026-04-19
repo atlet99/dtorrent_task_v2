@@ -6,7 +6,7 @@
 Dart library for implementing BitTorrent client.
 
 > [!IMPORTANT]
-> Since `0.5.0` (currently in `Unreleased`), tracker/common internals are fully standalone in this repository.
+> Since `0.5.0` (currently in `Unreleased`), tracker/common/DHT internals are fully standalone in this repository.
 
 > [!TIP]
 > For quick onboarding, start with [How to use](#how-to-use), then jump to [Using Magnet Links](#using-magnet-links).
@@ -46,7 +46,7 @@ flowchart LR
 The Dart Torrent client consists of several parts:
 - [Bencode](https://pub.dev/packages/b_encode_decode) 
 - Built-in tracker stack (`lib/src/standalone/dtorrent_tracker`) - no external dependency required since 0.4.9
-- [DHT](https://pub.dev/packages/bittorrent_dht)
+- Built-in DHT stack (`lib/src/standalone/dht/standalone_dht.dart`) - no external dependency required since 0.5.0 (Unreleased)
 - [Built-in Torrent parser](https://github.com/atlet99/dtorrent_task_v2/blob/main/lib/src/torrent/torrent_parser.dart) (TorrentParser/TorrentModel) - no external dependency required since 0.4.8
 - Built-in common utilities (`lib/src/standalone/dtorrent_common`) - no external dependency required since 0.4.9
 - [UTP](https://pub.dev/packages/utp_protocol)
@@ -818,6 +818,12 @@ for (var node in torrentModel.nodes) {
 task.requestPeersFromDHT();
 ```
 
+Built-in DHT implementation details:
+- no external `bittorrent_dht` dependency
+- standalone facade + in-repo UDP/KRPC driver
+- retry/backoff policy for bootstrap and DHT operations
+- runtime retry/error observability events
+
 ## Monitoring and Error Tracking
 
 The library includes comprehensive error tracking for uTP protocol stability:
@@ -838,6 +844,24 @@ Peer.resetRangeErrorMetrics();
 
 These metrics help monitor uTP protocol stability and debug RangeError crashes, particularly those related to selective ACK processing and buffer handling.
 
+You can also monitor standalone DHT runtime events:
+
+```dart
+final dhtListener = task.dht?.createListener();
+dhtListener
+  ?..on<StandaloneDHTRetryEvent>((event) {
+    print(
+      'DHT retry: op=${event.operation}, '
+      'attempt=${event.attempt}, '
+      'delayMs=${event.delay.inMilliseconds}, '
+      'error=${event.error}',
+    );
+  })
+  ..on<StandaloneDHTErrorEvent>((event) {
+    print('DHT error: ${event.message}');
+  });
+```
+
 ## Features
 
 ### Stability Improvements
@@ -855,6 +879,7 @@ These metrics help monitor uTP protocol stability and debug RangeError crashes, 
 - **BitTorrent Protocol v2 (BEP 52)** with automatic version detection
 - **Superseeding (BEP 16)** for improved seeding efficiency
 - **Tracker Scrape (BEP 48)** for torrent statistics without full announce
+- **Standalone in-repo DHT stack** (no external `bittorrent_dht` dependency)
 - uTP (uTorrent transport protocol) support with enhanced stability
 - TCP fallback support
 - Multiple extension protocols (PEX, LSD, Holepunch, Metadata Exchange)

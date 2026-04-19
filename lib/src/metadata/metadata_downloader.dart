@@ -9,7 +9,7 @@ import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/src/standalone/compact_address_bridge.dart';
-import 'package:bittorrent_dht/bittorrent_dht.dart';
+import 'package:dtorrent_task_v2/src/standalone/dht/standalone_dht.dart';
 import 'package:dtorrent_task_v2/src/metadata/metadata_downloader_events.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart'
@@ -91,8 +91,8 @@ class MetadataDownloader
   final Set<InternetAddress> _incomingAddress = {};
 
   /// DHT instance for peer discovery
-  final DHT _dht = DHT();
-  DHT get dht => _dht;
+  final StandaloneDHT _dht = StandaloneDHT();
+  StandaloneDHT get dht => _dht;
 
   /// Whether the downloader is currently running
   bool _running = false;
@@ -127,6 +127,12 @@ class MetadataDownloader
 
   /// Tracker event listener
   EventsListener? _trackerListener;
+
+  /// DHT event listener
+  EventsListener<StandaloneDHTEvent>? _dhtListener;
+
+  int _dhtRetryEvents = 0;
+  int _dhtErrorEvents = 0;
 
   /// Maximum number of retry attempts for metadata download
   static const int _maxRetryAttempts = 3;
@@ -318,8 +324,11 @@ class MetadataDownloader
 
     // Only use DHT if not a private torrent (BEP 0027)
     // Note: We don't know if it's private yet, but we'll check during handshake
-    var dhtListener = _dht.createListener();
-    dhtListener.on<NewPeerEvent>(_processDHTPeer);
+    _dhtListener = _dht.createListener();
+    _dhtListener
+      ?..on<StandaloneDHTNewPeerEvent>(_processDHTPeer)
+      ..on<StandaloneDHTRetryEvent>(_processDHTRetry)
+      ..on<StandaloneDHTErrorEvent>(_processDHTError);
     var port = await _dht.bootstrap();
     if (port != null && !_isPrivate) {
       _dht.announce(String.fromCharCodes(_infoHashBuffer), port);
@@ -330,6 +339,10 @@ class MetadataDownloader
 
   Future stop() async {
     _running = false;
+    _dhtListener?.dispose();
+    _dhtListener = null;
+    _dhtRetryEvents = 0;
+    _dhtErrorEvents = 0;
     await _dht.stop();
 
     // Dispose tracker
@@ -358,11 +371,24 @@ class MetadataDownloader
     await Stream.fromFutures(fs).toList();
   }
 
-  void _processDHTPeer(NewPeerEvent event) {
+  void _processDHTPeer(StandaloneDHTNewPeerEvent event) {
     if (event.infoHash == String.fromCharCodes(_infoHashBuffer)) {
       final address = compactAddressFromExternal(event.address);
       addNewPeerAddress(address, PeerSource.dht);
     }
+  }
+
+  void _processDHTRetry(StandaloneDHTRetryEvent event) {
+    _dhtRetryEvents++;
+    _log.warning(
+      'Metadata DHT retry event #$_dhtRetryEvents (attempt ${event.attempt}) for ${event.operation} in '
+      '${event.delay.inMilliseconds}ms: ${event.error}',
+    );
+  }
+
+  void _processDHTError(StandaloneDHTErrorEvent event) {
+    _dhtErrorEvents++;
+    _log.warning('Metadata DHT error #$_dhtErrorEvents: ${event.message}');
   }
 
   /// Add a new peer [address] , the default [type] is `PeerType.TCP`,
