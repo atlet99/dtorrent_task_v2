@@ -18,6 +18,16 @@ class AnnounceParseResult {
   });
 }
 
+class _RetryDirective {
+  final int? retryInSeconds;
+  final bool neverRetry;
+
+  const _RetryDirective({
+    this.retryInSeconds,
+    this.neverRetry = false,
+  });
+}
+
 class AnnounceResponseParser {
   static AnnounceParseResult parseHttpAnnounce({
     required Uint8List data,
@@ -27,8 +37,8 @@ class AnnounceResponseParser {
     required Logger logger,
   }) {
     final result = decode(data) as Map;
+    final retryDirective = _extractRetryDirective(result);
 
-    final retryIn = _toInt(result['retry in']) ?? _toInt(result['retry_in']);
     if (result['failure reason'] != null) {
       final failure = result['failure reason'];
       final failureText = failure is List<int>
@@ -37,7 +47,8 @@ class AnnounceResponseParser {
       throw TrackerException(
         trackerId,
         failureText,
-        retryIn: retryIn,
+        retryIn: retryDirective.retryInSeconds,
+        neverRetry: retryDirective.neverRetry,
       );
     }
 
@@ -47,7 +58,8 @@ class AnnounceResponseParser {
         : trackerIdValue?.toString();
 
     final event = PeerEvent(infoHash, trackerUrl);
-    event.retryIn = retryIn;
+    event.retryIn = retryDirective.retryInSeconds;
+    event.neverRetry = retryDirective.neverRetry;
 
     result.forEach((key, value) {
       if (key == 'min interval') {
@@ -76,7 +88,8 @@ class AnnounceResponseParser {
         return;
       }
       if (key == 'retry in' || key == 'retry_in') {
-        event.retryIn = _toInt(value);
+        // already parsed once in _extractRetryDirective() with explicit
+        // precedence for "retry in" over "retry_in"
         return;
       }
       if (key == 'external ip' || key == 'external_ip') {
@@ -105,6 +118,50 @@ class AnnounceResponseParser {
     if (value is BigInt) return value.toInt();
     if (value is String) return int.tryParse(value);
     return null;
+  }
+
+  static _RetryDirective _extractRetryDirective(Map result) {
+    if (result.containsKey('retry in')) {
+      return _parseRetryDirective('retry in', result['retry in']);
+    }
+    if (result.containsKey('retry_in')) {
+      return _parseRetryDirective('retry_in', result['retry_in']);
+    }
+    return const _RetryDirective();
+  }
+
+  static _RetryDirective _parseRetryDirective(String key, dynamic value) {
+    if (value == null) return const _RetryDirective();
+
+    if (value is List<int>) {
+      return _parseRetryDirective(key, String.fromCharCodes(value));
+    }
+
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      if (normalized == 'never') {
+        return const _RetryDirective(neverRetry: true);
+      }
+      final parsed = int.tryParse(normalized);
+      if (parsed == null || parsed < 0) return const _RetryDirective();
+      // BEP 31 defines "retry in" in minutes.
+      if (key == 'retry in') {
+        return _RetryDirective(retryInSeconds: parsed * 60);
+      }
+      // Compatibility mode for de-facto "retry_in" fields in seconds.
+      return _RetryDirective(retryInSeconds: parsed);
+    }
+
+    if (value is int || value is BigInt) {
+      final parsed = _toInt(value);
+      if (parsed == null || parsed < 0) return const _RetryDirective();
+      if (key == 'retry in') {
+        return _RetryDirective(retryInSeconds: parsed * 60);
+      }
+      return _RetryDirective(retryInSeconds: parsed);
+    }
+
+    return const _RetryDirective();
   }
 
   static InternetAddress? _parseExternalIp(dynamic value) {
