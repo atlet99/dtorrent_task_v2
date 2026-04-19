@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'dart:math';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
+import 'package:dtorrent_task_v2/src/peer/peer_priority.dart';
 import 'package:dtorrent_task_v2/src/piece/sequential_config.dart';
 import 'package:dtorrent_task_v2/src/piece/sequential_stats.dart';
 import 'package:logging/logging.dart';
@@ -55,7 +57,19 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
   /// Piece length for calculations
   int? _pieceLength;
 
+  /// Local endpoint used for BEP 40 canonical peer priority.
+  InternetAddress? _localPeerIp;
+  int _localPeerPort = 0;
+
   AdvancedSequentialPieceSelector(this.config);
+
+  /// Update local endpoint used by BEP 40 ranking.
+  ///
+  /// If not set, peer-priority filtering is skipped.
+  void setLocalPeerEndpoint(InternetAddress? ip, {int port = 0}) {
+    _localPeerIp = ip;
+    _localPeerPort = port;
+  }
 
   @override
   void setPriorityPieces(Iterable<int> pieces) {
@@ -201,7 +215,8 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
       if (piece != null &&
           !piece.isCompleted &&
           piece.haveAvailableSubPiece() &&
-          peer.remoteCompletePieces.contains(pieceIndex)) {
+          peer.remoteCompletePieces.contains(pieceIndex) &&
+          _isPeerPreferredForPiece(peer, piece)) {
         _log.fine('Selected critical piece: $pieceIndex');
         return piece;
       }
@@ -217,7 +232,8 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
       if (piece != null &&
           !piece.isCompleted &&
           piece.haveAvailableSubPiece() &&
-          peer.remoteCompletePieces.contains(pieceIndex)) {
+          peer.remoteCompletePieces.contains(pieceIndex) &&
+          _isPeerPreferredForPiece(peer, piece)) {
         return piece;
       }
     }
@@ -233,7 +249,8 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
         if (piece != null &&
             !piece.isCompleted &&
             piece.haveAvailableSubPiece() &&
-            peer.remoteCompletePieces.contains(i)) {
+            peer.remoteCompletePieces.contains(i) &&
+            _isPeerPreferredForPiece(peer, piece)) {
           return piece;
         }
       }
@@ -248,7 +265,8 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
       final piece = provider[pieceIndex];
       if (piece != null &&
           !piece.isCompleted &&
-          piece.haveAvailableSubPiece()) {
+          piece.haveAvailableSubPiece() &&
+          _isPeerPreferredForPiece(peer, piece)) {
         return piece;
       }
     }
@@ -269,7 +287,8 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
       final piece = provider[pieceIndex];
       if (piece == null ||
           piece.isCompleted ||
-          !piece.haveAvailableSubPiece()) {
+          !piece.haveAvailableSubPiece() ||
+          !_isPeerPreferredForPiece(peer, piece)) {
         continue;
       }
 
@@ -286,6 +305,39 @@ class AdvancedSequentialPieceSelector implements PieceSelector {
     }
 
     return rarest;
+  }
+
+  bool _isPeerPreferredForPiece(Peer peer, Piece piece) {
+    if (!config.enablePeerPriority) return true;
+    if (_localPeerIp == null || peer.remotePeerId == null) return true;
+    if (piece.availablePeers.length <= 1) return true;
+
+    final peers = piece.availablePeers.where((p) => !p.isDisposed).toList();
+    if (peers.length <= 1) return true;
+
+    final currentPriority = PeerPriority.canonicalPriority(
+      clientIp: _localPeerIp!,
+      clientPort: _localPeerPort,
+      peerIp: peer.address.address,
+      peerPort: peer.address.port,
+    );
+
+    var bestPriority = -1;
+    for (final candidate in peers) {
+      if (candidate.remotePeerId == null) continue;
+      final priority = PeerPriority.canonicalPriority(
+        clientIp: _localPeerIp!,
+        clientPort: _localPeerPort,
+        peerIp: candidate.address.address,
+        peerPort: candidate.address.port,
+      );
+      if (priority > bestPriority) {
+        bestPriority = priority;
+      }
+    }
+
+    if (bestPriority < 0) return true;
+    return currentPriority >= bestPriority;
   }
 
   /// Update download strategy based on current conditions
