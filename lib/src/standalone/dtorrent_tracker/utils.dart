@@ -25,19 +25,19 @@ String? transformToScrapeUrl(String url) {
   return null;
 }
 
-Uint8List num2Uint16List(n) {
+Uint8List num2Uint16List(int n) {
   var buffer = Uint16List(1).buffer;
   ByteData.view(buffer).setUint16(0, n);
   return buffer.asUint8List();
 }
 
-Uint8List num2Uint32List(n) {
+Uint8List num2Uint32List(int n) {
   var buffer = Uint32List(1).buffer;
   ByteData.view(buffer).setUint32(0, n);
   return buffer.asUint8List();
 }
 
-Uint8List num2Uint64List(n) {
+Uint8List num2Uint64List(int n) {
   var buffer = Uint64List(1).buffer;
   ByteData.view(buffer).setUint64(0, n);
   return buffer.asUint8List();

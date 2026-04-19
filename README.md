@@ -789,7 +789,7 @@ listener.on<StateFileUpdated>((event) {
 You can add peer addresses manually:
 
 ```dart
-import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 
 // Add a peer by address
 final peerAddress = CompactAddress(

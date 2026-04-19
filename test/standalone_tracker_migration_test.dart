@@ -66,8 +66,8 @@ void main() {
       );
 
       expect(scraper, isNotNull);
-      expect(scraper!.scrapeUrl.toString(),
-          'http://tracker.example.org/scrape');
+      expect(
+          scraper!.scrapeUrl.toString(), 'http://tracker.example.org/scrape');
     });
   });
 }

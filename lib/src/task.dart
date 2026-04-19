@@ -1089,7 +1089,8 @@ class _TorrentTask
     fileManagerListener = _fileManager?.createListener();
     pieceManagerListener = _pieceManager?.createListener();
     lsdListener = _lsd?.createListener();
-    trackerListener?.on<tracker.AnnouncePeerEventEvent>(_processTrackerPeerEvent);
+    trackerListener
+        ?.on<tracker.AnnouncePeerEventEvent>(_processTrackerPeerEvent);
 
     peersManagerListener
       ?..on<PeerAllowFast>(_processAllowFast)

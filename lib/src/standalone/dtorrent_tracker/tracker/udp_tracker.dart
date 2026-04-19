@@ -17,9 +17,9 @@ var _log = Logger('UDPTracker');
 /// UDP Tracker
 class UDPTracker extends Tracker with UDPTrackerBase {
   String? _currentEvent;
-  UDPTracker(Uri _uri, Uint8List infoHashBuffer,
+  UDPTracker(Uri uri, Uint8List infoHashBuffer,
       {AnnounceOptionsProvider? provider})
-      : super('udp:${_uri.host}:${_uri.port}', _uri, infoHashBuffer,
+      : super('udp:${uri.host}:${uri.port}', uri, infoHashBuffer,
             provider: provider);
   String? get currentEvent {
     return _currentEvent;

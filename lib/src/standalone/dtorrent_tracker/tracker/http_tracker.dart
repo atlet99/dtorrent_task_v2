@@ -18,10 +18,9 @@ var _log = Logger('HttpTracker');
 class HttpTracker extends Tracker with HttpTrackerBase {
   String? _trackerId;
   String? _currentEvent;
-  HttpTracker(Uri _uri, Uint8List infoHashBuffer,
+  HttpTracker(Uri uri, Uint8List infoHashBuffer,
       {AnnounceOptionsProvider? provider})
-      : super(
-            'http:${_uri.host}:${_uri.port}${_uri.path}', _uri, infoHashBuffer,
+      : super('http:${uri.host}:${uri.port}${uri.path}', uri, infoHashBuffer,
             provider: provider);
 
   String? get currentTrackerId {
@@ -112,7 +111,7 @@ class HttpTracker extends Tracker with HttpTrackerBase {
   /// - Get the 'interval' value , and make sure the return Map contains it(or null), because the Tracker
   /// will check the return Map , if it has 'interval' value , Tracker will update the interval timer.
   /// - If it has 'tracker id' , need to store it , use it next time.
-  /// - parse 'peers' informations. the peers usually is a List<int> , need to parse it to 'n.n.n.n:p' formate
+  /// - parse 'peers' informations. the peers usually is a `List<int>`, need to parse it to 'n.n.n.n:p' formate
   /// ip address.
   /// - Sometimes , the remote will return 'failer reason', then need to throw a exception
   @override

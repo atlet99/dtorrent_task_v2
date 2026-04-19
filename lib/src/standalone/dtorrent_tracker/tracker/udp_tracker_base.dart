@@ -136,7 +136,7 @@ mixin UDPTrackerBase {
 
   void handleSocketDone();
 
-  void handleSocketError(e);
+  void handleSocketError(dynamic e);
 
   /// Process the data obtained from the remote after one communication.
   ///
