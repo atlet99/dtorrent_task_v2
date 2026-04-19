@@ -36,6 +36,7 @@ import 'utils.dart';
 import 'utils/debouncer.dart';
 import 'torrent/torrent_version.dart';
 import 'tracker/scrape_client.dart' as scrape;
+import 'tracker/tracker_client.dart';
 import 'nat/port_forwarding_manager.dart';
 import 'filter/ip_filter.dart';
 import 'proxy/proxy_config.dart';
@@ -49,6 +50,27 @@ const MAX_IN_PEERS = 10;
 
 enum TaskState { running, paused, stopped }
 
+/// Partial seed state snapshot (BEP 21).
+class PartialSeedStatus {
+  final bool enabled;
+  final bool isPartialSeed;
+  final int completedPieces;
+  final int totalPieces;
+  final int? trackerDownloaders;
+  final DateTime? lastAnnounceAt;
+  final DateTime? lastScrapeAt;
+
+  const PartialSeedStatus({
+    required this.enabled,
+    required this.isPartialSeed,
+    required this.completedPieces,
+    required this.totalPieces,
+    required this.trackerDownloaders,
+    required this.lastAnnounceAt,
+    required this.lastScrapeAt,
+  });
+}
+
 var _log = Logger('TorrentTask');
 
 abstract class TorrentTask with EventsEmittable<TaskEvent> {
@@ -60,6 +82,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
     List<Uri>? acceptableSources,
     SequentialConfig? sequentialConfig,
     ProxyConfig? proxyConfig,
+    bool partialSeedingEnabled = false,
   ]) {
     return _TorrentTask(
       metaInfo,
@@ -69,6 +92,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
       acceptableSources: acceptableSources,
       sequentialConfig: sequentialConfig,
       proxyConfig: proxyConfig,
+      partialSeedingEnabled: partialSeedingEnabled,
     );
   }
   void startAnnounceUrl(Uri url, Uint8List infoHash);
@@ -247,6 +271,30 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   /// ```
   Future<scrape.ScrapeResult> scrapeTracker([Uri? trackerUrl]);
 
+  /// Enable partial seeding behavior (BEP 21).
+  ///
+  /// When enabled and the local client has only part of the torrent,
+  /// announce requests prefer `event=paused` for HTTP(S) trackers.
+  void enablePartialSeeding();
+
+  /// Disable partial seeding behavior.
+  void disablePartialSeeding();
+
+  /// Whether partial seeding behavior is enabled.
+  bool get isPartialSeedingEnabled;
+
+  /// Whether current local state corresponds to partial seed.
+  bool get isPartialSeed;
+
+  /// Send `event=paused` announce to trackers (HTTP/HTTPS only).
+  Future<void> announcePausedToTrackers([Iterable<Uri>? trackers]);
+
+  /// Last known number of active downloaders from tracker scrape.
+  int? get trackerDownloaders;
+
+  /// Partial-seed status for UI/statistics.
+  PartialSeedStatus getPartialSeedStatus();
+
   /// Set IP filter for blocking/allowing peer connections
   ///
   /// [filter] - IP filter instance. Set to null to disable filtering.
@@ -314,6 +362,7 @@ class _TorrentTask
   TorrentAnnounceTracker? _tracker;
 
   scrape.ScrapeClient? _scrapeClient;
+  TrackerClient? _trackerClient;
 
   PortForwardingManager? _portForwardingManager;
 
@@ -378,6 +427,13 @@ class _TorrentTask
   /// Whether superseeding is enabled
   bool _superseedingEnabled = false;
 
+  /// Whether partial-seeding behavior is enabled.
+  bool _partialSeedingEnabled;
+
+  int? _trackerDownloaders;
+  DateTime? _lastPartialSeedAnnounceAt;
+  DateTime? _lastPartialSeedScrapeAt;
+
   /// File priority manager for managing file priorities
   FilePriorityManager? _filePriorityManager;
 
@@ -425,10 +481,12 @@ class _TorrentTask
       List<Uri>? webSeeds,
       List<Uri>? acceptableSources,
       SequentialConfig? sequentialConfig,
-      ProxyConfig? proxyConfig})
+      ProxyConfig? proxyConfig,
+      bool partialSeedingEnabled = false})
       : _webSeeds = webSeeds ?? [],
         _acceptableSources = acceptableSources ?? [],
-        _sequentialConfig = sequentialConfig {
+        _sequentialConfig = sequentialConfig,
+        _partialSeedingEnabled = partialSeedingEnabled {
     if (proxyConfig != null) {
       _proxyManager = ProxyManager(proxyConfig);
     }
@@ -1041,6 +1099,8 @@ class _TorrentTask
 
     if (_fileManager != null && _fileManager!.isAllComplete) {
       _tracker?.complete();
+    } else if (_partialSeedingEnabled && isPartialSeed) {
+      await announcePausedToTrackers(_metaInfo.announces);
     } else {
       _tracker?.runTrackers(_metaInfo.announces, _metaInfo.infoHashBuffer,
           event: EVENT_STARTED);
@@ -1426,15 +1486,24 @@ class _TorrentTask
       // a specific piece requested
       piece = _pieceManager![pieceIndex];
       // if the piece is available but doesn't have available subpiece,
-      // select a different subpiece
-      if (piece != null && !piece.haveAvailableSubPiece()) {
+      // or peer doesn't have this piece, select a different one.
+      if (piece == null ||
+          !piece.haveAvailableSubPiece() ||
+          !peer.remoteCompletePieces.contains(pieceIndex)) {
         piece = _pieceManager!
             .selectPiece(peer, _pieceManager!, peer.remoteSuggestPieces);
       }
     } else {
-      // no specific piece requested, select one
-      piece = _pieceManager!
-          .selectPiece(peer, _pieceManager!, peer.remoteSuggestPieces);
+      // no specific piece requested, select one.
+      // In partial-seed mode, prefer rarest-first from this peer.
+      if (_partialSeedingEnabled && isPartialSeed) {
+        piece = _pieceManager!.selectRarestAvailablePiece(peer) ??
+            _pieceManager!
+                .selectPiece(peer, _pieceManager!, peer.remoteSuggestPieces);
+      } else {
+        piece = _pieceManager!
+            .selectPiece(peer, _pieceManager!, peer.remoteSuggestPieces);
+      }
     }
 
     // at this point we have a piece that we know is:
@@ -1558,10 +1627,13 @@ class _TorrentTask
 
   @override
   Future<Map<String, dynamic>> getOptions(Uri uri, String infoHash) {
+    final totalSize = _metaInfo.totalSize;
+    final downloaded = _stateFile?.downloaded ?? 0;
+    final left = totalSize - downloaded;
     var map = {
-      'downloaded': _stateFile?.downloaded,
+      'downloaded': downloaded,
       'uploaded': _stateFile?.uploaded,
-      'left': (_metaInfo.length ?? 0) - _stateFile!.downloaded,
+      'left': left < 0 ? 0 : left,
       'numwant': 50,
       'compact': 1,
       'peerId': _peerId,
@@ -1701,6 +1773,75 @@ class _TorrentTask
   bool get isSuperseedingEnabled => _superseedingEnabled;
 
   @override
+  void enablePartialSeeding() {
+    _partialSeedingEnabled = true;
+    _log.info('Partial seeding enabled');
+  }
+
+  @override
+  void disablePartialSeeding() {
+    _partialSeedingEnabled = false;
+    _log.info('Partial seeding disabled');
+  }
+
+  @override
+  bool get isPartialSeedingEnabled => _partialSeedingEnabled;
+
+  @override
+  bool get isPartialSeed {
+    final bitfield = _stateFile?.bitfield;
+    if (bitfield == null) return false;
+    final completed = bitfield.completedPieces.length;
+    final total = bitfield.piecesNum;
+    return completed > 0 && completed < total;
+  }
+
+  @override
+  Future<void> announcePausedToTrackers([Iterable<Uri>? trackers]) async {
+    final announceList = trackers?.toList() ?? _metaInfo.announces.toList();
+    if (announceList.isEmpty) return;
+
+    _trackerClient ??= TrackerClient();
+    final infoHash = Uint8List.fromList(_metaInfo.infoHashBuffer);
+
+    for (final trackerUrl in announceList) {
+      final options = await getOptions(trackerUrl, _metaInfo.infoHash);
+      final result = await _trackerClient!.announcePaused(
+        trackerUrl: trackerUrl,
+        infoHash: infoHash,
+        options: options,
+      );
+      if (result.isSuccess) {
+        _lastPartialSeedAnnounceAt = DateTime.now();
+        if (result.downloaders != null) {
+          _trackerDownloaders = result.downloaders;
+        }
+      } else {
+        _log.fine('Paused announce failed for $trackerUrl: ${result.error}');
+      }
+    }
+  }
+
+  @override
+  int? get trackerDownloaders => _trackerDownloaders;
+
+  @override
+  PartialSeedStatus getPartialSeedStatus() {
+    final bitfield = _stateFile?.bitfield;
+    final completed = bitfield?.completedPieces.length ?? 0;
+    final total = bitfield?.piecesNum ?? 0;
+    return PartialSeedStatus(
+      enabled: _partialSeedingEnabled,
+      isPartialSeed: isPartialSeed,
+      completedPieces: completed,
+      totalPieces: total,
+      trackerDownloaders: _trackerDownloaders,
+      lastAnnounceAt: _lastPartialSeedAnnounceAt,
+      lastScrapeAt: _lastPartialSeedScrapeAt,
+    );
+  }
+
+  @override
   Future<scrape.ScrapeResult> scrapeTracker([Uri? trackerUrl]) async {
     _scrapeClient ??= scrape.ScrapeClient(
       proxyManager: _proxyManager,
@@ -1723,6 +1864,13 @@ class _TorrentTask
 
     // Perform scrape with torrent's info hash
     final infoHash = Uint8List.fromList(_metaInfo.infoHashBuffer);
-    return await _scrapeClient!.scrape(url, [infoHash]);
+    final result = await _scrapeClient!.scrape(url, [infoHash]);
+    final infoHashHex = _metaInfo.infoHash.toLowerCase();
+    final stats = result.getStatsForInfoHash(infoHashHex);
+    if (stats?.downloaders != null) {
+      _trackerDownloaders = stats!.downloaders;
+      _lastPartialSeedScrapeAt = DateTime.now();
+    }
+    return result;
   }
 }

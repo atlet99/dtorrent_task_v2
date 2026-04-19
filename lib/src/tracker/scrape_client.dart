@@ -21,15 +21,23 @@ class ScrapeStats {
   /// Number of peers that have downloaded the torrent
   final int downloaded;
 
+  /// Number of active downloaders (BEP 21 / tracker extension).
+  ///
+  /// Some trackers provide this field to distinguish downloaders from
+  /// partial seeds.
+  final int? downloaders;
+
   ScrapeStats({
     required this.complete,
     required this.incomplete,
     required this.downloaded,
+    this.downloaders,
   });
 
   @override
   String toString() {
-    return 'ScrapeStats(complete: $complete, incomplete: $incomplete, downloaded: $downloaded)';
+    return 'ScrapeStats(complete: $complete, incomplete: $incomplete, '
+        'downloaded: $downloaded, downloaders: $downloaders)';
   }
 }
 
@@ -273,6 +281,7 @@ class ScrapeClient {
             complete: _getInt(fileData, 'complete', 0),
             incomplete: _getInt(fileData, 'incomplete', 0),
             downloaded: _getInt(fileData, 'downloaded', 0),
+            downloaders: _getNullableInt(fileData, 'downloaders'),
           );
         }
       }
@@ -474,6 +483,7 @@ class ScrapeClient {
               complete: complete,
               incomplete: incomplete,
               downloaded: downloaded,
+              downloaders: null,
             );
 
             offset += 12;
@@ -513,6 +523,14 @@ class ScrapeClient {
     if (value is int) return value;
     if (value is BigInt) return value.toInt();
     return defaultValue;
+  }
+
+  /// Get nullable integer value from map
+  int? _getNullableInt(Map map, String key) {
+    final value = map[key];
+    if (value is int) return value;
+    if (value is BigInt) return value.toInt();
+    return null;
   }
 
   /// Compare two byte arrays for equality

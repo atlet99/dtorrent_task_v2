@@ -38,6 +38,8 @@ export 'src/queue/queue_events.dart';
 export 'src/file/state_file_v2.dart';
 export 'src/file/file_validator.dart';
 export 'src/file/state_recovery.dart';
+export 'src/tracker/tracker_client.dart';
+export 'src/tracker/scrape_client.dart';
 
 /// Peer ID prefix
 const ID_PREFIX = '-DT0201-';
