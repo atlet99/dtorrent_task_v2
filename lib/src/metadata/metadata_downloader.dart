@@ -8,6 +8,7 @@ import 'package:logging/logging.dart';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/src/standalone/compact_address_bridge.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';
 import 'package:dtorrent_task_v2/src/metadata/metadata_downloader_events.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
@@ -356,7 +357,8 @@ class MetadataDownloader
 
   void _processDHTPeer(NewPeerEvent event) {
     if (event.infoHash == String.fromCharCodes(_infoHashBuffer)) {
-      addNewPeerAddress(event.address, PeerSource.dht);
+      final address = compactAddressFromExternal(event.address);
+      addNewPeerAddress(address, PeerSource.dht);
     }
   }
 
@@ -365,49 +367,26 @@ class MetadataDownloader
   ///
   /// Usually [socket] is null , unless this peer was incoming connection, but
   /// this type peer was managed by [TorrentTask] , user don't need to know that.
-  void addNewPeerAddress(dynamic address, PeerSource source,
+  void addNewPeerAddress(CompactAddress address, PeerSource source,
       [PeerType type = PeerType.TCP, dynamic socket]) {
-    final compact = _normalizeCompactAddress(address);
     if (!_running) return;
-    if (compact.address == localExternalIP) return;
+    if (address.address == localExternalIP) return;
     if (socket != null) {
       //  Indicates that it is an actively connecting peer, and currently, only
       //  one connection per IP address is allowed.
-      if (!_incomingAddress.add(compact.address)) {
+      if (!_incomingAddress.add(address.address)) {
         return;
       }
     }
-    if (_peersAddress.add(compact)) {
+    if (_peersAddress.add(address)) {
       Peer? peer;
       if (type == PeerType.TCP) {
-        peer = Peer.newTCPPeer(compact, _infoHashBuffer, 0, socket, source);
+        peer = Peer.newTCPPeer(address, _infoHashBuffer, 0, socket, source);
       }
       if (type == PeerType.UTP) {
-        peer = Peer.newUTPPeer(compact, _infoHashBuffer, 0, socket, source);
+        peer = Peer.newUTPPeer(address, _infoHashBuffer, 0, socket, source);
       }
       if (peer != null) _hookPeer(peer);
-    }
-  }
-
-  CompactAddress _normalizeCompactAddress(dynamic address) {
-    if (address is CompactAddress) return address;
-
-    try {
-      final raw = (address as dynamic).toBytes(false) as List<int>;
-      final v4 = CompactAddress.parseIPv4Address(raw, 0);
-      if (v4 != null && raw.length == 6) return v4;
-      final v6 = CompactAddress.parseIPv6Address(raw, 0);
-      if (v6 != null && raw.length == 18) return v6;
-    } catch (_) {
-      // fallback below
-    }
-
-    try {
-      final ip = (address as dynamic).address as InternetAddress;
-      final port = (address as dynamic).port as int;
-      return CompactAddress(ip, port);
-    } catch (_) {
-      throw ArgumentError('Unsupported compact address type: $address');
     }
   }
 
