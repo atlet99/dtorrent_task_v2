@@ -1,5 +1,9 @@
 import 'dart:io';
 
+/// Public API entrypoint for `dtorrent_task_v2`.
+///
+/// Exports the main torrent task, metadata, peer, queue, filtering, and
+/// utility modules used by package consumers.
 export 'src/torrent_task_base.dart';
 export 'src/file/file_base.dart';
 export 'src/piece/piece_base.dart';

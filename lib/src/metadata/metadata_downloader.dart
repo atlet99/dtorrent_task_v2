@@ -182,9 +182,20 @@ class MetadataDownloader
   MetadataDownloader(this._infoHashString,
       {List<Uri>? trackers, List<TrackerTier>? trackerTiers}) {
     _localPeerId = generatePeerId();
-    _infoHashBuffer = hexString2Buffer(_infoHashString)!;
-    assert(_infoHashBuffer.isNotEmpty && _infoHashBuffer.length == 20,
-        'Info Hash String is incorrect');
+    List<int>? parsedHash;
+    try {
+      parsedHash = hexString2Buffer(_infoHashString);
+    } on FormatException {
+      parsedHash = null;
+    }
+    if (parsedHash == null || parsedHash.length != 20) {
+      throw ArgumentError.value(
+        _infoHashString,
+        'infoHashString',
+        'Must be a 40-character hex info hash',
+      );
+    }
+    _infoHashBuffer = parsedHash;
     if (trackers != null) {
       _magnetTrackers.addAll(trackers);
     }
@@ -234,9 +245,16 @@ class MetadataDownloader
     // Check cache first
     final cachedMetadata = await loadFromCache(_infoHashString);
     if (cachedMetadata != null) {
-      _log.info('Using cached metadata for $_infoHashString');
-      events.emit(MetaDataDownloadComplete(cachedMetadata));
-      return;
+      final cachedHash = sha1.convert(cachedMetadata).toString();
+      if (cachedHash == _infoHashString) {
+        _log.info('Using cached metadata for $_infoHashString');
+        events.emit(MetaDataDownloadComplete(cachedMetadata));
+        return;
+      }
+      _log.warning(
+        'Cached metadata hash mismatch for $_infoHashString. '
+        'Expected $_infoHashString, got $cachedHash. Ignoring cache.',
+      );
     }
 
     _running = true;
@@ -482,46 +500,47 @@ class MetadataDownloader
   }
 
   void parseMetaDataMessage(Peer peer, Uint8List data) {
+    if (!_running || _metaDataBlockNum == null) return;
     int? index;
     var remotePeerId = peer.remotePeerId;
     try {
-      for (var i = 0; i < data.length; i++) {
+      for (var i = 0; i + 1 < data.length; i++) {
         if (data[i] == E && data[i + 1] == E) {
           index = i + 1;
           break;
         }
       }
-      if (index != null) {
-        var msg = decode(data, start: 0, end: index + 1);
-        if (msg['msg_type'] == 1) {
-          // Piece message
-          var piece = msg['piece'];
-          if (piece != null && piece < _metaDataBlockNum) {
-            // Remove timeout using peer ID and piece index
-            final timeoutKey = '${remotePeerId}_$piece';
-            var timer = _requestTimeout.remove(timeoutKey);
-            timer?.cancel();
-            // Reset retry count on successful download
-            _pieceRetryCount.remove(piece);
-            _pieceDownloadComplete(piece, index + 1, data);
-            _requestMetaData(peer);
-          }
+      if (index == null) return;
+
+      var msg = decode(data, start: 0, end: index + 1);
+      if (msg['msg_type'] == 1) {
+        // Piece message
+        var piece = msg['piece'];
+        if (piece != null && piece < _metaDataBlockNum!) {
+          // Remove timeout using peer ID and piece index
+          final timeoutKey = '${remotePeerId}_$piece';
+          var timer = _requestTimeout.remove(timeoutKey);
+          timer?.cancel();
+          // Reset retry count on successful download
+          _pieceRetryCount.remove(piece);
+          _pieceDownloadComplete(piece, index + 1, data);
+          _requestMetaData(peer);
         }
-        if (msg['msg_type'] == 2) {
-          //  Reject piece
-          var piece = msg['piece'];
-          if (piece != null && piece < _metaDataBlockNum) {
-            _metaDataPieces.add(piece); //Return rejected piece
-            // Remove timeout using peer ID and piece index
-            final timeoutKey = '${remotePeerId}_$piece';
-            var timer = _requestTimeout.remove(timeoutKey);
-            timer?.cancel();
-            _requestMetaData();
-          }
+      }
+      if (msg['msg_type'] == 2) {
+        //  Reject piece
+        var piece = msg['piece'];
+        if (piece != null && piece < _metaDataBlockNum!) {
+          _metaDataPieces.add(piece); //Return rejected piece
+          // Remove timeout using peer ID and piece index
+          final timeoutKey = '${remotePeerId}_$piece';
+          var timer = _requestTimeout.remove(timeoutKey);
+          timer?.cancel();
+          _requestMetaData();
         }
       }
     } catch (e) {
-      // do nothing
+      _log.fine('Ignoring malformed metadata message from ${peer.address}: $e');
     }
   }
 
@@ -600,6 +619,7 @@ class MetadataDownloader
   final Map<int, int> _pieceRetryCount = {};
 
   void _requestMetaData([Peer? peer]) {
+    if (!_running) return;
     if (_metaDataPieces.isEmpty || _availablePeers.isEmpty) return;
 
     // Request blocks from multiple peers in parallel
@@ -629,6 +649,10 @@ class MetadataDownloader
           Duration(seconds: timeoutSeconds > 30 ? 30 : timeoutSeconds);
 
       var timer = Timer(timeoutDuration, () {
+        if (!_running) {
+          _requestTimeout.remove(timeoutKey);
+          return;
+        }
         // On timeout, increment retry count and return piece to queue
         _pieceRetryCount[piece] = retryCount + 1;
 

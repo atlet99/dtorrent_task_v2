@@ -365,9 +365,11 @@ abstract class Peer
 
   /// Connect remote peer
   Future connect([int timeout = DEFAULT_CONNECT_TIMEOUT]) async {
+    _log.fine('Connecting to peer $address (source: $source)');
     try {
       _init();
       var stream = await connectRemote(timeout);
+      _log.fine('Connected stream established for peer $address');
       startSpeedCalculator();
       _streamChunk = stream?.listen(_processReceiveData, onDone: () {
         _log.info('Connection is closed $address');
@@ -385,6 +387,7 @@ abstract class Peer
           dispose(e);
         }
       });
+      _log.fine('Emitting PeerConnected event for peer $address');
       events.emit(PeerConnected(this));
     } catch (e) {
       if (e is TCPConnectException) return dispose(e);
@@ -1876,9 +1879,14 @@ abstract class Peer
   }
 }
 
+/// Non-recoverable peer error that indicates reconnect is not required.
 class BadException implements Exception {
+  /// Underlying error object.
   final dynamic e;
+
+  /// Creates a non-retryable peer exception wrapper.
   BadException(this.e);
+
   @override
   String toString() {
     return 'No need to reconnect error: $e';

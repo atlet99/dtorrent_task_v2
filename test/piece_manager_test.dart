@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:test/test.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:dtorrent_task_v2/src/piece/piece_manager_events.dart';
@@ -97,7 +98,7 @@ void main() {
       // Fill piece with correct data (read from temp file)
       piece.init();
       final fileData = await tempFile.readAsBytes();
-      final pieceData = fileData.sublist(0, 16384);
+      final pieceData = fileData.sublist(0, min(16384, fileData.length));
       pieceManager.processReceivedBlock(pieceIndex, 0, pieceData);
 
       // Wait a bit for event processing

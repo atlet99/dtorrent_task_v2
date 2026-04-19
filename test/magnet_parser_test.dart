@@ -106,6 +106,24 @@ void main() {
       expect(magnet!.infoHash.length, equals(20));
     });
 
+    test('should handle uppercase BTIH namespace', () {
+      final magnetUri =
+          'magnet:?xt=urn:BTIH:0123456789abcdef0123456789abcdef01234567';
+      final magnet = MagnetParser.parse(magnetUri);
+
+      expect(magnet, isNotNull);
+      expect(magnet!.infoHash.length, equals(20));
+    });
+
+    test('should parse lowercase Base32 infohash', () {
+      final magnetUri = 'magnet:?xt=urn:btih:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+      final magnet = MagnetParser.parse(magnetUri);
+
+      expect(magnet, isNotNull);
+      expect(magnet!.infoHash.length, equals(20));
+      expect(magnet.infoHash.every((b) => b == 0), isTrue);
+    });
+
     test('should handle URL-encoded display name', () {
       final magnetUri =
           'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Test%20File%20Name';
@@ -317,6 +335,40 @@ void main() {
       expect(magnet!.selectedFileIndices, isNotNull);
       expect(magnet.selectedFileIndices!.length, equals(1));
       expect(magnet.selectedFileIndices, contains(0));
+    });
+
+    test('should deduplicate and sort selected file indices', () {
+      final magnetUri =
+          'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&so=5&so=2&so=5&so.1=3&so.2=2';
+      final magnet = MagnetParser.parse(magnetUri);
+
+      expect(magnet, isNotNull);
+      expect(magnet!.selectedFileIndices, equals([2, 3, 5]));
+    });
+
+    test('should parse uppercase query parameter keys', () {
+      final magnetUri =
+          'magnet:?XT=urn:btih:0123456789abcdef0123456789abcdef01234567&DN=Upper+Case&TR=http://tracker.example.com&WS=http://webseed.example.com/file&AS=http://source.example.com/file&SO=4';
+      final magnet = MagnetParser.parse(magnetUri);
+
+      expect(magnet, isNotNull);
+      expect(magnet!.displayName, equals('Upper Case'));
+      expect(magnet.trackers.length, equals(1));
+      expect(magnet.webSeeds.length, equals(1));
+      expect(magnet.acceptableSources.length, equals(1));
+      expect(magnet.selectedFileIndices, equals([4]));
+    });
+
+    test('should keep repeated numbered tracker entries in same tier', () {
+      final magnetUri =
+          'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&tr.1=http://tracker1.com&tr.1=http://tracker2.com&tr.2=http://tracker3.com';
+      final magnet = MagnetParser.parse(magnetUri);
+
+      expect(magnet, isNotNull);
+      expect(magnet!.trackerTiers.length, equals(2));
+      expect(magnet.trackerTiers[0].trackers.length, equals(2));
+      expect(magnet.trackerTiers[1].trackers.length, equals(1));
+      expect(magnet.trackers.length, equals(3));
     });
   });
 }
