@@ -1879,9 +1879,14 @@ abstract class Peer
   }
 }
 
+/// Non-recoverable peer error that indicates reconnect is not required.
 class BadException implements Exception {
+  /// Underlying error object.
   final dynamic e;
+
+  /// Creates a non-retryable peer exception wrapper.
   BadException(this.e);
+
   @override
   String toString() {
     return 'No need to reconnect error: $e';
