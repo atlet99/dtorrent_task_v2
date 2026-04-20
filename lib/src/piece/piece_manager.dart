@@ -3,6 +3,7 @@ import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
 import 'package:dtorrent_task_v2/src/piece/piece_manager_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:logging/logging.dart';
+import 'package:crypto/crypto.dart';
 import '../peer/bitfield.dart';
 import 'piece.dart';
 import 'piece_provider.dart';
@@ -34,6 +35,7 @@ class PieceManager
 
   /// Piece layers for v2 torrents (maps pieces root to concatenated hashes)
   Map<Uint8List, Uint8List>? _pieceLayers;
+  final Set<int> _paddingOnlyPieces = <int>{};
 
   /// Set piece layers for v2 torrent validation
   void setPieceLayers(Map<Uint8List, Uint8List> pieceLayers) {
@@ -74,6 +76,9 @@ class PieceManager
     }
     var detectedVersion =
         version ?? TorrentVersionHelper.detectVersion(metaInfo);
+    _paddingOnlyPieces
+      ..clear()
+      ..addAll(_detectPaddingOnlyPieces(metaInfo));
     var startbyte = 0;
     for (var i = 0; i < metaInfo.pieces!.length; i++) {
       var byteLength = metaInfo.pieceLength;
@@ -84,6 +89,12 @@ class PieceManager
       final pieceHash = metaInfo.pieces![i];
       final hashString =
           pieceHash.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+      final canAutoCompletePadding = _paddingOnlyPieces.contains(i) &&
+          _matchZeroPaddingHash(hashString, byteLength);
+      if (canAutoCompletePadding && !bitfield.getBit(i)) {
+        bitfield.setBit(i, true);
+      }
 
       if (bitfield.getBit(i)) {
         var piece = Piece(hashString, i, byteLength, startbyte,
@@ -169,7 +180,11 @@ class PieceManager
     var piece = pieces[index];
     if (piece == null) return;
 
-    if (!piece.validatePiece()) {
+    final isPaddingPiece = _paddingOnlyPieces.contains(index);
+    final isValid = isPaddingPiece
+        ? _matchZeroPaddingHash(piece.hashString, piece.byteLength)
+        : piece.validatePiece();
+    if (!isValid) {
       _log.fine('Piece ${piece.index} is rejected');
       events.emit(PieceRejected(index));
       return;
@@ -178,6 +193,57 @@ class PieceManager
 
     _downloadingPieces.remove(index);
     events.emit(PieceAccepted(index));
+  }
+
+  Set<int> _detectPaddingOnlyPieces(TorrentModel metaInfo) {
+    final pieces = metaInfo.pieces;
+    if (pieces == null || pieces.isEmpty) return const <int>{};
+
+    final coverage = List<int>.filled(pieces.length, 0);
+    for (final file in metaInfo.files) {
+      if (!file.isPaddingFile || file.length <= 0) continue;
+      final start = file.offset;
+      final end = file.end;
+      final startPiece = start ~/ metaInfo.pieceLength;
+      var endPiece = end ~/ metaInfo.pieceLength;
+      if (end.remainder(metaInfo.pieceLength) == 0) {
+        endPiece--;
+      }
+      for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
+        if (pieceIndex < 0 || pieceIndex >= coverage.length) continue;
+        final pieceStart = pieceIndex * metaInfo.pieceLength;
+        final pieceLength = pieceIndex == coverage.length - 1
+            ? metaInfo.lastPieceLength
+            : metaInfo.pieceLength;
+        final pieceEnd = pieceStart + pieceLength;
+        final overlapStart = start > pieceStart ? start : pieceStart;
+        final overlapEnd = end < pieceEnd ? end : pieceEnd;
+        final overlap = overlapEnd - overlapStart;
+        if (overlap > 0) {
+          coverage[pieceIndex] += overlap;
+        }
+      }
+    }
+
+    final result = <int>{};
+    for (var i = 0; i < coverage.length; i++) {
+      final pieceLength = i == coverage.length - 1
+          ? metaInfo.lastPieceLength
+          : metaInfo.pieceLength;
+      if (coverage[i] >= pieceLength) {
+        result.add(i);
+      }
+    }
+    return result;
+  }
+
+  bool _matchZeroPaddingHash(String hashString, int byteLength) {
+    final zeros = Uint8List(byteLength);
+    final expectedHex = hashString.toLowerCase();
+    final digest = expectedHex.length == 64
+        ? sha256.convert(zeros).toString()
+        : sha1.convert(zeros).toString();
+    return digest == expectedHex;
   }
 
   bool _disposed = false;

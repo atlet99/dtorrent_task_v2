@@ -137,12 +137,12 @@ void main() {
 
     test('File entry with invalid pieces root length throws', () {
       expect(() {
-        FileTreeEntry.file(1024, Uint8List(20)); // Wrong length
+        FileTreeEntry.file(1024, Uint8List(20), null, null); // Wrong length
       }, throwsArgumentError);
     });
 
     test('File entry with null pieces root is valid', () {
-      final entry = FileTreeEntry.file(1024, null);
+      final entry = FileTreeEntry.file(1024, null, null, null);
       expect(entry.isFile, isTrue);
       expect(entry.length, equals(1024));
       expect(entry.piecesRoot, isNull);

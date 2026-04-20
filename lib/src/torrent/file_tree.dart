@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:dtorrent_task_v2/src/file/file_attributes.dart';
 
 /// Represents a file in v2 file tree structure (BEP 52)
 class FileTreeEntry {
@@ -11,6 +12,12 @@ class FileTreeEntry {
   /// Child entries (for directories)
   final Map<String, FileTreeEntry>? children;
 
+  /// Optional BEP 47 attributes.
+  final FileAttributes? attributes;
+
+  /// Optional BEP 47 symlink target path (path segments).
+  final List<String>? symlinkPath;
+
   /// Whether this is a file (has length) or directory
   bool get isFile => length >= 0 && children == null;
 
@@ -21,6 +28,8 @@ class FileTreeEntry {
     required this.length,
     this.piecesRoot,
     this.children,
+    this.attributes,
+    this.symlinkPath,
   }) {
     if (isFile && piecesRoot != null && piecesRoot!.length != 32) {
       throw ArgumentError('Pieces root must be 32 bytes for v2 files');
@@ -28,8 +37,14 @@ class FileTreeEntry {
   }
 
   /// Create file entry
-  factory FileTreeEntry.file(int length, Uint8List? piecesRoot) {
-    return FileTreeEntry(length: length, piecesRoot: piecesRoot);
+  factory FileTreeEntry.file(int length, Uint8List? piecesRoot,
+      FileAttributes? attributes, List<String>? symlinkPath) {
+    return FileTreeEntry(
+      length: length,
+      piecesRoot: piecesRoot,
+      attributes: attributes,
+      symlinkPath: symlinkPath,
+    );
   }
 
   /// Create directory entry
@@ -63,7 +78,8 @@ class FileTreeHelper {
     final result = <String, FileTreeEntry>{};
 
     for (var entry in treeData.entries) {
-      final key = entry.key as String;
+      final key = _decodeString(entry.key);
+      if (key == null) continue;
       final value = entry.value;
 
       if (value is Map) {
@@ -73,9 +89,16 @@ class FileTreeHelper {
           if (fileData is Map) {
             final length = fileData['length'] as int?;
             final piecesRoot = fileData['pieces root'] as Uint8List?;
+            final attributes = FileAttributes.parse(fileData['attr']);
+            final symlinkPath = _decodePathList(fileData['symlink path']);
 
             if (length != null) {
-              result[key] = FileTreeEntry.file(length, piecesRoot);
+              result[key] = FileTreeEntry.file(
+                length,
+                piecesRoot,
+                attributes,
+                symlinkPath,
+              );
             }
           }
         } else {
@@ -105,6 +128,8 @@ class FileTreeHelper {
           path: path,
           length: fileEntry.length,
           piecesRoot: fileEntry.piecesRoot,
+          attributes: fileEntry.attributes,
+          symlinkPath: fileEntry.symlinkPath,
         ));
       } else if (fileEntry.isDirectory && fileEntry.children != null) {
         files.addAll(extractFiles(fileEntry.children!, path));
@@ -135,10 +160,34 @@ class FileTreeFile {
   final String path;
   final int length;
   final Uint8List? piecesRoot;
+  final FileAttributes? attributes;
+  final bool isPaddingFile;
+  final List<String>? symlinkPath;
 
   FileTreeFile({
     required this.path,
     required this.length,
     this.piecesRoot,
-  });
+    this.attributes,
+    this.symlinkPath,
+  }) : isPaddingFile = FileAttributes.detectPadding(path, attributes);
+}
+
+String? _decodeString(dynamic value) {
+  if (value is String) return value;
+  if (value is Uint8List) return String.fromCharCodes(value);
+  if (value is List<int>) return String.fromCharCodes(value);
+  return null;
+}
+
+List<String>? _decodePathList(dynamic value) {
+  if (value is! List) return null;
+  final segments = <String>[];
+  for (final segment in value) {
+    final str = _decodeString(segment);
+    if (str == null || str.isEmpty) continue;
+    segments.add(str);
+  }
+  if (segments.isEmpty) return null;
+  return segments;
 }

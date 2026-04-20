@@ -6,6 +6,7 @@ import 'torrent_model.dart';
 import 'torrent_file_model.dart';
 import 'file_tree.dart';
 import 'torrent_version.dart';
+import '../file/file_attributes.dart';
 import 'package:logging/logging.dart';
 
 var _log = Logger('TorrentParser');
@@ -106,7 +107,16 @@ class TorrentParser {
           throw FormatException(
               'Invalid torrent file: length must be an integer');
         }
-        files = [TorrentFileModel(path: name, length: length, offset: 0)];
+        final attrs = FileAttributes.parse(info['attr']);
+        files = [
+          TorrentFileModel(
+            path: name,
+            length: length,
+            offset: 0,
+            attributes: attrs,
+            symlinkPath: _parsePathList(info['symlink path']),
+          )
+        ];
       } else if (info.containsKey('files')) {
         // Multiple files
         final filesList = info['files'] as List?;
@@ -164,6 +174,9 @@ class TorrentParser {
               path: tf.path,
               length: tf.length,
               offset: offset,
+              attributes: tf.attributes,
+              isPaddingFile: tf.isPaddingFile,
+              symlinkPath: tf.symlinkPath,
             );
             offset += tf.length;
             return file;
@@ -347,6 +360,8 @@ class TorrentParser {
 
       final length = fileData['length'] as int?;
       if (length == null) continue;
+      final attrs = FileAttributes.parse(fileData['attr']);
+      final symlinkPath = _parsePathList(fileData['symlink path']);
 
       final pathList = fileData['path'] as List?;
       String path;
@@ -373,6 +388,8 @@ class TorrentParser {
         path: path,
         length: length,
         offset: offset,
+        attributes: attrs,
+        symlinkPath: symlinkPath,
       ));
 
       offset += length;
@@ -423,6 +440,24 @@ class TorrentParser {
     }
 
     return pieceLayers;
+  }
+
+  static List<String>? _parsePathList(dynamic value) {
+    if (value is! List) return null;
+    final segments = <String>[];
+    for (final item in value) {
+      if (item is String) {
+        if (item.isNotEmpty) segments.add(item);
+      } else if (item is Uint8List) {
+        final decoded = String.fromCharCodes(item);
+        if (decoded.isNotEmpty) segments.add(decoded);
+      } else if (item is List<int>) {
+        final decoded = String.fromCharCodes(item);
+        if (decoded.isNotEmpty) segments.add(decoded);
+      }
+    }
+    if (segments.isEmpty) return null;
+    return segments;
   }
 
   /// Extract info dictionary bytes from bencoded torrent data

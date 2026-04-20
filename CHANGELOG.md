@@ -11,6 +11,16 @@
 - add UDP tracker extension payload parsing and extension support marker (`udp_options`, `udp_extensions_supported`)
 - add BEP 41 regression tests for URLData encoding/chunking and extended UDP announce response parsing (`test/udp_tracker_extensions_test.dart`)
 - update README BEP support matrix with tracker-related BEPs: 23, 24, 31, 41
+- add BEP 47 file-attribute model (`FileAttributes`) with padding/flags parsing (`p`, `l`, `x`, `h`)
+- parse BEP 47 `attr` for both v1 file lists and v2 file tree entries, and expose it via `TorrentFileModel`/`FileTreeFile`
+- detect padding files via BEP 47 naming convention (`_____padding_file_<n>_____`) and `attr = p`
+- treat padding files as virtual in file IO: no disk file creation, zero-filled reads, no-op flush/write persistence
+- update file validation to support virtual padding segments (piece reconstruction with zero bytes)
+- add padding regression tests for parser + file manager + validator (`test/padding_files_test.dart`)
+- add BEP 47 symlink metadata parsing (`symlink path`) for v1/v2 torrent structures
+- restore file attributes on startup/completion (executable bit on Unix-like systems, platform-safe fallback on Windows)
+- restore symlink files from torrent metadata when supported by platform
+- add padding-only piece handling in piece manager (zero-hash auto-complete and validation bypass for pure padding pieces)
 - migrate DHT integration to built-in standalone facade/driver (`lib/src/standalone/dht/standalone_dht.dart`)
 - remove direct dependency on external `bittorrent_dht` package
 - add retry/backoff policy and graceful shutdown handling for standalone DHT operations
