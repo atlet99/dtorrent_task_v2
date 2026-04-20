@@ -39,6 +39,11 @@
 - add BEP 51 infohash indexing with keyword search and metadata-based indexing (`lib/src/dht/dht_indexing.dart`)
 - export DHT enhancement modules in public API (`dht_storage`, `dht_multiple_addresses`, `dht_pubsub`, `dht_indexing`)
 - add regression tests for BEP 44/45/50/51 modules (`test/dht_storage_test.dart`, `test/dht_multiple_addresses_test.dart`, `test/dht_pubsub_test.dart`, `test/dht_indexing_test.dart`)
+- add IPv6/dual-stack mode controls for standalone DHT (`ipv4Only`, `ipv6Only`, `dualStackPreferIPv4`, `dualStackPreferIPv6`)
+- add address-family change event for DHT configuration observability (`StandaloneDHTAddressFamilyChangedEvent`)
+- add dual-socket standalone DHT bootstrap (IPv4 + IPv6) with family-aware routing and preference-based node query ordering
+- add TorrentTask API for IPv6 policy management (`setDHTAddressFamilyMode`, `dhtAddressFamilyMode`)
+- add IPv6 regression tests for compact peers and DHT address-family switching (`test/ipv6_test.dart`)
 
 ## 0.4.9
 - improve test reliability and coverage for peer communication, fast extension, and metadata flows

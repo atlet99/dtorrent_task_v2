@@ -236,6 +236,12 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   /// Alternatively, you can directly add known node addresses.
   void addDHTNode(Uri uri);
 
+  /// Set IPv4/IPv6 policy for standalone DHT (BEP 7 / BEP 32).
+  void setDHTAddressFamilyMode(StandaloneDHTAddressFamilyMode mode);
+
+  /// Current IPv4/IPv6 policy for standalone DHT.
+  StandaloneDHTAddressFamilyMode get dhtAddressFamilyMode;
+
   /// Add known Peer addresses.
   void addPeer(CompactAddress address, PeerSource source,
       {PeerType? type, Socket? socket});
@@ -767,6 +773,16 @@ class _TorrentTask
     _peersManager?.addNewPeerAddress(address, source,
         type: type, socket: socket);
   }
+
+  @override
+  void setDHTAddressFamilyMode(StandaloneDHTAddressFamilyMode mode) {
+    _dht?.setAddressFamilyMode(mode);
+  }
+
+  @override
+  StandaloneDHTAddressFamilyMode get dhtAddressFamilyMode =>
+      _dht?.addressFamilyMode ??
+      StandaloneDHTAddressFamilyMode.dualStackPreferIPv4;
 
   void _whenTaskDownloadComplete() async {
     await _peersManager

@@ -8,6 +8,8 @@ class _FakeDHTDriver implements StandaloneDHTDriver {
       StreamController<StandaloneDHTDriverEvent>.broadcast();
 
   bool _readOnly = false;
+  StandaloneDHTAddressFamilyMode _addressFamilyMode =
+      StandaloneDHTAddressFamilyMode.dualStackPreferIPv4;
   int bootstrapCalls = 0;
   int announceCalls = 0;
   int requestPeersCalls = 0;
@@ -27,6 +29,14 @@ class _FakeDHTDriver implements StandaloneDHTDriver {
   @override
   set readOnly(bool value) {
     _readOnly = value;
+  }
+
+  @override
+  StandaloneDHTAddressFamilyMode get addressFamilyMode => _addressFamilyMode;
+
+  @override
+  set addressFamilyMode(StandaloneDHTAddressFamilyMode value) {
+    _addressFamilyMode = value;
   }
 
   @override
@@ -234,6 +244,37 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 10));
 
       expect(driver.requestPeersCalls, 1);
+      await dht.stop();
+    });
+
+    test('should set address-family mode and emit change event', () async {
+      final driver = _FakeDHTDriver();
+      final dht = BittorrentDHTAdapter(driver: driver);
+      final changed = <StandaloneDHTAddressFamilyChangedEvent>[];
+      final listener = dht.createListener();
+      listener.on<StandaloneDHTAddressFamilyChangedEvent>(changed.add);
+
+      expect(dht.addressFamilyMode,
+          StandaloneDHTAddressFamilyMode.dualStackPreferIPv4);
+      dht.setAddressFamilyMode(StandaloneDHTAddressFamilyMode.ipv6Only);
+      dht.setAddressFamilyMode(StandaloneDHTAddressFamilyMode.ipv6Only);
+      dht.setAddressFamilyMode(
+          StandaloneDHTAddressFamilyMode.dualStackPreferIPv6);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(
+        changed.map((event) => event.mode).toList(),
+        [
+          StandaloneDHTAddressFamilyMode.ipv6Only,
+          StandaloneDHTAddressFamilyMode.dualStackPreferIPv6,
+        ],
+      );
+      expect(
+        driver.addressFamilyMode,
+        StandaloneDHTAddressFamilyMode.dualStackPreferIPv6,
+      );
+
+      listener.dispose();
       await dht.stop();
     });
 
