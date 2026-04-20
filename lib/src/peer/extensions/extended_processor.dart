@@ -33,13 +33,17 @@ mixin ExtendedProcessor on EventsEmittable<PeerEvent> {
     return _rawMap[name];
   }
 
+  String? getExtendedEventNameById(int id) {
+    return _extendedEventMap[id] ?? _localExtended[id];
+  }
+
   void processExtendMessage(int id, Uint8List message) {
     if (id == 0) {
       // this is a handshake extended message
       var data = decode(message);
       processExtendHandshake(data);
     } else {
-      var name = _localExtended[id];
+      var name = getExtendedEventNameById(id);
       if (name != null) {
         //TODO: remove the need for casting
         events.emit(ExtendedEvent(this as Peer, name, message));

@@ -108,6 +108,13 @@ class PeerHaveEvent implements PeerEvent {
   PeerHaveEvent(this.peer, this.indices);
 }
 
+class PeerDontHaveEvent implements PeerEvent {
+  final Peer peer;
+  final int index;
+
+  PeerDontHaveEvent(this.peer, this.index);
+}
+
 class PeerHandshakeEvent implements PeerEvent {
   final Peer peer;
   final String remotePeerId;

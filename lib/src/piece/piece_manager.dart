@@ -164,6 +164,13 @@ class PieceManager
     _downloadingPieces.add(pieceIndex);
   }
 
+  /// Update availability when a peer reports BEP 54 lt_donthave.
+  void processPeerDontHave(Peer peer, int pieceIndex) {
+    final piece = _pieces[pieceIndex];
+    if (piece == null) return;
+    piece.removeAvailablePeer(peer);
+  }
+
   void processReceivedBlock(int index, int begin, List<int> block) {
     var piece = pieces[index];
     if (piece != null) {
