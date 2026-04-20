@@ -146,7 +146,7 @@ abstract class Tracker with EventsEmittable<TrackerEvent> {
   }
 
   Future<Map<String, dynamic>> get _announceOptions async {
-    var options = <String, dynamic>{
+    final options = <String, dynamic>{
       'downloaded': 0,
       'uploaded': 0,
       'left': 0,
@@ -154,8 +154,12 @@ abstract class Tracker with EventsEmittable<TrackerEvent> {
       'numwant': 50
     };
     if (provider != null) {
-      var opt = await provider!.getOptions(announceUrl, infoHash);
-      if (opt.isNotEmpty) options = opt;
+      final opt = await provider!.getOptions(announceUrl, infoHash);
+      if (opt.isNotEmpty) {
+        // Merge provider values into a BEP3-safe defaults map. This preserves
+        // mandatory baseline fields even when provider returns a partial map.
+        options.addAll(opt);
+      }
     }
     return options;
   }

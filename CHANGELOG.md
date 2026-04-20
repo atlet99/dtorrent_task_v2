@@ -3,6 +3,14 @@
 - migrate `dtorrent_tracker` to built-in standalone module (`lib/src/standalone/dtorrent_tracker.dart`)
 - remove direct dependencies on external `dtorrent_common` and `dtorrent_tracker` packages
 - add standalone tracker migration regression tests (`standalone_tracker_migration_test.dart`)
+- harden HTTP announce query generation with BEP 3 required fields and safe defaults
+- keep de-facto tracker compatibility fields in announce requests: `numwant`, `key`, `trackerid`, `no_peer_id`
+- ignore discouraged announce params `ipv4`/`ipv6` (BEP 7 guidance)
+- improve announce option merge strategy (preserve BEP-safe defaults for partial provider maps)
+- add BEP 41 `URLData` support in UDP announce (path/query extension options)
+- add UDP tracker extension payload parsing and extension support marker (`udp_options`, `udp_extensions_supported`)
+- add BEP 41 regression tests for URLData encoding/chunking and extended UDP announce response parsing (`test/udp_tracker_extensions_test.dart`)
+- update README BEP support matrix with tracker-related BEPs: 23, 24, 31, 41
 - migrate DHT integration to built-in standalone facade/driver (`lib/src/standalone/dht/standalone_dht.dart`)
 - remove direct dependency on external `bittorrent_dht` package
 - add retry/backoff policy and graceful shutdown handling for standalone DHT operations
