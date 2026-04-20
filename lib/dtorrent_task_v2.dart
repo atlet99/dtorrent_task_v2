@@ -44,6 +44,10 @@ export 'src/ssl/ssl_config.dart';
 export 'src/encryption/protocol_encryption.dart';
 export 'src/encryption/rc4_encryption.dart';
 export 'src/encryption/bep8_tracker_obfuscation.dart';
+export 'src/dht/dht_storage.dart';
+export 'src/dht/dht_multiple_addresses.dart';
+export 'src/dht/dht_pubsub.dart';
+export 'src/dht/dht_indexing.dart';
 export 'src/standalone/dtorrent_common.dart';
 export 'src/standalone/dht/standalone_dht.dart';
 

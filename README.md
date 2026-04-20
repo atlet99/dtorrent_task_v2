@@ -72,8 +72,13 @@ This package implements the regular BitTorrent Protocol and manages the above pa
 - [BEP 0031 Failure Retry Extension](https://www.bittorrent.org/beps/bep_0031.html)
 - [BEP 0040 Canonical Peer Priority](https://www.bittorrent.org/beps/bep_0040.html)
 - [BEP 0041 UDP Tracker Protocol Extensions](https://www.bittorrent.org/beps/bep_0041.html)
+- [BEP 0043 Read-only DHT Nodes](https://www.bittorrent.org/beps/bep_0043.html)
+- [BEP 0044 Storing arbitrary data in the DHT](https://www.bittorrent.org/beps/bep_0044.html)
+- [BEP 0045 Multiple-address operation for the DHT](https://www.bittorrent.org/beps/bep_0045.html)
 - [BEP 0047 Padding Files and File Attributes](https://www.bittorrent.org/beps/bep_0047.html)
 - [BEP 0048 Tracker Scrape Extension](https://www.bittorrent.org/beps/bep_0048.html)
+- [BEP 0050 Pub/Sub over DHT](https://www.bittorrent.org/beps/bep_0050.html)
+- [BEP 0051 DHT Infohash Indexing](https://www.bittorrent.org/beps/bep_0051.html)
 - [BEP 0052 BitTorrent v2](https://www.bittorrent.org/beps/bep_0052.html)
 - [BEP 0053 Magnet URI extension - Select specific file indices](https://www.bittorrent.org/beps/bep_0053.html)
 - [BEP 0054 The lt_donthave extension](https://www.bittorrent.org/beps/bep_0054.html)
@@ -234,6 +239,16 @@ task.applySelectedFiles([0, 2, 5]); // Only download files at indices 0, 2, and 
 // This is especially useful with magnet links:
 // magnet:?xt=urn:btih:...&so=0&so=2&so=5
 ```
+
+### DHT Enhancements (NEW in 0.5.0 Unreleased)
+
+The package now includes a richer standalone DHT toolkit in-repo:
+
+- BEP 0043: Read-only DHT mode (`setReadOnly`) with routing-only behavior and `ro=1` query signaling
+- BEP 0044: DHT storage helpers for immutable/mutable values (`DHTStorage`, `DHTGetQuery`, `DHTPut*Query`)
+- BEP 0045: Multi-address node table with per-address connectivity and prioritization (`DHTMultipleAddressTable`)
+- BEP 0050: Pub/Sub primitives over DHT topics with push-style delivery (`DHTPubSub`)
+- BEP 0051: Infohash indexing and keyword search with metadata integration (`DHTInfohashIndexer`)
 
 ### Test and Validation Improvements (NEW in 0.4.9)
 

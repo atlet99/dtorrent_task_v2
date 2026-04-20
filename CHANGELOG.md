@@ -31,6 +31,14 @@
 - add retry/backoff policy and graceful shutdown handling for standalone DHT operations
 - add standalone DHT regression tests for bootstrap failures, retry paths, idempotent stop, and peer-event flood handling (`test/standalone_dht_test.dart`)
 - improve DHT runtime diagnostics in `TorrentTask` and `MetadataDownloader` (retry/error observability)
+- add BEP 43 read-only DHT mode with explicit API (`readOnly`, `setReadOnly`) and change event (`StandaloneDHTReadOnlyChangedEvent`)
+- block write operations in read-only mode (`announce`/`announce_peer`) while preserving routing/get-peers behavior
+- add BEP 44 standalone DHT storage primitives for immutable/mutable values with seq/CAS/signature validation (`lib/src/dht/dht_storage.dart`)
+- add BEP 45 multiple-address DHT table with per-address connectivity tracking and prioritized address selection (`lib/src/dht/dht_multiple_addresses.dart`)
+- add BEP 50 pub/sub topic manager for push-style updates over DHT-like topics (`lib/src/dht/dht_pubsub.dart`)
+- add BEP 51 infohash indexing with keyword search and metadata-based indexing (`lib/src/dht/dht_indexing.dart`)
+- export DHT enhancement modules in public API (`dht_storage`, `dht_multiple_addresses`, `dht_pubsub`, `dht_indexing`)
+- add regression tests for BEP 44/45/50/51 modules (`test/dht_storage_test.dart`, `test/dht_multiple_addresses_test.dart`, `test/dht_pubsub_test.dart`, `test/dht_indexing_test.dart`)
 
 ## 0.4.9
 - improve test reliability and coverage for peer communication, fast extension, and metadata flows
