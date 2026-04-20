@@ -57,6 +57,7 @@ This package implements the regular BitTorrent Protocol and manages the above pa
 - [BEP 0003 The BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html)
 - [BEP 0005 DHT Protocol](https://www.bittorrent.org/beps/bep_0005.html)
 - [BEP 0006 Fast Extension](https://www.bittorrent.org/beps/bep_0006.html)
+- [BEP 0007 IPv6 Tracker Extension](https://www.bittorrent.org/beps/bep_0007.html)
 - [BEP 0009 Extension for Peers to Send Metadata Files](https://www.bittorrent.org/beps/bep_0009.html)
 - [BEP 0010 Extension Protocol](https://www.bittorrent.org/beps/bep_0010.html)
 - [BEP 0011 Peer Exchange (PEX)](https://www.bittorrent.org/beps/bep_0011.html)
@@ -70,6 +71,7 @@ This package implements the regular BitTorrent Protocol and manages the above pa
 - [BEP 0027 Private Torrents](https://www.bittorrent.org/beps/bep_0027.html)
 - [BEP 0029 uTorrent transport protocol](https://www.bittorrent.org/beps/bep_0029.html)
 - [BEP 0031 Failure Retry Extension](https://www.bittorrent.org/beps/bep_0031.html)
+- [BEP 0032 IPv6 Extension for DHT](https://www.bittorrent.org/beps/bep_0032.html)
 - [BEP 0040 Canonical Peer Priority](https://www.bittorrent.org/beps/bep_0040.html)
 - [BEP 0041 UDP Tracker Protocol Extensions](https://www.bittorrent.org/beps/bep_0041.html)
 - [BEP 0043 Read-only DHT Nodes](https://www.bittorrent.org/beps/bep_0043.html)
@@ -249,6 +251,28 @@ The package now includes a richer standalone DHT toolkit in-repo:
 - BEP 0045: Multi-address node table with per-address connectivity and prioritization (`DHTMultipleAddressTable`)
 - BEP 0050: Pub/Sub primitives over DHT topics with push-style delivery (`DHTPubSub`)
 - BEP 0051: Infohash indexing and keyword search with metadata integration (`DHTInfohashIndexer`)
+
+### IPv6 and Dual-Stack DHT (NEW in 0.5.0 Unreleased)
+
+Standalone DHT now supports IPv4/IPv6 policy control and dual-stack routing priority:
+
+- `StandaloneDHTAddressFamilyMode.ipv4Only`
+- `StandaloneDHTAddressFamilyMode.ipv6Only`
+- `StandaloneDHTAddressFamilyMode.dualStackPreferIPv4`
+- `StandaloneDHTAddressFamilyMode.dualStackPreferIPv6`
+
+You can configure it from `TorrentTask`:
+
+```dart
+final task = TorrentTask.newTask(torrentModel, 'savepath');
+
+// Prefer IPv6 in dual-stack mode (BEP 7 / BEP 32)
+task.setDHTAddressFamilyMode(
+  StandaloneDHTAddressFamilyMode.dualStackPreferIPv6,
+);
+
+await task.start();
+```
 
 ### Test and Validation Improvements (NEW in 0.4.9)
 

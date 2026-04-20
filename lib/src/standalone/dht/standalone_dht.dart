@@ -49,6 +49,20 @@ class StandaloneDHTReadOnlyChangedEvent implements StandaloneDHTEvent {
   const StandaloneDHTReadOnlyChangedEvent(this.readOnly);
 }
 
+enum StandaloneDHTAddressFamilyMode {
+  ipv4Only,
+  ipv6Only,
+  dualStackPreferIPv4,
+  dualStackPreferIPv6,
+}
+
+/// Emitted when DHT address-family mode is changed (BEP 7 / BEP 32).
+class StandaloneDHTAddressFamilyChangedEvent implements StandaloneDHTEvent {
+  final StandaloneDHTAddressFamilyMode mode;
+
+  const StandaloneDHTAddressFamilyChangedEvent(this.mode);
+}
+
 abstract class StandaloneDHTDriverEvent {}
 
 class StandaloneDHTDriverNewPeerEvent implements StandaloneDHTDriverEvent {
@@ -72,6 +86,8 @@ abstract class StandaloneDHTDriver {
 
   bool get readOnly;
   set readOnly(bool value);
+  StandaloneDHTAddressFamilyMode get addressFamilyMode;
+  set addressFamilyMode(StandaloneDHTAddressFamilyMode value);
 
   Future<int?> bootstrap({int port});
 
@@ -118,10 +134,14 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
   final Map<String, int> _announcePorts = {};
   final Set<Uri> _bootstrapNodes = {};
 
-  RawDatagramSocket? _socket;
-  StreamSubscription<RawSocketEvent>? _socketSub;
+  RawDatagramSocket? _socketV4;
+  RawDatagramSocket? _socketV6;
+  StreamSubscription<RawSocketEvent>? _socketSubV4;
+  StreamSubscription<RawSocketEvent>? _socketSubV6;
   bool _stopped = false;
   bool _readOnly = false;
+  StandaloneDHTAddressFamilyMode _addressFamilyMode =
+      StandaloneDHTAddressFamilyMode.dualStackPreferIPv4;
   int _tidCounter = 0;
   late final List<int> _nodeId;
 
@@ -142,31 +162,90 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
   }
 
   @override
+  StandaloneDHTAddressFamilyMode get addressFamilyMode => _addressFamilyMode;
+
+  @override
+  set addressFamilyMode(StandaloneDHTAddressFamilyMode value) {
+    _addressFamilyMode = value;
+  }
+
+  @override
   Future<int?> bootstrap({int port = 0}) async {
     _stopped = false;
-    if (_socket != null) return _socket!.port;
+    if (_hasAnySocket) return _preferredSocket()?.port;
 
-    try {
-      _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port);
-      _socketSub = _socket!.listen(_handleSocketEvent,
-          onError: (Object e) => _emitError('socket error: $e'));
-    } catch (e) {
-      _emitError('bootstrap bind failed: $e');
-      rethrow;
+    if (_isFamilyEnabled(InternetAddressType.IPv4)) {
+      try {
+        _socketV4 = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port);
+        _socketSubV4 = _socketV4!.listen(
+          (event) => _handleSocketEvent(_socketV4!, event),
+          onError: (Object e) => _emitError('IPv4 socket error: $e'),
+        );
+      } catch (e) {
+        _emitError('IPv4 bootstrap bind failed: $e');
+        if (_addressFamilyMode == StandaloneDHTAddressFamilyMode.ipv4Only) {
+          rethrow;
+        }
+      }
+    }
+    if (_isFamilyEnabled(InternetAddressType.IPv6)) {
+      try {
+        _socketV6 = await RawDatagramSocket.bind(InternetAddress.anyIPv6, port);
+        _socketSubV6 = _socketV6!.listen(
+          (event) => _handleSocketEvent(_socketV6!, event),
+          onError: (Object e) => _emitError('IPv6 socket error: $e'),
+        );
+      } catch (e) {
+        _emitError('IPv6 bootstrap bind failed: $e');
+        if (_addressFamilyMode == StandaloneDHTAddressFamilyMode.ipv6Only) {
+          rethrow;
+        }
+      }
+    }
+    if (!_hasAnySocket) {
+      throw StateError('DHT bootstrap failed: no UDP sockets available');
     }
 
     for (final uri in _bootstrapNodes) {
       await _bootstrapViaNode(uri);
     }
-    return _socket?.port;
+    return _preferredSocket()?.port;
   }
 
-  void _handleSocketEvent(RawSocketEvent event) {
+  bool get _hasAnySocket => _socketV4 != null || _socketV6 != null;
+
+  RawDatagramSocket? _preferredSocket() {
+    if (_addressFamilyMode == StandaloneDHTAddressFamilyMode.ipv6Only) {
+      return _socketV6;
+    }
+    if (_addressFamilyMode == StandaloneDHTAddressFamilyMode.ipv4Only) {
+      return _socketV4;
+    }
+    if (_addressFamilyMode ==
+        StandaloneDHTAddressFamilyMode.dualStackPreferIPv6) {
+      return _socketV6 ?? _socketV4;
+    }
+    return _socketV4 ?? _socketV6;
+  }
+
+  bool _isFamilyEnabled(InternetAddressType type) {
+    switch (_addressFamilyMode) {
+      case StandaloneDHTAddressFamilyMode.ipv4Only:
+        return type == InternetAddressType.IPv4;
+      case StandaloneDHTAddressFamilyMode.ipv6Only:
+        return type == InternetAddressType.IPv6;
+      case StandaloneDHTAddressFamilyMode.dualStackPreferIPv4:
+      case StandaloneDHTAddressFamilyMode.dualStackPreferIPv6:
+        return true;
+    }
+  }
+
+  void _handleSocketEvent(RawDatagramSocket socket, RawSocketEvent event) {
     if (_stopped || event != RawSocketEvent.read) return;
 
     try {
       Datagram? d;
-      while ((d = _socket?.receive()) != null) {
+      while ((d = socket.receive()) != null) {
         _handleDatagram(d!);
       }
     } catch (e) {
@@ -281,7 +360,7 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
 
   @override
   void announce(String infoHash, int port) {
-    if (_stopped || _socket == null) return;
+    if (_stopped || !_hasAnySocket) return;
     if (_readOnly) {
       _emitError('announce ignored: read-only mode enabled (BEP 43)');
       return;
@@ -295,12 +374,15 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
 
   @override
   void requestPeers(String infoHash) {
-    if (_stopped || _socket == null) return;
+    if (_stopped || !_hasAnySocket) return;
     if (infoHash.length != 20) {
       throw ArgumentError.value(infoHash, 'infoHash', 'must be 20-byte string');
     }
 
-    for (final node in _nodes.values) {
+    final nodes = _nodes.values.toList()
+      ..sort((a, b) => _addressPriority(a.address.type)
+          .compareTo(_addressPriority(b.address.type)));
+    for (final node in nodes) {
       _sendGetPeers(node: node, infoHash: infoHash);
     }
   }
@@ -308,7 +390,7 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
   @override
   Future<void> addBootstrapNode(Uri url) async {
     _bootstrapNodes.add(url);
-    if (_socket != null && !_stopped) {
+    if (_hasAnySocket && !_stopped) {
       await _bootstrapViaNode(url);
     }
   }
@@ -320,13 +402,17 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
     try {
       final ip = InternetAddress.tryParse(host);
       if (ip != null) {
-        _sendFindNode(CompactAddress(ip, port));
+        if (_isFamilyEnabled(ip.type)) {
+          _sendFindNode(CompactAddress(ip, port));
+        }
         return;
       }
 
       final ips = await InternetAddress.lookup(host);
       for (final resolved in ips) {
-        _sendFindNode(CompactAddress(resolved, port));
+        if (_isFamilyEnabled(resolved.type)) {
+          _sendFindNode(CompactAddress(resolved, port));
+        }
       }
     } catch (e) {
       _emitError('bootstrap lookup failed for $url: $e');
@@ -387,7 +473,7 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
     required Map<String, dynamic> args,
     required _PendingQuery pending,
   }) {
-    final socket = _socket;
+    final socket = _socketForAddress(node.address.type);
     if (_stopped || socket == null) return;
 
     final tid = _nextTid();
@@ -408,6 +494,27 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
       _pendingQueries.remove(tid);
       _emitError('send $query failed to $node: $e');
     }
+  }
+
+  RawDatagramSocket? _socketForAddress(InternetAddressType type) {
+    if (type == InternetAddressType.IPv6) {
+      return _socketV6 ??
+          (_isFamilyEnabled(InternetAddressType.IPv4) ? _socketV4 : null);
+    }
+    return _socketV4 ??
+        (_isFamilyEnabled(InternetAddressType.IPv6) ? _socketV6 : null);
+  }
+
+  int _addressPriority(InternetAddressType type) {
+    if (_addressFamilyMode ==
+        StandaloneDHTAddressFamilyMode.dualStackPreferIPv6) {
+      return type == InternetAddressType.IPv6 ? 0 : 1;
+    }
+    if (_addressFamilyMode ==
+        StandaloneDHTAddressFamilyMode.dualStackPreferIPv4) {
+      return type == InternetAddressType.IPv4 ? 0 : 1;
+    }
+    return 0;
   }
 
   String _nextTid() {
@@ -434,10 +541,14 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
   @override
   Future<void> stop() async {
     _stopped = true;
-    await _socketSub?.cancel();
-    _socketSub = null;
-    _socket?.close();
-    _socket = null;
+    await _socketSubV4?.cancel();
+    await _socketSubV6?.cancel();
+    _socketSubV4 = null;
+    _socketSubV6 = null;
+    _socketV4?.close();
+    _socketV6?.close();
+    _socketV4 = null;
+    _socketV6 = null;
     _nodes.clear();
     _pendingQueries.clear();
     _tokensByNodeAndInfoHash.clear();
@@ -455,8 +566,10 @@ abstract class StandaloneDHT with EventsEmittable<StandaloneDHTEvent> {
   factory StandaloneDHT() = BittorrentDHTAdapter;
 
   bool get readOnly;
+  StandaloneDHTAddressFamilyMode get addressFamilyMode;
 
   void setReadOnly(bool value);
+  void setAddressFamilyMode(StandaloneDHTAddressFamilyMode value);
 
   Future<int?> bootstrap({int port});
 
@@ -535,10 +648,21 @@ class BittorrentDHTAdapter extends StandaloneDHT {
   bool get readOnly => _driver.readOnly;
 
   @override
+  StandaloneDHTAddressFamilyMode get addressFamilyMode =>
+      _driver.addressFamilyMode;
+
+  @override
   void setReadOnly(bool value) {
     if (_driver.readOnly == value) return;
     _driver.readOnly = value;
     events.emit(StandaloneDHTReadOnlyChangedEvent(value));
+  }
+
+  @override
+  void setAddressFamilyMode(StandaloneDHTAddressFamilyMode value) {
+    if (_driver.addressFamilyMode == value) return;
+    _driver.addressFamilyMode = value;
+    events.emit(StandaloneDHTAddressFamilyChangedEvent(value));
   }
 
   @override
