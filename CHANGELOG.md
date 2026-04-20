@@ -21,6 +21,11 @@
 - restore file attributes on startup/completion (executable bit on Unix-like systems, platform-safe fallback on Windows)
 - restore symlink files from torrent metadata when supported by platform
 - add padding-only piece handling in piece manager (zero-hash auto-complete and validation bypass for pure padding pieces)
+- add BEP 54 `lt_donthave` support (extended message encode/decode and peer-state updates)
+- add `PeerDontHaveEvent` and wire it into task piece scheduling (drop availability and fail matching pending requests)
+- register `lt_donthave` in peer extension handshake and add swarm broadcast helper (`sendDontHaveToAll`)
+- improve extension dispatch to resolve remote extension names by negotiated id (handshake map)
+- add BEP 54 regression tests for valid/invalid donthave flows (`test/donthave_extension_test.dart`)
 - migrate DHT integration to built-in standalone facade/driver (`lib/src/standalone/dht/standalone_dht.dart`)
 - remove direct dependency on external `bittorrent_dht` package
 - add retry/backoff policy and graceful shutdown handling for standalone DHT operations

@@ -270,6 +270,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     _log.fine('registering extensions for peer ${peer.address}');
     peer.registerExtend('ut_pex');
     peer.registerExtend('ut_holepunch');
+    peer.registerExtend(EXTENSION_LT_DONTHAVE);
   }
 
   void _unHookPeer(Peer peer) {
@@ -501,6 +502,12 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   void sendHaveToAll(int index) {
     for (var peer in _activePeers) {
       Timer.run(() => peer.sendHave(index));
+    }
+  }
+
+  void sendDontHaveToAll(int index) {
+    for (var peer in _activePeers) {
+      Timer.run(() => peer.sendDontHave(index));
     }
   }
 

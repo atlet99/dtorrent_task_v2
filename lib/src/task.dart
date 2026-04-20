@@ -1120,6 +1120,7 @@ class _TorrentTask
       ..on<PeerHaveNone>(_processHaveNone)
       ..on<PeerChokeChanged>(_processChokeChange)
       ..on<PeerHaveEvent>(_processHaveUpdate)
+      ..on<PeerDontHaveEvent>(_processDontHaveUpdate)
       ..on<RequestTimeoutEvent>(
           (event) => _processRequestTimeout(event.peer, event.requests))
       ..on<UpdateUploaded>(
@@ -1499,6 +1500,38 @@ class _TorrentTask
     if (canRequest && event.peer.isSleeping) {
       // peer doesn't have requests, so we can request
       Timer.run(() => requestPieces(event.peer));
+    }
+  }
+
+  void _processDontHaveUpdate(PeerDontHaveEvent event) {
+    if (pieceManager == null || _fileManager == null || _peersManager == null) {
+      return;
+    }
+    final index = event.index;
+    if (index < 0 || index >= _fileManager!.piecesNumber) return;
+
+    final piece = _pieceManager![index];
+    if (piece == null) return;
+    _pieceManager!.processPeerDontHave(event.peer, index);
+
+    var cancelledAny = false;
+    final requests = List<List<int>>.from(event.peer.requestBuffer);
+    for (final request in requests) {
+      if (request.length < 3 || request[0] != index) continue;
+      final begin = request[1];
+      final length = request[2];
+      event.peer.requestCancel(index, begin, length);
+      final subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
+      piece.pushSubPieceBack(subindex);
+      cancelledAny = true;
+    }
+
+    if (cancelledAny) {
+      for (final peer in _peersManager!.activePeers) {
+        if (peer != event.peer && peer.isSleeping && !peer.chokeMe) {
+          Timer.run(() => requestPieces(peer));
+        }
+      }
     }
   }
 

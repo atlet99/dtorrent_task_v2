@@ -71,6 +71,8 @@ const ID_HASH_REQUEST = 21;
 const ID_HASHES = 22;
 const ID_HASH_REJECT = 23;
 
+const EXTENSION_LT_DONTHAVE = 'lt_donthave';
+
 const OP_HAVE_ALL = 0x0e;
 const OP_HAVE_NONE = 0x0f;
 const OP_SUGGEST_PIECE = 0x0d;
@@ -865,6 +867,18 @@ abstract class Peer
     super.processExtendHandshake(data);
   }
 
+  @override
+  void processExtendMessage(int id, Uint8List message) {
+    if (id != 0) {
+      final extensionName = getExtendedEventNameById(id);
+      if (extensionName == EXTENSION_LT_DONTHAVE) {
+        _processDontHaveExtension(message);
+        return;
+      }
+    }
+    super.processExtendMessage(id, message);
+  }
+
   void sendExtendMessage(String name, List<int> data) {
     var id = getExtendedEventId(name);
     if (id != null) {
@@ -1209,6 +1223,25 @@ abstract class Peer
     events.emit(PeerHaveEvent(this, indices));
   }
 
+  void _processDontHaveExtension(Uint8List message) {
+    if (message.length != 4) {
+      _log.warning('Invalid lt_donthave payload length: ${message.length}');
+      return;
+    }
+    final index = ByteData.view(message.buffer).getUint32(0, Endian.big);
+    if (index >= _piecesNum) {
+      _log.warning('Invalid lt_donthave piece index: $index');
+      return;
+    }
+    if (_remoteBitfield?.getBit(index) != true) {
+      // BEP 54 says donthave is meaningful for previously advertised pieces.
+      _log.fine('Ignoring lt_donthave for non-advertised piece $index');
+      return;
+    }
+    updateRemoteBitfield(index, false);
+    events.emit(PeerDontHaveEvent(this, index));
+  }
+
   /// Update the remote peer's bitfield.
   void updateRemoteBitfield(int index, bool have) {
     _remoteBitfield?.setBit(index, have);
@@ -1519,6 +1552,16 @@ abstract class Peer
     _log.fine('Sending have information to the peer: $bytes, $index');
     ByteData.view(bytes.buffer).setUint32(0, index, Endian.big);
     sendMessage(ID_HAVE, bytes);
+  }
+
+  /// BEP 54 lt_donthave extension message.
+  ///
+  /// `DontHave: <len=0x0006><op=20><subop=xx><index>`
+  void sendDontHave(int index) {
+    if (index < 0 || index >= _piecesNum) return;
+    final bytes = Uint8List(4);
+    ByteData.view(bytes.buffer).setUint32(0, index, Endian.big);
+    sendExtendMessage(EXTENSION_LT_DONTHAVE, bytes);
   }
 
   /// - `choke: <len=0001><id=0>`
