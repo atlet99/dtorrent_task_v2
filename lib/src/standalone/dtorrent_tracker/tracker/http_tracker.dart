@@ -79,30 +79,61 @@ class HttpTracker extends Tracker with HttpTrackerBase {
   ///
   @override
   Map<String, String> generateQueryParameters(Map<String, dynamic> options) {
-    var params = <String, String>{};
-    params['compact'] = options['compact'].toString();
-    params['downloaded'] = options['downloaded'].toString();
-    params['uploaded'] = options['uploaded'].toString();
-    params['left'] = options['left'].toString();
-    params['numwant'] = options['numwant'].toString();
+    final params = <String, String>{};
+    params['compact'] = (options['compact'] ?? 1).toString();
+    params['downloaded'] = _requireOption(options, 'downloaded').toString();
+    params['uploaded'] = _requireOption(options, 'uploaded').toString();
+    params['left'] = _requireOption(options, 'left').toString();
+    params['numwant'] = (options['numwant'] ?? 50).toString();
     // infohash value usually can not be decode by utf8, because some special character,
     // so I transform them with String.fromCharCodes , when transform them to the query component, use latin1 encoding
     params['info_hash'] = Uri.encodeQueryComponent(
         String.fromCharCodes(infoHashBuffer),
         encoding: latin1);
-    params['port'] = options['port'].toString();
-    params['peer_id'] = options['peerId'];
+    params['port'] = _requireOption(options, 'port').toString();
+    params['peer_id'] =
+        _requireOption(options, 'peerId', fallbackKey: 'peer_id').toString();
     var event = currentEvent;
     if (event != null) {
       params['event'] = event;
     } else {
       params['event'] = EVENT_STARTED;
     }
-    if (currentTrackerId != null) params['trackerid'] = currentTrackerId!;
-    // params['no_peer_id']
-    // params['ip'] ; optional
-    // params['key'] ; optional
+
+    // De-facto compatibility fields used by real trackers.
+    final trackerIdFromOptions = options['trackerid'];
+    if (trackerIdFromOptions != null) {
+      params['trackerid'] = trackerIdFromOptions.toString();
+    } else if (currentTrackerId != null) {
+      params['trackerid'] = currentTrackerId!;
+    }
+    if (options['key'] != null) {
+      params['key'] = options['key'].toString();
+    }
+    if (options['no_peer_id'] != null) {
+      params['no_peer_id'] = options['no_peer_id'].toString();
+    }
+    if (options['ip'] != null) {
+      params['ip'] = options['ip'].toString();
+    }
+
+    // BEP 7 explicitly discourages &ipv4= / &ipv6= on announce due to abuse
+    // potential. Keep compatibility by ignoring such values.
+    if (options.containsKey('ipv4') || options.containsKey('ipv6')) {
+      _log.warning('Ignoring discouraged announce params: ipv4/ipv6');
+    }
+
     return params;
+  }
+
+  dynamic _requireOption(Map<String, dynamic> options, String key,
+      {String? fallbackKey}) {
+    final value =
+        options[key] ?? (fallbackKey != null ? options[fallbackKey] : null);
+    if (value == null) {
+      throw ArgumentError('Missing required announce option: $key');
+    }
+    return value;
   }
 
   ///
