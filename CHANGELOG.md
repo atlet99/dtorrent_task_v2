@@ -1,4 +1,4 @@
-## Unreleased (0.5.0)
+## 0.5.0
 - migrate `dtorrent_common` to built-in standalone module (`lib/src/standalone/dtorrent_common.dart`)
 - migrate `dtorrent_tracker` to built-in standalone module (`lib/src/standalone/dtorrent_tracker.dart`)
 - remove direct dependencies on external `dtorrent_common` and `dtorrent_tracker` packages

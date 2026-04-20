@@ -6,7 +6,7 @@
 Dart library for implementing BitTorrent client.
 
 > [!IMPORTANT]
-> Since `0.5.0` (currently in `Unreleased`), tracker/common/DHT internals are fully standalone in this repository.
+> Since `0.5.0`, tracker/common/DHT internals are fully standalone in this repository.
 
 > [!TIP]
 > For quick onboarding, start with [How to use](#how-to-use), then jump to [Using Magnet Links](#using-magnet-links).
@@ -19,6 +19,7 @@ Dart library for implementing BitTorrent client.
 | [BEP Support](#bep-support) | Implemented BEP specifications |
 | [How to use](#how-to-use) | Minimal setup and first download |
 | [Using Magnet Links](#using-magnet-links) | Metadata-first magnet workflow |
+| [Release 0.5.0 Highlights](#release-050-highlights) | Standalone migration and protocol hardening |
 | [Advanced Features](#advanced-features) | Streaming, queue, proxy, scrape, filtering |
 | [Monitoring and Error Tracking](#monitoring-and-error-tracking) | Runtime diagnostics |
 | [Features](#features) | Full capability summary |
@@ -46,7 +47,7 @@ flowchart LR
 The Dart Torrent client consists of several parts:
 - [Bencode](https://pub.dev/packages/b_encode_decode) 
 - Built-in tracker stack (`lib/src/standalone/dtorrent_tracker`) - no external dependency required since 0.4.9
-- Built-in DHT stack (`lib/src/standalone/dht/standalone_dht.dart`) - no external dependency required since 0.5.0 (Unreleased)
+- Built-in DHT stack (`lib/src/standalone/dht/standalone_dht.dart`) - no external dependency required since 0.5.0
 - [Built-in Torrent parser](https://github.com/atlet99/dtorrent_task_v2/blob/main/lib/src/torrent/torrent_parser.dart) (TorrentParser/TorrentModel) - no external dependency required since 0.4.8
 - Built-in common utilities (`lib/src/standalone/dtorrent_common`) - no external dependency required since 0.4.9
 - [UTP](https://pub.dev/packages/utp_protocol)
@@ -91,7 +92,7 @@ This package implements the regular BitTorrent Protocol and manages the above pa
 This package no longer requires the external `dtorrent_parser` dependency (built-in since 0.4.8):
 ```yaml
 dependencies:
-  dtorrent_task_v2: ^0.4.9
+  dtorrent_task_v2: ^0.5.0
 ```
 
 Download from: [DTORRENT_TASK_V2](https://pub.dev/packages/dtorrent_task_v2)
@@ -210,6 +211,31 @@ metadataListener
 metadata.startDownload();
 ```
 
+## Release 0.5.0 Highlights
+
+Major changes included in `0.5.0`:
+
+- Full standalone migration of core runtime internals:
+  - tracker stack moved in-repo (`lib/src/standalone/dtorrent_tracker`)
+  - common utilities moved in-repo (`lib/src/standalone/dtorrent_common`)
+  - DHT stack moved in-repo (`lib/src/standalone/dht/standalone_dht.dart`)
+- Removed direct dependency on external `dtorrent_common`, `dtorrent_tracker`, and `bittorrent_dht` packages
+- Tracker protocol hardening:
+  - BEP 31 retry directive handling (`retry in` normalization, `never` support, policy observability)
+  - BEP 41 UDP tracker extension support (`URLData` path/query forwarding)
+  - safer announce option merge with required BEP 3 fields and compatibility options
+- BEP 47 support improvements:
+  - parsing file attributes (`p`, `l`, `x`, `h`)
+  - symlink metadata parsing (`symlink path`) for v1/v2
+  - virtual padding-file handling in IO and validation paths
+- BEP 54 `lt_donthave` support:
+  - peer extension handshake integration
+  - piece availability updates when peers revoke piece ownership
+  - task-level integration for pending-request handling and swarm behavior
+- DHT enhancements:
+  - BEP 43/44/45/50/51 modules and APIs
+  - dual-stack IPv4/IPv6 mode controls with address-family prioritization
+
 ## Advanced Features
 
 ### Web Seeding (BEP 0019)
@@ -242,7 +268,7 @@ task.applySelectedFiles([0, 2, 5]); // Only download files at indices 0, 2, and 
 // magnet:?xt=urn:btih:...&so=0&so=2&so=5
 ```
 
-### DHT Enhancements (NEW in 0.5.0 Unreleased)
+### DHT Enhancements (NEW in 0.5.0)
 
 The package now includes a richer standalone DHT toolkit in-repo:
 
@@ -252,7 +278,7 @@ The package now includes a richer standalone DHT toolkit in-repo:
 - BEP 0050: Pub/Sub primitives over DHT topics with push-style delivery (`DHTPubSub`)
 - BEP 0051: Infohash indexing and keyword search with metadata integration (`DHTInfohashIndexer`)
 
-### IPv6 and Dual-Stack DHT (NEW in 0.5.0 Unreleased)
+### IPv6 and Dual-Stack DHT (NEW in 0.5.0)
 
 Standalone DHT now supports IPv4/IPv6 policy control and dual-stack routing priority:
 
@@ -867,6 +893,7 @@ Built-in DHT implementation details:
 - no external `bittorrent_dht` dependency
 - standalone facade + in-repo UDP/KRPC driver
 - retry/backoff policy for bootstrap and DHT operations
+- IPv4/IPv6 address-family mode control with dual-stack preference
 - runtime retry/error observability events
 
 ## Monitoring and Error Tracking
@@ -924,7 +951,12 @@ dhtListener
 - **BitTorrent Protocol v2 (BEP 52)** with automatic version detection
 - **Superseeding (BEP 16)** for improved seeding efficiency
 - **Tracker Scrape (BEP 48)** for torrent statistics without full announce
+- **Tracker Retry Extension (BEP 31)** with normalized retry policy handling
+- **UDP Tracker Protocol Extensions (BEP 41)** including URLData support
 - **Standalone in-repo DHT stack** (no external `bittorrent_dht` dependency)
+- **Read-only and extended DHT modules (BEP 43/44/45/50/51)**
+- **Padding files and file attributes (BEP 47)** including virtual padding IO
+- **lt_donthave extension (BEP 54)** with piece availability updates
 - uTP (uTorrent transport protocol) support with enhanced stability
 - TCP fallback support
 - Multiple extension protocols (PEX, LSD, Holepunch, Metadata Exchange)
@@ -983,6 +1015,7 @@ dhtListener
 ### Network Features
 - HTTP/HTTPS and SOCKS5 proxy support for tracker requests and peer connections
 - UPnP and NAT-PMP automatic port forwarding
+- IPv4/IPv6 dual-stack DHT policy controls (`ipv4Only`, `ipv6Only`, preferred dual-stack)
 - IP filtering with blacklist/whitelist modes
 - eMule dat and PeerGuardian format support for IP filters
 - CIDR block and IP range support
