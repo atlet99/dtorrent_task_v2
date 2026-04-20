@@ -72,6 +72,7 @@ This package implements the regular BitTorrent Protocol and manages the above pa
 - [BEP 0031 Failure Retry Extension](https://www.bittorrent.org/beps/bep_0031.html)
 - [BEP 0040 Canonical Peer Priority](https://www.bittorrent.org/beps/bep_0040.html)
 - [BEP 0041 UDP Tracker Protocol Extensions](https://www.bittorrent.org/beps/bep_0041.html)
+- [BEP 0047 Padding Files and File Attributes](https://www.bittorrent.org/beps/bep_0047.html)
 - [BEP 0048 Tracker Scrape Extension](https://www.bittorrent.org/beps/bep_0048.html)
 - [BEP 0052 BitTorrent v2](https://www.bittorrent.org/beps/bep_0052.html)
 - [BEP 0053 Magnet URI extension - Select specific file indices](https://www.bittorrent.org/beps/bep_0053.html)

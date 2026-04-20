@@ -103,6 +103,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       directory = directory + Platform.pathSeparator;
     }
     _initFileMap(directory);
+    await _restoreFileAttributes();
     return this;
   }
 
@@ -157,6 +158,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
           await file.requestFlush();
           // Emit only once per file
           if (file.completelyFlushed) {
+            await _applyFileAttributes(file);
             events.emit(DownloadManagerFileCompleted(file));
           }
         }
@@ -195,7 +197,15 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
         _file2pieceMap[file.path] = pieces;
       }
       var downloadFile = DownloadFile(
-          directory + file.path, file.offset, file.length, file.path, pieces);
+        directory + file.path,
+        file.offset,
+        file.length,
+        file.path,
+        pieces,
+        attributes: file.attributes,
+        isPaddingFile: file.isPaddingFile,
+        symlinkPath: file.symlinkPath,
+      );
 
       for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
         var downloadFileList = _piece2fileMap?[pieceIndex];
@@ -235,7 +245,10 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       }
 
       var downloadFile = DownloadFile(directory + fileInfo.path, currentOffset,
-          fileInfo.length, fileInfo.path, pieces);
+          fileInfo.length, fileInfo.path, pieces,
+          attributes: fileInfo.attributes,
+          isPaddingFile: fileInfo.isPaddingFile,
+          symlinkPath: fileInfo.symlinkPath);
 
       for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
         var downloadFileList = _piece2fileMap?[pieceIndex];
@@ -251,6 +264,70 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
 
       _files.add(downloadFile);
       currentOffset = fileEnd;
+    }
+  }
+
+  Future<void> _restoreFileAttributes() async {
+    for (final file in _files) {
+      if (file.isPaddingFile) continue;
+      await _applyFileAttributes(file);
+    }
+  }
+
+  Future<void> _applyFileAttributes(DownloadFile file) async {
+    if (file.isPaddingFile) return;
+    if (file.isSymlinkFile) {
+      await _ensureSymlinkFile(file);
+      return;
+    }
+
+    final exists = await File(file.filePath).exists();
+    if (!exists) return;
+
+    if (file.attributes?.isExecutable == true) {
+      await _setExecutablePermission(file.filePath);
+    }
+  }
+
+  Future<void> _ensureSymlinkFile(DownloadFile file) async {
+    final targetSegments = file.symlinkPath;
+    if (targetSegments == null || targetSegments.isEmpty) return;
+    if (Platform.isWindows) {
+      _log.fine('Skip symlink restoration on Windows for ${file.filePath}');
+      return;
+    }
+
+    final linkFile = File(file.filePath);
+    final parentDir = linkFile.parent;
+    if (!await parentDir.exists()) {
+      await parentDir.create(recursive: true);
+    }
+
+    final link = Link(file.filePath);
+    try {
+      if (await link.exists()) {
+        await link.delete();
+      } else if (await linkFile.exists()) {
+        await linkFile.delete();
+      }
+      final target = targetSegments.join(Platform.pathSeparator);
+      await link.create(target);
+    } catch (e, stackTrace) {
+      _log.warning(
+          'Failed to restore symlink for ${file.filePath}', e, stackTrace);
+    }
+  }
+
+  Future<void> _setExecutablePermission(String path) async {
+    if (Platform.isWindows) return;
+    try {
+      final result = await Process.run('chmod', <String>['+x', path]);
+      if (result.exitCode != 0) {
+        _log.warning('chmod failed for $path: ${result.stderr}');
+      }
+    } catch (e, stackTrace) {
+      _log.warning(
+          'Failed to apply executable attribute for $path', e, stackTrace);
     }
   }
 

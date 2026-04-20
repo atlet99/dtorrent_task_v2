@@ -179,6 +179,18 @@ class FileValidator {
         final readStart = pieceStart > fileStart ? pieceStart - fileStart : 0;
         final readEnd = pieceEnd < fileEnd ? pieceEnd - fileStart : file.length;
         final readLength = readEnd - readStart;
+        if (readLength <= 0) {
+          continue;
+        }
+
+        if (file.isPaddingFile) {
+          // BEP 47 padding files are virtual zero-bytes and are not persisted.
+          for (var i = 0; i < readLength; i++) {
+            data[offset + i] = 0;
+          }
+          offset += readLength;
+          continue;
+        }
 
         final filePath = '$savePath${file.path}';
         final fileObj = File(filePath);
@@ -226,6 +238,10 @@ class FileValidator {
   Future<bool> quickValidate() async {
     try {
       for (var file in metainfo.files) {
+        if (file.isPaddingFile) {
+          // Padding files are intentionally skipped on disk.
+          continue;
+        }
         final filePath = '$savePath${file.path}';
         final fileObj = File(filePath);
 

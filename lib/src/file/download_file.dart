@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
 import 'package:dtorrent_task_v2/src/file/download_file_requests.dart';
+import 'package:dtorrent_task_v2/src/file/file_attributes.dart';
 import 'package:dtorrent_task_v2/src/file/utils.dart';
 import 'package:dtorrent_task_v2/src/piece/piece_base.dart';
 import 'package:logging/logging.dart';
@@ -25,6 +26,12 @@ class DownloadFile {
   final int offset;
 
   final int length;
+  final FileAttributes? attributes;
+  final bool isPaddingFile;
+  final List<String>? symlinkPath;
+  bool get isSymlinkFile =>
+      (attributes?.isSymlink ?? false) || symlinkPath != null;
+  bool get isVirtualFile => isPaddingFile || isSymlinkFile;
 
   // the offseted end position relative to the torrent block
   int get end => offset + length;
@@ -34,7 +41,8 @@ class DownloadFile {
 
   bool get completelyFlushed => pieces.none((element) => !element.flushed);
   bool get completed => downloadedBytes == length;
-  double get downloadProgress => downloadedBytes / length * 100;
+  double get downloadProgress =>
+      length == 0 ? 100 : downloadedBytes / length * 100;
 
   File? _file;
 
@@ -54,13 +62,9 @@ class DownloadFile {
   int get _streamLengthLeft => _streamEndPosition - _streamPosition;
   StreamSubscription<FileRequest>? _streamSubscription;
 
-  DownloadFile(
-    this.filePath,
-    this.offset,
-    this.length,
-    this.torrentFilePath,
-    this.pieces,
-  ) {
+  DownloadFile(this.filePath, this.offset, this.length, this.torrentFilePath,
+      this.pieces,
+      {this.attributes, this.isPaddingFile = false, this.symlinkPath}) {
     for (var piece in pieces) {
       if (piece.isCompletelyWritten) {
         var blockPosition = blockToDownloadFilePosition(
@@ -85,6 +89,11 @@ class DownloadFile {
   ///
   Future<bool> requestWrite(
       int position, List<int> block, int start, int end) async {
+    if (isVirtualFile) {
+      downloadedBytes += end - start;
+      _bytesRequestController.add(null);
+      return true;
+    }
     _writeAccess ??= await _getRandomAccessFile(FileRequestType.write);
     var completer = Completer<bool>();
     _streamController?.add(WriteRequest(
@@ -99,6 +108,9 @@ class DownloadFile {
   }
 
   Future<List<int>> requestRead(int position, int length) async {
+    if (isVirtualFile) {
+      return List<int>.filled(length, 0);
+    }
     _readAccess ??= await _getRandomAccessFile(FileRequestType.read);
     var completer = Completer<List<int>>();
     _streamController?.add(
@@ -232,6 +244,7 @@ class DownloadFile {
 
   /// Request to write the buffer to disk.
   Future<bool> requestFlush() async {
+    if (isVirtualFile) return true;
     _writeAccess ??= await _getRandomAccessFile(FileRequestType.write);
     var completer = Completer<bool>();
     _streamController?.add(FlushRequest(completer: completer));
@@ -264,6 +277,9 @@ class DownloadFile {
   ///
   /// Get the corresponding file, and if the file does not exist, create a new file.
   Future<File?> _getOrCreateFile() async {
+    if (isVirtualFile) {
+      return null;
+    }
     _file ??= File(filePath);
     var exists = await _file?.exists();
     if (exists != null && !exists) {
@@ -276,10 +292,16 @@ class DownloadFile {
   }
 
   Future<bool>? get exists {
+    if (isVirtualFile) {
+      return Future.value(true);
+    }
     return File(filePath).exists();
   }
 
   Future<RandomAccessFile> _getRandomAccessFile(FileRequestType type) async {
+    if (isVirtualFile) {
+      throw StateError('Virtual files do not support direct disk IO');
+    }
     var file = await _getOrCreateFile();
     RandomAccessFile? access;
     if (type == FileRequestType.write) {
@@ -321,6 +343,10 @@ class DownloadFile {
   }
 
   Future<FileSystemEntity?> delete() async {
+    if (isVirtualFile) {
+      await close();
+      return null;
+    }
     try {
       await close();
       var temp = _file;
