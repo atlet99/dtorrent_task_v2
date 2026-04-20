@@ -7,6 +7,7 @@ class _FakeDHTDriver implements StandaloneDHTDriver {
   final StreamController<StandaloneDHTDriverEvent> _events =
       StreamController<StandaloneDHTDriverEvent>.broadcast();
 
+  bool _readOnly = false;
   int bootstrapCalls = 0;
   int announceCalls = 0;
   int requestPeersCalls = 0;
@@ -19,6 +20,14 @@ class _FakeDHTDriver implements StandaloneDHTDriver {
 
   @override
   Stream<StandaloneDHTDriverEvent> get events => _events.stream;
+
+  @override
+  bool get readOnly => _readOnly;
+
+  @override
+  set readOnly(bool value) {
+    _readOnly = value;
+  }
 
   @override
   Future<int?> bootstrap({int port = 0}) async {
@@ -175,6 +184,56 @@ void main() {
       expect(retries.first.operation, 'announce');
 
       listener.dispose();
+      await dht.stop();
+    });
+
+    test('should toggle read-only mode and emit change event', () async {
+      final driver = _FakeDHTDriver();
+      final dht = BittorrentDHTAdapter(driver: driver);
+      final changed = <StandaloneDHTReadOnlyChangedEvent>[];
+
+      final listener = dht.createListener();
+      listener.on<StandaloneDHTReadOnlyChangedEvent>(changed.add);
+
+      expect(dht.readOnly, isFalse);
+      dht.setReadOnly(true);
+      dht.setReadOnly(true); // no-op
+      dht.setReadOnly(false);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(changed.map((e) => e.readOnly).toList(), [true, false]);
+      expect(driver.readOnly, isFalse);
+
+      listener.dispose();
+      await dht.stop();
+    });
+
+    test('should block announce in read-only mode', () async {
+      final driver = _FakeDHTDriver()..readOnly = true;
+      final dht = BittorrentDHTAdapter(driver: driver);
+      final errors = <StandaloneDHTErrorEvent>[];
+      final listener = dht.createListener();
+      listener.on<StandaloneDHTErrorEvent>(errors.add);
+
+      dht.announce('12345678901234567890', 6881);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(driver.announceCalls, 0);
+      expect(errors, isNotEmpty);
+      expect(errors.last.message, contains('read-only mode'));
+
+      listener.dispose();
+      await dht.stop();
+    });
+
+    test('should allow requestPeers in read-only mode', () async {
+      final driver = _FakeDHTDriver()..readOnly = true;
+      final dht = BittorrentDHTAdapter(driver: driver);
+
+      dht.requestPeers('12345678901234567890');
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(driver.requestPeersCalls, 1);
       await dht.stop();
     });
 

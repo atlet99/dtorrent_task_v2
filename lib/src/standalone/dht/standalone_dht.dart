@@ -42,6 +42,13 @@ class StandaloneDHTErrorEvent implements StandaloneDHTEvent {
   const StandaloneDHTErrorEvent(this.message);
 }
 
+/// Emitted when read-only mode is toggled (BEP 43).
+class StandaloneDHTReadOnlyChangedEvent implements StandaloneDHTEvent {
+  final bool readOnly;
+
+  const StandaloneDHTReadOnlyChangedEvent(this.readOnly);
+}
+
 abstract class StandaloneDHTDriverEvent {}
 
 class StandaloneDHTDriverNewPeerEvent implements StandaloneDHTDriverEvent {
@@ -62,6 +69,9 @@ class StandaloneDHTDriverErrorEvent implements StandaloneDHTDriverEvent {
 
 abstract class StandaloneDHTDriver {
   Stream<StandaloneDHTDriverEvent> get events;
+
+  bool get readOnly;
+  set readOnly(bool value);
 
   Future<int?> bootstrap({int port});
 
@@ -111,6 +121,7 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
   RawDatagramSocket? _socket;
   StreamSubscription<RawSocketEvent>? _socketSub;
   bool _stopped = false;
+  bool _readOnly = false;
   int _tidCounter = 0;
   late final List<int> _nodeId;
 
@@ -121,6 +132,14 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
 
   @override
   Stream<StandaloneDHTDriverEvent> get events => _controller.stream;
+
+  @override
+  bool get readOnly => _readOnly;
+
+  @override
+  set readOnly(bool value) {
+    _readOnly = value;
+  }
 
   @override
   Future<int?> bootstrap({int port = 0}) async {
@@ -217,7 +236,7 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
       _tokensByNodeAndInfoHash[endpoint]![infoHash] = token;
 
       final announcePort = _announcePorts[infoHash];
-      if (announcePort != null) {
+      if (!_readOnly && announcePort != null) {
         _sendAnnouncePeer(
           node: pending.node,
           infoHash: infoHash,
@@ -263,6 +282,10 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
   @override
   void announce(String infoHash, int port) {
     if (_stopped || _socket == null) return;
+    if (_readOnly) {
+      _emitError('announce ignored: read-only mode enabled (BEP 43)');
+      return;
+    }
     if (infoHash.length != 20) {
       throw ArgumentError.value(infoHash, 'infoHash', 'must be 20-byte string');
     }
@@ -375,6 +398,7 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
       'y': 'q',
       'q': query,
       'a': args,
+      if (_readOnly) 'ro': 1,
     };
 
     try {
@@ -429,6 +453,10 @@ abstract class StandaloneDHT with EventsEmittable<StandaloneDHTEvent> {
   StandaloneDHT._();
 
   factory StandaloneDHT() = BittorrentDHTAdapter;
+
+  bool get readOnly;
+
+  void setReadOnly(bool value);
 
   Future<int?> bootstrap({int port});
 
@@ -504,6 +532,16 @@ class BittorrentDHTAdapter extends StandaloneDHT {
   }
 
   @override
+  bool get readOnly => _driver.readOnly;
+
+  @override
+  void setReadOnly(bool value) {
+    if (_driver.readOnly == value) return;
+    _driver.readOnly = value;
+    events.emit(StandaloneDHTReadOnlyChangedEvent(value));
+  }
+
+  @override
   Future<int?> bootstrap({int port = 0}) async {
     _stopped = false;
     Object? lastError;
@@ -561,6 +599,14 @@ class BittorrentDHTAdapter extends StandaloneDHT {
   @override
   void announce(String infoHash, int port) {
     if (_stopped) return;
+    if (_driver.readOnly) {
+      events.emit(
+        const StandaloneDHTErrorEvent(
+          'announce ignored: read-only mode enabled (BEP 43)',
+        ),
+      );
+      return;
+    }
     try {
       _driver.announce(infoHash, port);
     } catch (e) {
