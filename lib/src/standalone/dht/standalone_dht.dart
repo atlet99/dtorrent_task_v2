@@ -525,7 +525,7 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
     return String.fromCharCodes([hi, lo]);
   }
 
-  List<int>? _asBytes(dynamic value) {
+  List<int>? _asBytes(Object? value) {
     if (value is List<int>) return value;
     if (value is String) return value.codeUnits;
     return null;

@@ -23,7 +23,7 @@ abstract class Scrape {
   /// Call this method , client will access the scrape url to get the scrape informations.
   /// It return a Future , if success , it will return the informations include downloaded,
   /// completed , incompleted and other unofficial informations.
-  Future scrape(Map<String, dynamic> options);
+  Future<Object?> scrape(Map<String, dynamic> options);
 
   ///
   /// Torrent file infomations hash bytebuffer set.

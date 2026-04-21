@@ -34,19 +34,17 @@ class HttpTracker extends Tracker with HttpTrackerBase {
   @override
   Future<PeerEvent?> stop([bool force = false]) async {
     await close();
-    var f = super.stop(force);
-    return f;
+    return super.stop(force);
   }
 
   @override
   Future<PeerEvent?> complete() async {
     await close();
-    var f = super.complete();
-    return f;
+    return super.complete();
   }
 
   @override
-  Future dispose([dynamic reason]) async {
+  Future<void> dispose([Object? reason]) async {
     await close();
     return super.dispose(reason);
   }
@@ -126,7 +124,7 @@ class HttpTracker extends Tracker with HttpTrackerBase {
     return params;
   }
 
-  dynamic _requireOption(Map<String, dynamic> options, String key,
+  Object _requireOption(Map<String, dynamic> options, String key,
       {String? fallbackKey}) {
     final value =
         options[key] ?? (fallbackKey != null ? options[fallbackKey] : null);

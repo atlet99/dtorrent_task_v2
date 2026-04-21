@@ -78,13 +78,13 @@ class HttpScrape extends Scrape with HttpTrackerBase {
   }
 
   @override
-  Future scrape(Map<String, dynamic> options) async {
+  Future<ScrapeEvent?> scrape(Map<String, dynamic> options) async {
     // Currently, scrape does not require providing access parameters.
     try {
-      var re = await httpGet(options);
-      return re;
+      return await httpGet<ScrapeEvent>(options);
     } catch (e) {
       _log.warning('Scrape Error : $url', e);
+      return null;
     } finally {
       await close();
     }

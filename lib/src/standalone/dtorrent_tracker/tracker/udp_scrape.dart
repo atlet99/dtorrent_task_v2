@@ -12,8 +12,8 @@ class UDPScrape extends Scrape with UDPTrackerBase {
   UDPScrape(Uri uri) : super('${uri.host}:${uri.port}', uri);
 
   @override
-  Future scrape(Map<String, dynamic> options) {
-    return contactAnnouncer(options);
+  Future<ScrapeEvent?> scrape(Map<String, dynamic> options) {
+    return contactAnnouncer<ScrapeEvent>(options);
   }
 
   /// When scraping, the data sent to the remote includes:

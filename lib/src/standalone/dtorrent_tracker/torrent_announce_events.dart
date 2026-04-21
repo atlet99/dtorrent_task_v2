@@ -3,8 +3,8 @@ import 'tracker/tracker_base.dart';
 abstract class TorrentAnnounceEvent {}
 
 class AnnounceErrorEvent implements TorrentAnnounceEvent {
-  Tracker source;
-  dynamic error;
+  final Tracker source;
+  final Object? error;
   AnnounceErrorEvent(
     this.source,
     this.error,
@@ -12,8 +12,8 @@ class AnnounceErrorEvent implements TorrentAnnounceEvent {
 }
 
 class AnnounceOverEvent implements TorrentAnnounceEvent {
-  Tracker source;
-  int time;
+  final Tracker source;
+  final int time;
   AnnounceOverEvent(
     this.source,
     this.time,
@@ -21,9 +21,9 @@ class AnnounceOverEvent implements TorrentAnnounceEvent {
 }
 
 class AnnouncePeerEventEvent implements TorrentAnnounceEvent {
-  Tracker source;
+  final Tracker source;
 
-  PeerEvent? event;
+  final PeerEvent? event;
   AnnouncePeerEventEvent(
     this.source,
     this.event,
@@ -31,9 +31,9 @@ class AnnouncePeerEventEvent implements TorrentAnnounceEvent {
 }
 
 class AnnounceTrackerDisposedEvent implements TorrentAnnounceEvent {
-  Tracker source;
+  final Tracker source;
 
-  dynamic reason;
+  final Object? reason;
   AnnounceTrackerDisposedEvent(
     this.source,
     this.reason,

@@ -138,15 +138,13 @@ class UDPTracker extends Tracker with UDPTrackerBase {
   @override
   Future<PeerEvent?> stop([bool force = false]) async {
     await close();
-    var f = super.stop(force);
-    return f;
+    return super.stop(force);
   }
 
   @override
   Future<PeerEvent?> complete() async {
     await close();
-    var f = super.complete();
-    return f;
+    return super.complete();
   }
 
   @override

@@ -31,7 +31,7 @@ class TrackerCompleteEvent implements TrackerEvent {
 
 class TrackerAnnounceErrorEvent implements TrackerEvent {
   final Tracker source;
-  final dynamic error;
+  final Object? error;
 
   TrackerAnnounceErrorEvent(this.source, this.error);
 }
@@ -45,7 +45,7 @@ class TrackerAnnounceOverEvent implements TrackerEvent {
 
 class TrackerDisposedEvent implements TrackerEvent {
   final Tracker source;
-  final dynamic reason;
+  final Object? reason;
 
   TrackerDisposedEvent(this.source, this.reason);
 }

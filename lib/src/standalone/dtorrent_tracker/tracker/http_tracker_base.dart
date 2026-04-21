@@ -100,7 +100,7 @@ mixin HttpTrackerBase {
 
   ///
   /// close the http client
-  Future close() async {
+  Future<void> close() async {
     _closed = true;
     await _clear();
   }
