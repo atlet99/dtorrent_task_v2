@@ -9,6 +9,10 @@
 - replace dynamic state-file casts in `DownloadFileManager`/`TorrentTask` with typed `StateFile`/`StateFileV2` pattern matching for safer resume/path/update operations
 - tighten peer extension typing (`ExtendedProcessor`, `Peer`, `PeersManager`, `MetadataDownloader`, `PEX`) with explicit payload guards for `handshake`/`ut_pex`/`ut_holepunch` flows
 - refactor standalone tracker and DHT internals to stronger typed contracts (UDP/HTTP tracker response paths, socket error signatures, typed options maps, decoded datagram handling)
+- refine standalone tracker event/error models by replacing untyped payload fields with explicit `Object?` contracts and immutable announce event DTOs
+- refactor tracker retry scheduler internals to typed record storage (`timer`, `retryTimes`) instead of untyped timer lists
+- harden scrape/tracker API signatures with explicit return types (`Future<void>`, `Future<ScrapeEvent?>`) and null-safe error paths in HTTP scrape flow
+- replace remaining parser/tracker helper `dynamic` usages (`Object?`-based retry/external-ip/compact-peer parsing and typed required-option extraction)
 - remove remaining analyzer noise after refactor (including tracker extension test cast cleanup) and keep full `dart analyze` green
 - improve local developer quality gates:
   - fix `NO_COLOR` warning in `Makefile`
