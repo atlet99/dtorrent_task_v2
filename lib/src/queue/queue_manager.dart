@@ -1,8 +1,13 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:dtorrent_task_v2/src/task.dart';
 import 'package:dtorrent_task_v2/src/task_events.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_parser.dart';
 import 'package:events_emitter2/events_emitter2.dart';
+import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
+import 'package:dtorrent_task_v2/src/rss/rss_manager.dart';
+import 'package:dtorrent_task_v2/src/rss/rss_parser.dart';
 import 'torrent_queue.dart';
 import 'torrent_queue_item.dart';
 import 'queue_events.dart';
@@ -15,6 +20,8 @@ class QueueManager {
   final Map<String, TorrentTask> _activeTasks = {};
   final Map<String, EventsListener<TaskEvent>> _taskListeners = {};
   int _maxConcurrentDownloads;
+  RSSManager? _rssManager;
+  String? _rssDefaultSavePath;
 
   /// Events emitted by the queue manager
   final EventsEmitter<QueueEvent> events = EventsEmitter<QueueEvent>();
@@ -264,6 +271,49 @@ class QueueManager {
     _log.info('All downloads stopped');
   }
 
+  /// Enable RSS/Atom auto-download into queue.
+  ///
+  /// Only items with direct `.torrent` URL are auto-added.
+  void enableRssAutoDownload({required String defaultSavePath}) {
+    _rssDefaultSavePath = defaultSavePath;
+    _rssManager ??= RSSManager(onItem: _onRssItem);
+  }
+
+  /// Disable RSS/Atom auto-download manager.
+  void disableRssAutoDownload() {
+    _rssManager?.dispose();
+    _rssManager = null;
+    _rssDefaultSavePath = null;
+  }
+
+  RSSManager? get rssManager => _rssManager;
+
+  Future<void> _onRssItem(RSSFeedItem item) async {
+    final savePath = _rssDefaultSavePath;
+    if (savePath == null || item.torrentUrl == null) return;
+
+    final url = Uri.tryParse(item.torrentUrl!);
+    if (url == null) return;
+
+    final response = await http.get(url);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _log.warning('RSS torrent download failed: ${item.torrentUrl}');
+      return;
+    }
+
+    final model =
+        TorrentParser.parseBytes(Uint8List.fromList(response.bodyBytes));
+    addToQueue(TorrentQueueItem(
+      metaInfo: model,
+      savePath: savePath,
+      metadata: {
+        'source': 'rss',
+        'feedItem': item.title,
+        'url': item.torrentUrl,
+      },
+    ));
+  }
+
   /// Clear the queue (only queued items, not active downloads)
   void clearQueue() {
     _queue.clear();
@@ -274,6 +324,7 @@ class QueueManager {
   /// Dispose the queue manager and clean up all resources
   Future<void> dispose() async {
     _log.info('Disposing QueueManager...');
+    disableRssAutoDownload();
     await stopAll();
     clearQueue();
     events.dispose();

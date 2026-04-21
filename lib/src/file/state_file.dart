@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
@@ -35,6 +36,8 @@ class StateFile {
   RandomAccessFile? _access;
 
   File? _bitfieldFile;
+  File? _pathsFile;
+  Map<String, String> _movedFilePaths = {};
 
   StreamSubscription<Map<String, dynamic>>? _streamSubscription;
 
@@ -68,6 +71,7 @@ class StateFile {
     }
 
     _bitfieldFile = File('$directoryPath${metainfo.infoHash}.bt.state');
+    _pathsFile = File('$directoryPath${metainfo.infoHash}.bt.paths.json');
     var exists = await _bitfieldFile?.exists();
     if (exists != null && !exists) {
       _bitfieldFile = await _bitfieldFile?.create(recursive: true);
@@ -94,7 +98,60 @@ class StateFile {
       _uploaded = view.getUint64(_bitfield.length);
     }
 
+    await _loadMovedFilePaths();
+
     return _bitfieldFile!;
+  }
+
+  Map<String, String> get movedFilePaths => Map.unmodifiable(_movedFilePaths);
+
+  String? resolveFilePath(String torrentFilePath) {
+    return _movedFilePaths[torrentFilePath];
+  }
+
+  Future<void> updateFilePath(
+      String torrentFilePath, String absolutePath) async {
+    _movedFilePaths[torrentFilePath] = absolutePath;
+    await _saveMovedFilePaths();
+  }
+
+  Future<void> removeFilePath(String torrentFilePath) async {
+    if (_movedFilePaths.remove(torrentFilePath) != null) {
+      await _saveMovedFilePaths();
+    }
+  }
+
+  Future<void> _loadMovedFilePaths() async {
+    final pathsFile = _pathsFile;
+    if (pathsFile == null || !await pathsFile.exists()) {
+      _movedFilePaths = {};
+      return;
+    }
+    try {
+      final raw = await pathsFile.readAsString();
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        _movedFilePaths = decoded.map(
+          (key, value) => MapEntry(key, value.toString()),
+        );
+      } else {
+        _movedFilePaths = {};
+      }
+    } catch (e) {
+      _log.warning('Failed to load moved file paths', e);
+      _movedFilePaths = {};
+    }
+  }
+
+  Future<void> _saveMovedFilePaths() async {
+    final pathsFile = _pathsFile;
+    if (pathsFile == null) return;
+    try {
+      await pathsFile.parent.create(recursive: true);
+      await pathsFile.writeAsString(jsonEncode(_movedFilePaths));
+    } catch (e) {
+      _log.warning('Failed to save moved file paths', e);
+    }
   }
 
   Future<bool> update(int index, {bool have = true, int uploaded = 0}) async {
@@ -215,8 +272,12 @@ class StateFile {
 
   Future<FileSystemEntity?> delete() async {
     await close();
+    try {
+      await _pathsFile?.delete();
+    } catch (_) {}
     var r = _bitfieldFile?.delete();
     _bitfieldFile = null;
+    _pathsFile = null;
     return r;
   }
 }

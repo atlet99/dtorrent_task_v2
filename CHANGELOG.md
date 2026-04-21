@@ -1,4 +1,17 @@
+## 0.5.1
+
+- add file moving support during active downloads with state path persistence and rebind support (`moveDownloadedFile`, `detectMovedFiles`, `validateMovedFilePath`)
+- add moved-path persistence sidecar for resume (`*.bt.paths.json`) in state file implementations
+- add auto-move manager with extension-based rules, default destination, and external-disk guardrails
+- add schedule manager for pause/resume automation and time-window speed caps
+- add RSS/Atom feed modules (parser, filters, manager) with deduplication and queue auto-add integration
+- add queue-level RSS auto-download API (`enableRssAutoDownload`, `disableRssAutoDownload`)
+- add examples for move/auto-move/scheduling/rss (`file_moving_example.dart`, `auto_move_example.dart`, `scheduling_example.dart`, `rss_auto_download_example.dart`)
+- add regression tests for section 5 features (`test/file_moving_test.dart`, `test/auto_move_test.dart`, `test/scheduling_test.dart`, `test/rss_test.dart`)
+- refine README structure to be feature-focused (without release-centric navigation sections)
+
 ## 0.5.0
+
 - migrate `dtorrent_common` to built-in standalone module (`lib/src/standalone/dtorrent_common.dart`)
 - migrate `dtorrent_tracker` to built-in standalone module (`lib/src/standalone/dtorrent_tracker.dart`)
 - remove direct dependencies on external `dtorrent_common` and `dtorrent_tracker` packages
@@ -46,6 +59,7 @@
 - add IPv6 regression tests for compact peers and DHT address-family switching (`test/ipv6_test.dart`)
 
 ## 0.4.9
+
 - improve test reliability and coverage for peer communication, fast extension, and metadata flows
 - add mock socket test infrastructure (`MockSocket`, `MockServerSocket`) for deterministic TCP peer tests
 - add new regression test suites:
@@ -70,6 +84,7 @@
 - add `.pubignore` to exclude local artifacts and keep publish archives small/clean
 
 ## 0.4.8
+
 - add BEP 16 Superseeding support with `SuperSeeder` class and `enableSuperseeding()`/`disableSuperseeding()` methods in `TorrentTask`
 - add superseeding algorithm implementation that masquerades seeder as peer with no data to improve seeding efficiency
 - add piece rarity tracking and distribution monitoring for superseeding mode
@@ -98,6 +113,7 @@
 - update all examples and tests to use `TorrentModel` instead of `Torrent` from `dtorrent_parser`
 
 ## 0.4.7
+
 - add BEP 48 Tracker Scrape support with `scrapeTracker()` method in `TorrentTask`
 - add `ScrapeClient` class for retrieving torrent statistics (seeders, leechers, downloads) without full announce
 - add UPnP and NAT-PMP port forwarding support with `PortForwardingManager` class
@@ -133,6 +149,7 @@
 - add comprehensive test suites for all new features
 
 ## 0.4.6
+
 - add BitTorrent Protocol v2 (BEP 52) support
 - add v2 info hash support (32 bytes SHA-256 instead of 20 bytes SHA-1)
 - add v2 piece hashing with SHA-256 algorithm
@@ -153,6 +170,7 @@
 - export BEP 52 helper classes in public API (`FileTreeHelper`, `PieceLayersHelper`, `MerkleTreeHelper`)
 
 ## 0.4.5
+
 - add advanced sequential download support for streaming
 - add `SequentialConfig` class for flexible streaming configuration
 - add `AdvancedSequentialPieceSelector` with look-ahead buffer
@@ -171,6 +189,7 @@
 - export sequential download classes in public API
 
 ## 0.4.4
+
 - add Base32 infohash support in magnet links (RFC 4648)
 - integrate trackers from magnet links into MetadataDownloader for peer discovery
 - add automatic retry mechanism (up to 3 attempts) when metadata verification fails
@@ -219,6 +238,7 @@
 - enhance test example with comprehensive diagnostics and automatic completion detection
 
 ## 0.4.3
+
 - fix critical bug where downloads don't start despite connected peers (fixes #4)
 - fix race condition in bitfield processing when peer sends unchoke before interested
 - optimize progress event emission with debouncing to reduce UI update frequency
@@ -227,6 +247,7 @@
 - export magnet parser and torrent creator in public API
 
 ## 0.4.2
+
 - update mime dependency from ^1.0.6 to ^2.0.0
 - optimize lookupMimeType usage to avoid duplicate calls
 - update lints dev dependency from ^2.1.1 to ^6.0.0
@@ -247,14 +268,16 @@
   - utp_long_session_test.dart: long session stability tests
 
 ## 0.4.1
+
 - update dependencies to latest compatible versions
 - upgrade SDK constraint to >=3.0.0
 - fix dead code warnings in examples
-- remove unused code (_hookUTP method, unused imports)
+- remove unused code (\_hookUTP method, unused imports)
 - fix TCPConnectException to properly use exception field
 - update analysis options to disable constant naming checks
 
 ## 0.4.0
+
 - enable utp
 - decouple some parts of the code
 - use logging package
@@ -269,9 +292,11 @@
 - some refactoring and cleanup
 
 ## 0.3.5
+
 - use more broad collection constraints
 
 ## 0.3.4
+
 - use events_emitter and streams when possible
 - video streaming fixes
 - fix tests
@@ -281,35 +306,44 @@
 - update deps and sdk constraints
 
 ## 0.3.3
+
 - migrate to events_emitter2
 
 ## 0.3.2
+
 - pub.dev fixes
 
 ## 0.3.1
+
 - nullsafety
 
 ## 0.3.0
+
 - Add Send Metadata extension (BEP0009)
 
 ## 0.2.1
+
 - Change congestion control
 
 ## 0.2.0
+
 - Add UTP support
 - Add holepunch extension
 - Add LSD extension
 - Fix PEX extension bugs
 
 ## 0.1.4
+
 - Fix some issues
 - Fix peer download slow issue
 
 ## 0.1.2
+
 - Support peer reconnect
 - Fix some bugs
 
 ## 0.1.1
+
 - Add DHT support
 - Add PEX support
 - Change Tracker
