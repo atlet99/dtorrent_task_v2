@@ -29,6 +29,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
 
   final Map<String, List<Piece>> _file2pieceMap = {};
   final dynamic _stateFile; // Can be StateFile or StateFileV2
+  String? _baseDirectory;
 
   /// TODO: File read caching
   DownloadFileManager(
@@ -102,7 +103,9 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     if (lastChar != Platform.pathSeparator) {
       directory = directory + Platform.pathSeparator;
     }
+    _baseDirectory = directory;
     _initFileMap(directory);
+    await detectMovedFiles();
     await _restoreFileAttributes();
     return this;
   }
@@ -197,7 +200,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
         _file2pieceMap[file.path] = pieces;
       }
       var downloadFile = DownloadFile(
-        directory + file.path,
+        _resolveInitialPath(directory, file.path),
         file.offset,
         file.length,
         file.path,
@@ -244,8 +247,12 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
         _file2pieceMap[fileInfo.path] = pieces;
       }
 
-      var downloadFile = DownloadFile(directory + fileInfo.path, currentOffset,
-          fileInfo.length, fileInfo.path, pieces,
+      var downloadFile = DownloadFile(
+          _resolveInitialPath(directory, fileInfo.path),
+          currentOffset,
+          fileInfo.length,
+          fileInfo.path,
+          pieces,
           attributes: fileInfo.attributes,
           isPaddingFile: fileInfo.isPaddingFile,
           symlinkPath: fileInfo.symlinkPath);
@@ -265,6 +272,119 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       _files.add(downloadFile);
       currentOffset = fileEnd;
     }
+  }
+
+  String _resolveInitialPath(String directory, String torrentPath) {
+    final persisted = _resolvePathFromState(torrentPath);
+    if (persisted != null && persisted.isNotEmpty) {
+      return persisted;
+    }
+    return directory + torrentPath;
+  }
+
+  String? _resolvePathFromState(String torrentPath) {
+    try {
+      return (_stateFile as dynamic).resolveFilePath(torrentPath) as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _persistMovedPath(
+      String torrentPath, String absolutePath) async {
+    try {
+      await (_stateFile as dynamic).updateFilePath(torrentPath, absolutePath);
+    } catch (_) {}
+  }
+
+  Future<void> _removePersistedMovedPath(String torrentPath) async {
+    try {
+      await (_stateFile as dynamic).removeFilePath(torrentPath);
+    } catch (_) {}
+  }
+
+  /// Move a torrent file while download is active and persist new path in state.
+  Future<bool> moveFile(
+    String torrentFilePath,
+    String newAbsolutePath, {
+    bool validateAfterMove = true,
+  }) async {
+    final file = _files.firstWhere(
+      (element) => element.torrentFilePath == torrentFilePath,
+      orElse: () => throw ArgumentError.value(
+          torrentFilePath, 'torrentFilePath', 'file not found in torrent'),
+    );
+    if (file.isVirtualFile) return false;
+
+    await file.requestFlush();
+    await file.moveToPath(newAbsolutePath);
+    await _persistMovedPath(torrentFilePath, newAbsolutePath);
+
+    if (!validateAfterMove) return true;
+    return validateMovedFile(torrentFilePath);
+  }
+
+  /// Detect externally moved files and rebind runtime paths.
+  Future<Map<String, String>> detectMovedFiles() async {
+    final baseDirectory = _baseDirectory;
+    if (baseDirectory == null) return const {};
+
+    final moved = <String, String>{};
+    for (final file in _files) {
+      if (file.isVirtualFile) continue;
+      if (await File(file.filePath).exists()) continue;
+
+      final expectedName =
+          file.torrentFilePath.split(Platform.pathSeparator).last;
+      final candidate = await _findMovedCandidate(
+        baseDirectory,
+        expectedName,
+        file.length,
+      );
+      if (candidate == null) {
+        await _removePersistedMovedPath(file.torrentFilePath);
+        continue;
+      }
+
+      await file.rebindPath(candidate.path);
+      await _persistMovedPath(file.torrentFilePath, candidate.path);
+      moved[file.torrentFilePath] = candidate.path;
+    }
+    return moved;
+  }
+
+  Future<File?> _findMovedCandidate(
+      String root, String fileName, int expectedSize) async {
+    final dir = Directory(root);
+    if (!await dir.exists()) return null;
+    try {
+      await for (final entity
+          in dir.list(recursive: true, followLinks: false)) {
+        if (entity is! File) continue;
+        if (!entity.path.endsWith(fileName)) continue;
+        final stat = await entity.stat();
+        if (stat.size == expectedSize) return entity;
+      }
+    } catch (e, stackTrace) {
+      _log.warning('Failed to detect moved files', e, stackTrace);
+    }
+    return null;
+  }
+
+  /// Validate moved file with basic size checks.
+  Future<bool> validateMovedFile(String torrentFilePath) async {
+    final index = metainfo.files.indexWhere((f) => f.path == torrentFilePath);
+    if (index == -1) return false;
+    final file = _files.firstWhere(
+      (element) => element.torrentFilePath == torrentFilePath,
+      orElse: () => throw ArgumentError.value(
+          torrentFilePath, 'torrentFilePath', 'file not found in torrent'),
+    );
+    if (file.isVirtualFile) return true;
+    final ioFile = File(file.filePath);
+    if (!await ioFile.exists()) return false;
+    final stat = await ioFile.stat();
+    return stat.size == metainfo.files[index].length;
   }
 
   Future<void> _restoreFileAttributes() async {

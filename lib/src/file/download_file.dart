@@ -13,7 +13,7 @@ var _log = Logger("DownloadFile");
 
 class DownloadFile {
   // This is the full path of the local file
-  final String filePath;
+  String filePath;
 
   // This is the path inside the torrent info dictionary
   final String torrentFilePath;
@@ -340,6 +340,73 @@ class DownloadFile {
       _streamController = null;
       _bytesRequestSubscription = null;
     }
+  }
+
+  /// Prepare file internals for move operation.
+  ///
+  /// Closes active file descriptors and request streams but allows reopening
+  /// after path update.
+  Future<void> prepareForMove() async {
+    if (isVirtualFile) return;
+    try {
+      await _streamSubscription?.cancel();
+      await _streamController?.close();
+      await _writeAccess?.flush();
+      await _writeAccess?.close();
+      await _readAccess?.close();
+    } catch (e) {
+      _log.warning('prepareForMove() error:', e);
+    } finally {
+      _writeAccess = null;
+      _readAccess = null;
+      _streamSubscription = null;
+      _streamController = null;
+      _closed = false;
+    }
+  }
+
+  /// Move underlying file to a new absolute path and rebind this descriptor.
+  Future<void> moveToPath(String newPath) async {
+    if (isVirtualFile) return;
+    if (newPath == filePath) return;
+
+    final source = File(filePath);
+    final destination = File(newPath);
+    await destination.parent.create(recursive: true);
+
+    await prepareForMove();
+
+    try {
+      if (await source.exists()) {
+        await source.rename(newPath);
+      } else {
+        // If file is not yet materialized, create an empty shell in new place.
+        await destination.create(recursive: true);
+        final access = await destination.open(mode: FileMode.writeOnly);
+        await access.truncate(length);
+        await access.close();
+      }
+    } on FileSystemException {
+      // Cross-device fallback: copy+delete.
+      if (await source.exists()) {
+        await source.copy(newPath);
+        await source.delete();
+      }
+    }
+
+    filePath = newPath;
+    _file = destination;
+    _closed = false;
+  }
+
+  /// Rebind descriptor to an already moved file path without disk move.
+  Future<void> rebindPath(String newPath) async {
+    if (isVirtualFile) return;
+    if (newPath == filePath) return;
+    await prepareForMove();
+    filePath = newPath;
+    _file = File(newPath);
+    _closed = false;
   }
 
   Future<FileSystemEntity?> delete() async {

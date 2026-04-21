@@ -56,9 +56,9 @@ endif
 	pub-get pub-upgrade pub-outdated \
 	format format-check format-all format-all-check fix-dry-run fix-apply \
 	analyze flutter-analyze analyze-all \
-	test test-verbose test-name test-file test-coverage \
+	test test-verbose test-name test-file test-coverage test-all \
 	run-example \
-	clean check ci dev
+	clean check check-all ci dev
 
 ##@ General
 help: ## Show this help (dynamic)
@@ -198,6 +198,11 @@ test-coverage: ## Run tests with coverage output to coverage/
 	@$(TEST) --coverage=coverage $(TEST_ARGS)
 	@printf "$(C_GREEN)Coverage written to coverage/$(C_RESET)\n"
 
+test-all: ## Unified test pipeline (tests + coverage)
+	@$(MAKE) --no-print-directory test
+	@$(MAKE) --no-print-directory test-coverage
+	@printf "$(C_GREEN)test-all completed$(C_RESET)\n"
+
 ##@ Run
 run-example: ## Run one example file (default: example/example.dart)
 	@$(DART) run $(EXAMPLE)
@@ -205,6 +210,15 @@ run-example: ## Run one example file (default: example/example.dart)
 ##@ Quality Gates
 check: format-check analyze test ## Local quality gate
 	@printf "$(C_GREEN)Check passed$(C_RESET)\n"
+
+check-all: ## Full local gate with auto-fixes: pub-get -> fix -> format -> analyze -> test-all
+	@$(MAKE) --no-print-directory check-tools
+	@$(MAKE) --no-print-directory pub-get
+	@$(MAKE) --no-print-directory fix-apply
+	@$(MAKE) --no-print-directory format-all
+	@$(MAKE) --no-print-directory analyze-all
+	@$(MAKE) --no-print-directory test-all
+	@printf "$(C_GREEN)check-all completed$(C_RESET)\n"
 
 ci: pub-get check ## CI-like pipeline
 	@printf "$(C_GREEN)CI pipeline passed$(C_RESET)\n"

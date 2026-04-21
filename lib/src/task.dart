@@ -48,6 +48,8 @@ import 'encryption/protocol_encryption.dart';
 import 'seeding/superseeder.dart';
 import 'file/file_priority.dart';
 import 'file/file_priority_manager.dart';
+import 'file/auto_move_manager.dart';
+import 'schedule/scheduler.dart';
 
 const MAX_PEERS = 50;
 const MAX_IN_PEERS = 10;
@@ -236,11 +238,57 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   /// Alternatively, you can directly add known node addresses.
   void addDHTNode(Uri uri);
 
+  /// Move downloaded file while task is active.
+  Future<bool> moveDownloadedFile(
+    String torrentFilePath,
+    String newAbsolutePath, {
+    bool validateAfterMove = true,
+  });
+
+  /// Detect externally moved files and update runtime bindings.
+  Future<Map<String, String>> detectMovedFiles();
+
+  /// Validate one moved file path.
+  Future<bool> validateMovedFilePath(String torrentFilePath);
+
+  /// Configure automatic move of completed files.
+  void configureAutoMove(AutoMoveConfig config);
+
+  /// Disable automatic move of completed files.
+  void disableAutoMove();
+
+  /// Current auto-move config, if enabled.
+  AutoMoveConfig? get autoMoveConfig;
+
   /// Set IPv4/IPv6 policy for standalone DHT (BEP 7 / BEP 32).
   void setDHTAddressFamilyMode(StandaloneDHTAddressFamilyMode mode);
 
   /// Current IPv4/IPv6 policy for standalone DHT.
   StandaloneDHTAddressFamilyMode get dhtAddressFamilyMode;
+
+  /// Add/update schedule window for automatic pause/resume and speed policy.
+  void addScheduleWindow(ScheduleWindow window);
+
+  /// Remove schedule window by id.
+  bool removeScheduleWindow(String id);
+
+  /// Clear all configured schedule windows.
+  void clearScheduleWindows();
+
+  /// Current schedule windows.
+  List<ScheduleWindow> get scheduleWindows;
+
+  /// Start periodic schedule evaluation.
+  void startScheduling({Duration tick});
+
+  /// Stop periodic schedule evaluation.
+  void stopScheduling();
+
+  /// Last applied scheduler download cap (bytes/s), if any.
+  int? get scheduledMaxDownloadRate;
+
+  /// Last applied scheduler upload cap (bytes/s), if any.
+  int? get scheduledMaxUploadRate;
 
   /// Add known Peer addresses.
   void addPeer(CompactAddress address, PeerSource source,
@@ -464,6 +512,15 @@ class _TorrentTask
 
   /// File priority manager for managing file priorities
   FilePriorityManager? _filePriorityManager;
+
+  /// Auto-move manager for completed files.
+  AutoMoveManager? _autoMoveManager;
+  AutoMoveConfig? _autoMoveConfig;
+
+  /// Task scheduler for pause/resume and speed caps.
+  TaskScheduler? _scheduler;
+  int? _scheduledMaxDownloadRate;
+  int? _scheduledMaxUploadRate;
 
   /// The maximum size of the disk write cache.
   final int maxWriteBufferSize = MAX_WRITE_BUFFER_SIZE;
@@ -784,6 +841,107 @@ class _TorrentTask
       _dht?.addressFamilyMode ??
       StandaloneDHTAddressFamilyMode.dualStackPreferIPv4;
 
+  @override
+  Future<bool> moveDownloadedFile(
+    String torrentFilePath,
+    String newAbsolutePath, {
+    bool validateAfterMove = true,
+  }) async {
+    final manager = _fileManager;
+    if (manager == null) return false;
+    return manager.moveFile(
+      torrentFilePath,
+      newAbsolutePath,
+      validateAfterMove: validateAfterMove,
+    );
+  }
+
+  @override
+  Future<Map<String, String>> detectMovedFiles() async {
+    final manager = _fileManager;
+    if (manager == null) return const {};
+    return manager.detectMovedFiles();
+  }
+
+  @override
+  Future<bool> validateMovedFilePath(String torrentFilePath) async {
+    final manager = _fileManager;
+    if (manager == null) return false;
+    return manager.validateMovedFile(torrentFilePath);
+  }
+
+  @override
+  void configureAutoMove(AutoMoveConfig config) {
+    _autoMoveConfig = config;
+    _autoMoveManager ??= AutoMoveManager(
+      moveAction: (torrentFilePath, newAbsolutePath) =>
+          moveDownloadedFile(torrentFilePath, newAbsolutePath),
+    );
+    _autoMoveManager!.updateConfig(config);
+  }
+
+  @override
+  void disableAutoMove() {
+    _autoMoveConfig = null;
+    _autoMoveManager = null;
+  }
+
+  @override
+  AutoMoveConfig? get autoMoveConfig => _autoMoveConfig;
+
+  @override
+  void addScheduleWindow(ScheduleWindow window) {
+    _scheduler ??= TaskScheduler(
+      delegate: _TorrentTaskSchedulerDelegate(this),
+    );
+    _scheduler!.addWindow(window);
+  }
+
+  @override
+  bool removeScheduleWindow(String id) {
+    final scheduler = _scheduler;
+    if (scheduler == null) return false;
+    return scheduler.removeWindow(id);
+  }
+
+  @override
+  void clearScheduleWindows() {
+    _scheduler?.clear();
+  }
+
+  @override
+  List<ScheduleWindow> get scheduleWindows =>
+      _scheduler?.windows ?? const <ScheduleWindow>[];
+
+  @override
+  void startScheduling({Duration tick = const Duration(seconds: 30)}) {
+    _scheduler ??= TaskScheduler(
+      delegate: _TorrentTaskSchedulerDelegate(this),
+    );
+    _scheduler!.start(tick: tick);
+  }
+
+  @override
+  void stopScheduling() {
+    _scheduler?.stop();
+  }
+
+  @override
+  int? get scheduledMaxDownloadRate => _scheduledMaxDownloadRate;
+
+  @override
+  int? get scheduledMaxUploadRate => _scheduledMaxUploadRate;
+
+  void _applyScheduledSpeedLimits({int? maxDownloadRate, int? maxUploadRate}) {
+    _scheduledMaxDownloadRate = maxDownloadRate;
+    _scheduledMaxUploadRate = maxUploadRate;
+    _log.info(
+      'Scheduler speed caps updated: '
+      'download=${maxDownloadRate ?? 'unlimited'} B/s, '
+      'upload=${maxUploadRate ?? 'unlimited'} B/s',
+    );
+  }
+
   void _whenTaskDownloadComplete() async {
     await _peersManager
         ?.disposeAllSeeder('Download complete,disconnect seeder');
@@ -793,6 +951,9 @@ class _TorrentTask
 
   void _whenFileDownloadComplete(DownloadManagerFileCompleted event) {
     events.emit(TaskFileCompleted(event.file));
+    if (_autoMoveManager != null) {
+      unawaited(_autoMoveManager!.moveCompletedFile(event.file));
+    }
   }
 
   void _processTrackerPeerEvent(tracker.AnnouncePeerEventEvent event) {
@@ -1700,6 +1861,13 @@ class _TorrentTask
     _webSeedDownloader?.dispose();
     _webSeedDownloader = null;
 
+    _scheduler?.dispose();
+    _scheduler = null;
+    _autoMoveManager = null;
+    _autoMoveConfig = null;
+    _scheduledMaxDownloadRate = null;
+    _scheduledMaxUploadRate = null;
+
     // Remove port forwarding
     await _removePortForwarding();
 
@@ -2017,5 +2185,34 @@ class _TorrentTask
       _lastPartialSeedScrapeAt = DateTime.now();
     }
     return result;
+  }
+}
+
+class _TorrentTaskSchedulerDelegate implements SchedulerDelegate {
+  final _TorrentTask _task;
+
+  _TorrentTaskSchedulerDelegate(this._task);
+
+  @override
+  void pauseTask() {
+    _task.pause();
+  }
+
+  @override
+  void resumeTask() {
+    _task.resume();
+  }
+
+  @override
+  void applySpeedLimits({int? maxDownloadRate, int? maxUploadRate}) {
+    _task._applyScheduledSpeedLimits(
+      maxDownloadRate: maxDownloadRate,
+      maxUploadRate: maxUploadRate,
+    );
+  }
+
+  @override
+  void clearSpeedLimits() {
+    _task._applyScheduledSpeedLimits();
   }
 }

@@ -6,7 +6,7 @@
 Dart library for implementing BitTorrent client.
 
 > [!IMPORTANT]
-> Since `0.5.0`, tracker/common/DHT internals are fully standalone in this repository.
+> Tracker/common/DHT internals are fully standalone in this repository.
 
 > [!TIP]
 > For quick onboarding, start with [How to use](#how-to-use), then jump to [Using Magnet Links](#using-magnet-links).
@@ -19,7 +19,7 @@ Dart library for implementing BitTorrent client.
 | [BEP Support](#bep-support) | Implemented BEP specifications |
 | [How to use](#how-to-use) | Minimal setup and first download |
 | [Using Magnet Links](#using-magnet-links) | Metadata-first magnet workflow |
-| [Release 0.5.0 Highlights](#release-050-highlights) | Standalone migration and protocol hardening |
+| [Download UX Automation](#download-ux-automation) | File moving, auto-move, scheduling, RSS |
 | [Advanced Features](#advanced-features) | Streaming, queue, proxy, scrape, filtering |
 | [Monitoring and Error Tracking](#monitoring-and-error-tracking) | Runtime diagnostics |
 | [Features](#features) | Full capability summary |
@@ -47,7 +47,7 @@ flowchart LR
 The Dart Torrent client consists of several parts:
 - [Bencode](https://pub.dev/packages/b_encode_decode) 
 - Built-in tracker stack (`lib/src/standalone/dtorrent_tracker`) - no external dependency required since 0.4.9
-- Built-in DHT stack (`lib/src/standalone/dht/standalone_dht.dart`) - no external dependency required since 0.5.0
+- Built-in DHT stack (`lib/src/standalone/dht/standalone_dht.dart`) - no external dependency required
 - [Built-in Torrent parser](https://github.com/atlet99/dtorrent_task_v2/blob/main/lib/src/torrent/torrent_parser.dart) (TorrentParser/TorrentModel) - no external dependency required since 0.4.8
 - Built-in common utilities (`lib/src/standalone/dtorrent_common`) - no external dependency required since 0.4.9
 - [UTP](https://pub.dev/packages/utp_protocol)
@@ -92,7 +92,7 @@ This package implements the regular BitTorrent Protocol and manages the above pa
 This package no longer requires the external `dtorrent_parser` dependency (built-in since 0.4.8):
 ```yaml
 dependencies:
-  dtorrent_task_v2: ^0.5.0
+  dtorrent_task_v2: ^0.5.1
 ```
 
 Download from: [DTORRENT_TASK_V2](https://pub.dev/packages/dtorrent_task_v2)
@@ -138,6 +138,26 @@ And there are methods to control the `TorrentTask`:
    task.pause();
    // Resume task:
    task.resume();
+```
+
+## Examples
+
+For pub.dev and local onboarding, start from:
+
+- `example/example.dart` - minimal quick-start with magnet parsing and automation config setup
+- `example/file_moving_example.dart` - move files while downloading (`moveDownloadedFile`, `detectMovedFiles`)
+- `example/auto_move_example.dart` - auto-move rules by extension
+- `example/scheduling_example.dart` - time-window scheduling and speed limits
+- `example/rss_auto_download_example.dart` - RSS/Atom subscription and queue auto-download
+
+Run:
+
+```bash
+dart run example/example.dart
+dart run example/file_moving_example.dart <path-to-torrent>
+dart run example/auto_move_example.dart <path-to-torrent>
+dart run example/scheduling_example.dart <path-to-torrent>
+dart run example/rss_auto_download_example.dart <rss-feed-url>
 ```
 
 ## Using Magnet Links
@@ -211,30 +231,81 @@ metadataListener
 metadata.startDownload();
 ```
 
-## Release 0.5.0 Highlights
+## Download UX Automation
 
-Major changes included in `0.5.0`:
+The latest release adds automation features for download workflow management.
 
-- Full standalone migration of core runtime internals:
-  - tracker stack moved in-repo (`lib/src/standalone/dtorrent_tracker`)
-  - common utilities moved in-repo (`lib/src/standalone/dtorrent_common`)
-  - DHT stack moved in-repo (`lib/src/standalone/dht/standalone_dht.dart`)
-- Removed direct dependency on external `dtorrent_common`, `dtorrent_tracker`, and `bittorrent_dht` packages
-- Tracker protocol hardening:
-  - BEP 31 retry directive handling (`retry in` normalization, `never` support, policy observability)
-  - BEP 41 UDP tracker extension support (`URLData` path/query forwarding)
-  - safer announce option merge with required BEP 3 fields and compatibility options
-- BEP 47 support improvements:
-  - parsing file attributes (`p`, `l`, `x`, `h`)
-  - symlink metadata parsing (`symlink path`) for v1/v2
-  - virtual padding-file handling in IO and validation paths
-- BEP 54 `lt_donthave` support:
-  - peer extension handshake integration
-  - piece availability updates when peers revoke piece ownership
-  - task-level integration for pending-request handling and swarm behavior
-- DHT enhancements:
-  - BEP 43/44/45/50/51 modules and APIs
-  - dual-stack IPv4/IPv6 mode controls with address-family prioritization
+### Move Files While Downloading (5.1)
+
+```dart
+// Move one torrent file to a new absolute path.
+await task.moveDownloadedFile(
+  torrentFilePath: 'season1/episode1.mkv',
+  newAbsolutePath: '/Volumes/Media/Shows/episode1.mkv',
+);
+
+// Detect files moved outside of the client and re-bind paths from state.
+await task.detectMovedFiles();
+```
+
+### Auto-move Downloaded Files (5.2)
+
+```dart
+task.configureAutoMove(
+  AutoMoveConfig(
+    defaultDestination: '/Volumes/Media/Incoming',
+    rules: [
+      AutoMoveRule(
+        name: 'Video',
+        destination: '/Volumes/Media/Videos',
+        extensions: {'.mkv', '.mp4', '.avi'},
+      ),
+      AutoMoveRule(
+        name: 'Audio',
+        destination: '/Volumes/Media/Audio',
+        extensions: {'.flac', '.mp3'},
+      ),
+    ],
+  ),
+);
+```
+
+### Scheduling (5.3)
+
+```dart
+task.addScheduleWindow(
+  ScheduleWindow(
+    id: 'night-cap',
+    startHour: 1,
+    endHour: 8,
+    maxDownloadRate: 300 * 1024, // bytes/sec
+    maxUploadRate: 120 * 1024,   // bytes/sec
+  ),
+);
+
+task.startScheduling(checkInterval: const Duration(minutes: 1));
+```
+
+### RSS/Atom Auto-download (5.4)
+
+```dart
+final queueManager = QueueManager(maxConcurrentDownloads: 2);
+await queueManager.enableRssAutoDownload(defaultSavePath: '/Downloads/Torrents');
+
+await queueManager.rssManager!.addSubscription(
+  RSSSubscription(
+    id: 'movies',
+    url: Uri.parse('https://example.com/feed.xml'),
+    pollInterval: const Duration(minutes: 15),
+  ),
+);
+```
+
+See:
+- `example/file_moving_example.dart`
+- `example/auto_move_example.dart`
+- `example/scheduling_example.dart`
+- `example/rss_auto_download_example.dart`
 
 ## Advanced Features
 
@@ -268,7 +339,7 @@ task.applySelectedFiles([0, 2, 5]); // Only download files at indices 0, 2, and 
 // magnet:?xt=urn:btih:...&so=0&so=2&so=5
 ```
 
-### DHT Enhancements (NEW in 0.5.0)
+### DHT Enhancements
 
 The package now includes a richer standalone DHT toolkit in-repo:
 
@@ -278,7 +349,7 @@ The package now includes a richer standalone DHT toolkit in-repo:
 - BEP 0050: Pub/Sub primitives over DHT topics with push-style delivery (`DHTPubSub`)
 - BEP 0051: Infohash indexing and keyword search with metadata integration (`DHTInfohashIndexer`)
 
-### IPv6 and Dual-Stack DHT (NEW in 0.5.0)
+### IPv6 and Dual-Stack DHT
 
 Standalone DHT now supports IPv4/IPv6 policy control and dual-stack routing priority:
 
@@ -300,7 +371,7 @@ task.setDHTAddressFamilyMode(
 await task.start();
 ```
 
-### Test and Validation Improvements (NEW in 0.4.9)
+### Test and Validation Improvements
 
 Version `0.4.9` focuses on reliability for real-world magnet/metadata and peer scenarios:
 
@@ -310,7 +381,7 @@ Version `0.4.9` focuses on reliability for real-world magnet/metadata and peer s
 - Hardened metadata cache validation and malformed metadata message handling
 - More robust magnet parsing for case-insensitive keys and repeated/numbered parameters
 
-### BitTorrent Protocol v2 Support (NEW in 0.4.6)
+### BitTorrent Protocol v2 Support
 
 The library now supports BitTorrent Protocol v2 (BEP 52) with full backward compatibility:
 
@@ -355,7 +426,7 @@ final pieceValid = MerkleTreeHelper.validatePiece(pieceData, expectedHash);
 
 See `example/bittorrent_v2_example.dart` for complete examples.
 
-### Sequential Download for Streaming (NEW in 0.4.5)
+### Sequential Download for Streaming
 
 The library now supports advanced sequential download optimized for video/audio streaming:
 
@@ -424,7 +495,7 @@ final customConfig = SequentialConfig(
 
 See `example/sequential_streaming_example.dart` for complete examples.
 
-### Fast Resume and State File Management (NEW in 0.4.7)
+### Fast Resume and State File Management
 
 The library now includes an enhanced state file system with automatic recovery and validation:
 
@@ -498,7 +569,7 @@ final fileManager = await DownloadFileManager.createFileManager(
 
 See `example/fast_resume_example.dart` for complete examples.
 
-### Tracker Scrape (BEP 48) (NEW in 0.4.7)
+### Tracker Scrape (BEP 48)
 
 The library supports tracker scrape requests to get torrent statistics without performing a full announce:
 
@@ -531,7 +602,7 @@ final customResult = await task.scrapeTracker(Uri.parse('https://tracker.example
 
 See `example/tracker_scrape_example.dart` for complete examples.
 
-### Proxy Support (NEW in 0.4.7)
+### Proxy Support
 
 The library supports HTTP, HTTPS, and SOCKS5 proxies for tracker requests and peer connections:
 
@@ -573,7 +644,7 @@ await task.start();
 
 See `example/proxy_example.dart` for complete examples.
 
-### Torrent Queue Management (NEW in 0.4.7)
+### Torrent Queue Management
 
 The library includes a queue management system for organizing and prioritizing torrent downloads:
 
@@ -632,7 +703,7 @@ print('Queued items: ${queueManager.queuedItems}');
 
 See `example/torrent_queue_example.dart` for complete examples.
 
-### Port Forwarding (NEW in 0.4.7)
+### Port Forwarding
 
 The library supports automatic port forwarding via UPnP and NAT-PMP:
 
@@ -676,7 +747,7 @@ await portManager.dispose();
 
 See `example/port_forwarding_example.dart` for complete examples.
 
-### IP Filtering (NEW in 0.4.7)
+### IP Filtering
 
 The library supports IP filtering to block or allow peer connections:
 
@@ -725,7 +796,7 @@ if (ipFilter.isAllowed(InternetAddress('192.168.1.100'))) {
 
 See `example/ip_filtering_example.dart` for complete examples.
 
-### Superseeding (BEP 16) (NEW in 0.4.8)
+### Superseeding (BEP 16)
 
 The library supports BEP 16 Superseeding algorithm for improved seeding efficiency:
 
@@ -762,7 +833,7 @@ task.disableSuperseeding();
 
 See `example/superseeding_example.dart` for complete examples with CLI interface.
 
-### File Priority Management (NEW in 0.4.8)
+### File Priority Management
 
 The library supports file priority management for controlling download order:
 
@@ -806,7 +877,7 @@ await task.start();
 - Automatic priority assignment based on file types
 - Support for skipping specific files
 
-### Built-in Torrent Parser (NEW in 0.4.8)
+### Built-in Torrent Parser
 
 The library now includes a built-in torrent parser, removing the need for external `dtorrent_parser` dependency:
 

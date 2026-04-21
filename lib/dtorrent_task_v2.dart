@@ -38,6 +38,7 @@ export 'src/queue/queue_events.dart';
 export 'src/file/state_file_v2.dart';
 export 'src/file/file_validator.dart';
 export 'src/file/state_recovery.dart';
+export 'src/file/auto_move_manager.dart';
 export 'src/tracker/tracker_client.dart';
 export 'src/tracker/scrape_client.dart';
 export 'src/ssl/ssl_config.dart';
@@ -48,6 +49,10 @@ export 'src/dht/dht_storage.dart';
 export 'src/dht/dht_multiple_addresses.dart';
 export 'src/dht/dht_pubsub.dart';
 export 'src/dht/dht_indexing.dart';
+export 'src/schedule/scheduler.dart';
+export 'src/rss/rss_parser.dart';
+export 'src/rss/feed_filter.dart';
+export 'src/rss/rss_manager.dart';
 export 'src/standalone/dtorrent_common.dart';
 export 'src/standalone/dht/standalone_dht.dart';
 

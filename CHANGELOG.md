@@ -1,3 +1,14 @@
+## 0.5.1
+- add file moving support during active downloads with state path persistence and rebind support (`moveDownloadedFile`, `detectMovedFiles`, `validateMovedFilePath`)
+- add moved-path persistence sidecar for resume (`*.bt.paths.json`) in state file implementations
+- add auto-move manager with extension-based rules, default destination, and external-disk guardrails
+- add schedule manager for pause/resume automation and time-window speed caps
+- add RSS/Atom feed modules (parser, filters, manager) with deduplication and queue auto-add integration
+- add queue-level RSS auto-download API (`enableRssAutoDownload`, `disableRssAutoDownload`)
+- add examples for move/auto-move/scheduling/rss (`file_moving_example.dart`, `auto_move_example.dart`, `scheduling_example.dart`, `rss_auto_download_example.dart`)
+- add regression tests for section 5 features (`test/file_moving_test.dart`, `test/auto_move_test.dart`, `test/scheduling_test.dart`, `test/rss_test.dart`)
+- refine README structure to be feature-focused (without release-centric navigation sections)
+
 ## 0.5.0
 - migrate `dtorrent_common` to built-in standalone module (`lib/src/standalone/dtorrent_common.dart`)
 - migrate `dtorrent_tracker` to built-in standalone module (`lib/src/standalone/dtorrent_tracker.dart`)
