@@ -3,15 +3,45 @@ name: Publish to pub.dev
 on:
   push:
     tags:
-      # Must align with the tag pattern configured on pub.dev.
-      # For tag pattern `v{{version}}` this can be broad, while pub.dev
-      # will still validate the exact version against pubspec.yaml.
+      # Must align with the tag pattern configured on pub.dev: `v{{version}}`.
       - 'v*.*.*'
 
 jobs:
   publish:
+    runs-on: ubuntu-latest
     permissions:
       id-token: write
-    uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
-    # with:
-    #   environment: pub.dev
+      contents: read
+    # Optional hardening:
+    # 1) Create environment `pub.dev` in GitHub settings.
+    # 2) Require the same environment on pub.dev Automated Publishing page.
+    # environment: pub.dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
+
+      - name: Validate tag matches pubspec version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          if [ -z "$VERSION" ]; then
+            echo "Could not read version from pubspec.yaml"
+            exit 1
+          fi
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "Tag version ($TAG) does not match pubspec version ($VERSION)"
+            exit 1
+          fi
+          echo "Tag and pubspec versions match: $TAG"
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Publish - dry run
+        run: dart pub publish --dry-run
+
+      - name: Publish to pub.dev
+        run: dart pub publish -f
