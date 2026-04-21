@@ -10,6 +10,7 @@ MAKEFLAGS += --no-builtin-rules
 # -----------------------------------------------------------------------------
 DART ?= dart
 FLUTTER ?= flutter
+PRETTIER ?= prettier
 PUB ?= $(DART) pub
 TEST ?= $(DART) test
 
@@ -29,6 +30,9 @@ FIX_ARGS ?=
 # Safety regex for repository-wide Dart commands.
 # Matches paths relative to repo root.
 DART_SAFE_EXCLUDE_RE ?= ^(\.dart_tool/|tmp/|test_results/|coverage/|test_download_)
+# Safety regex for repository-wide Markdown commands.
+# Matches paths relative to repo root.
+MD_SAFE_EXCLUDE_RE ?= ^(\.dart_tool/|tmp/|test_results/|coverage/|test_download_)
 
 # -----------------------------------------------------------------------------
 # Colors (disable with: make NO_COLOR=1 ...)
@@ -55,6 +59,7 @@ endif
 	help check-tools \
 	pub-get pub-upgrade pub-outdated \
 	format format-check format-all format-all-check fix-dry-run fix-apply \
+	md-format md-check \
 	analyze flutter-analyze analyze-all \
 	test test-verbose test-name test-file test-coverage test-all \
 	run-example \
@@ -81,6 +86,9 @@ check-tools: ## Check required local tools
 	@command -v $(FLUTTER) >/dev/null \
 		&& printf "$(C_GREEN)Found $(FLUTTER)$(C_RESET)\n" \
 		|| printf "$(C_YELLOW)$(FLUTTER) not found (flutter-analyze target may fail)$(C_RESET)\n"
+	@command -v $(PRETTIER) >/dev/null \
+		&& printf "$(C_GREEN)Found $(PRETTIER)$(C_RESET)\n" \
+		|| printf "$(C_YELLOW)$(PRETTIER) not found (md-format/md-check will be skipped)$(C_RESET)\n"
 
 ##@ Dependencies
 pub-get: ## Install dependencies (dart pub get)
@@ -159,6 +167,42 @@ fix-dry-run: ## Preview dart fixes (dry-run) for repository Dart files with safe
 		$(DART) fix --dry-run $(FIX_ARGS) "$$file"; \
 	done
 
+md-format: ## Format Markdown files with Prettier (uses .prettierrc.json/.prettierignore)
+	@if ! command -v $(PRETTIER) >/dev/null; then \
+		printf "$(C_YELLOW)Skip md-format: $(PRETTIER) not found$(C_RESET)\n"; \
+	else \
+		files=(); \
+		while IFS= read -r -d '' file; do \
+			if [[ "$$file" =~ $(MD_SAFE_EXCLUDE_RE) ]]; then \
+				continue; \
+			fi; \
+			files+=("$$file"); \
+		done < <(git ls-files -z --cached --others --exclude-standard -- '*.md'); \
+		if [ "$${#files[@]}" -eq 0 ]; then \
+			printf "$(C_YELLOW)No Markdown files found for md-format$(C_RESET)\n"; \
+			exit 0; \
+		fi; \
+		$(PRETTIER) --write "$${files[@]}"; \
+	fi
+
+md-check: ## Check Markdown formatting with Prettier (no changes written)
+	@if ! command -v $(PRETTIER) >/dev/null; then \
+		printf "$(C_YELLOW)Skip md-check: $(PRETTIER) not found$(C_RESET)\n"; \
+	else \
+		files=(); \
+		while IFS= read -r -d '' file; do \
+			if [[ "$$file" =~ $(MD_SAFE_EXCLUDE_RE) ]]; then \
+				continue; \
+			fi; \
+			files+=("$$file"); \
+		done < <(git ls-files -z --cached --others --exclude-standard -- '*.md'); \
+		if [ "$${#files[@]}" -eq 0 ]; then \
+			printf "$(C_YELLOW)No Markdown files found for md-check$(C_RESET)\n"; \
+			exit 0; \
+		fi; \
+		$(PRETTIER) --check "$${files[@]}"; \
+	fi
+
 ##@ Analysis
 analyze: ## Run Dart analyzer
 	@$(DART) analyze $(ANALYZE_ARGS)
@@ -208,7 +252,7 @@ run-example: ## Run one example file (default: example/example.dart)
 	@$(DART) run $(EXAMPLE)
 
 ##@ Quality Gates
-check: format-check analyze test ## Local quality gate
+check: format-check md-check analyze test ## Local quality gate
 	@printf "$(C_GREEN)Check passed$(C_RESET)\n"
 
 check-all: ## Full local gate with auto-fixes: pub-get -> fix -> format -> analyze -> test-all
@@ -216,6 +260,7 @@ check-all: ## Full local gate with auto-fixes: pub-get -> fix -> format -> analy
 	@$(MAKE) --no-print-directory pub-get
 	@$(MAKE) --no-print-directory fix-apply
 	@$(MAKE) --no-print-directory format-all
+	@$(MAKE) --no-print-directory md-format
 	@$(MAKE) --no-print-directory analyze-all
 	@$(MAKE) --no-print-directory test-all
 	@printf "$(C_GREEN)check-all completed$(C_RESET)\n"

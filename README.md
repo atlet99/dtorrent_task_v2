@@ -3,6 +3,7 @@
 ![Platform](https://img.shields.io/badge/platform-dart%20vm-0A0A0A)
 
 # About
+
 Dart library for implementing BitTorrent client.
 
 > [!IMPORTANT]
@@ -13,16 +14,31 @@ Dart library for implementing BitTorrent client.
 
 ## Quick Navigation
 
-| Section | Description |
-|---|---|
-| [About](#about) | High-level package overview |
-| [BEP Support](#bep-support) | Implemented BEP specifications |
-| [How to use](#how-to-use) | Minimal setup and first download |
-| [Using Magnet Links](#using-magnet-links) | Metadata-first magnet workflow |
-| [Download UX Automation](#download-ux-automation) | File moving, auto-move, scheduling, RSS |
-| [Advanced Features](#advanced-features) | Streaming, queue, proxy, scrape, filtering |
-| [Monitoring and Error Tracking](#monitoring-and-error-tracking) | Runtime diagnostics |
-| [Features](#features) | Full capability summary |
+| Section                                                          | Description                                |
+| ---------------------------------------------------------------- | ------------------------------------------ |
+| [About](#about)                                                  | High-level package overview                |
+| [BEP Support](#bep-support)                                      | Implemented BEP specifications             |
+| [How to use](#how-to-use)                                        | Minimal setup and first download           |
+| [Examples](#examples)                                            | Runnable examples from `example/`          |
+| [Feature Cookbook](#feature-cookbook)                            | Short practical snippets by capability     |
+| [Using Magnet Links](#using-magnet-links)                        | Metadata-first magnet workflow             |
+| [Download UX Automation](#download-ux-automation)                | File moving, auto-move, scheduling, RSS    |
+| [Move Files While Downloading](#move-files-while-downloading-51) | Move/rebind files during active task       |
+| [Auto-move Downloaded Files](#auto-move-downloaded-files-52)     | Rule-based destination routing             |
+| [Scheduling](#scheduling-53)                                     | Time windows and rate control              |
+| [RSS/Atom Auto-download](#rssatom-auto-download-54)              | Feed subscriptions and queue integration   |
+| [Advanced Features](#advanced-features)                          | Streaming, queue, proxy, scrape, filtering |
+| [Selected Files (BEP 0053)](#selected-files-bep-0053)            | Download specific file indices             |
+| [Tracker Scrape (BEP 48)](#tracker-scrape-bep-48)                | Seeder/leecher/download counters           |
+| [Proxy Support](#proxy-support)                                  | HTTP/SOCKS5 tracker/peer proxying          |
+| [Torrent Queue Management](#torrent-queue-management)            | Priorities, concurrency, progression       |
+| [Port Forwarding](#port-forwarding)                              | UPnP/NAT-PMP                               |
+| [IP Filtering](#ip-filtering)                                    | CIDR, eMule dat, PeerGuardian              |
+| [Superseeding (BEP 16)](#superseeding-bep-16)                    | Seeder efficiency mode                     |
+| [File Priority Management](#file-priority-management)            | high/normal/low/skip                       |
+| [Built-in Torrent Parser](#built-in-torrent-parser)              | Parse v1/v2/hybrid without external deps   |
+| [Monitoring and Error Tracking](#monitoring-and-error-tracking)  | Runtime diagnostics                        |
+| [Features](#features)                                            | Full capability summary                    |
 
 <details>
 <summary>Architecture Snapshot</summary>
@@ -45,7 +61,8 @@ flowchart LR
 </details>
 
 The Dart Torrent client consists of several parts:
-- [Bencode](https://pub.dev/packages/b_encode_decode) 
+
+- [Bencode](https://pub.dev/packages/b_encode_decode)
 - Built-in tracker stack (`lib/src/standalone/dtorrent_tracker`) - no external dependency required since 0.4.9
 - Built-in DHT stack (`lib/src/standalone/dht/standalone_dht.dart`) - no external dependency required
 - [Built-in Torrent parser](https://github.com/atlet99/dtorrent_task_v2/blob/main/lib/src/torrent/torrent_parser.dart) (TorrentParser/TorrentModel) - no external dependency required since 0.4.8
@@ -55,6 +72,7 @@ The Dart Torrent client consists of several parts:
 This package implements the regular BitTorrent Protocol and manages the above packages to work together for downloading.
 
 ## BEP Support
+
 - [BEP 0003 The BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html)
 - [BEP 0005 DHT Protocol](https://www.bittorrent.org/beps/bep_0005.html)
 - [BEP 0006 Fast Extension](https://www.bittorrent.org/beps/bep_0006.html)
@@ -90,6 +108,7 @@ This package implements the regular BitTorrent Protocol and manages the above pa
 ## How to use
 
 This package no longer requires the external `dtorrent_parser` dependency (built-in since 0.4.8):
+
 ```yaml
 dependencies:
   dtorrent_task_v2: ^0.5.1
@@ -98,6 +117,7 @@ dependencies:
 Download from: [DTORRENT_TASK_V2](https://pub.dev/packages/dtorrent_task_v2)
 
 Import the library:
+
 ```dart
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 ```
@@ -109,12 +129,14 @@ First, create a `TorrentModel` from a .torrent file:
 ```
 
 Second, create a `Torrent Task` and start it:
+
 ```dart
   var task = TorrentTask.newTask(model, 'savepath');
   await task.start();
 ```
 
 You can add event listeners to monitor `TorrentTask` execution:
+
 ```dart
   EventsListener<TaskEvent> listener = task.createListener();
   listener
@@ -144,11 +166,18 @@ And there are methods to control the `TorrentTask`:
 
 For pub.dev and local onboarding, start from:
 
-- `example/example.dart` - minimal quick-start with magnet parsing and automation config setup
+- `example/example.dart` - full feature tour (magnet, queue, RSS, proxy, filtering, encryption, DHT, sequential presets)
 - `example/file_moving_example.dart` - move files while downloading (`moveDownloadedFile`, `detectMovedFiles`)
 - `example/auto_move_example.dart` - auto-move rules by extension
 - `example/scheduling_example.dart` - time-window scheduling and speed limits
 - `example/rss_auto_download_example.dart` - RSS/Atom subscription and queue auto-download
+- `example/torrent_queue_example.dart` - queue priorities and concurrent download limits
+- `example/proxy_example.dart` - HTTP/SOCKS5 proxy setup
+- `example/tracker_scrape_example.dart` - scrape statistics (BEP 48)
+- `example/ip_filtering_example.dart` - CIDR and blocklist usage
+- `example/port_forwarding_example.dart` - UPnP/NAT-PMP mapping
+- `example/sequential_streaming_example.dart` - streaming-oriented sequential strategy
+- `example/superseeding_example.dart` - BEP 16 superseeding flow
 
 Run:
 
@@ -158,6 +187,88 @@ dart run example/file_moving_example.dart <path-to-torrent>
 dart run example/auto_move_example.dart <path-to-torrent>
 dart run example/scheduling_example.dart <path-to-torrent>
 dart run example/rss_auto_download_example.dart <rss-feed-url>
+```
+
+## Feature Cookbook
+
+### Queue + Priority
+
+```dart
+final queueManager = QueueManager(maxConcurrentDownloads: 2);
+queueManager.addToQueue(
+  TorrentQueueItem(
+    metaInfo: torrentA,
+    savePath: './downloads/a',
+    priority: QueuePriority.high,
+  ),
+);
+queueManager.addToQueue(
+  TorrentQueueItem(
+    metaInfo: torrentB,
+    savePath: './downloads/b',
+    priority: QueuePriority.normal,
+  ),
+);
+```
+
+### File Selection + Priority (BEP 53 + file priorities)
+
+```dart
+task.applySelectedFiles([0, 2, 5]); // download only selected files
+task.setFilePriority(0, FilePriority.high);
+task.setFilePriority(1, FilePriority.skip);
+```
+
+### Tracker Scrape (BEP 48)
+
+```dart
+final result = await task.scrapeTracker('https://tracker.example/announce');
+if (result.success) {
+  print(result.stats);
+}
+```
+
+### Proxy + IP Filter
+
+```dart
+final proxy = ProxyConfig.socks5(host: '127.0.0.1', port: 1080);
+final filter = IPFilter()..addCIDRFromString('10.0.0.0/8');
+
+final task = TorrentTask.newTask(
+  torrent,
+  './downloads',
+  false,
+  null,
+  null,
+  null,
+  proxy,
+)
+  ..setIPFilter(filter);
+```
+
+### Encryption Policy (BEP 8 oriented)
+
+```dart
+const encryption = ProtocolEncryptionConfig(
+  level: EncryptionLevel.prefer,
+  enableStreamEncryption: true,
+  enableMessageObfuscation: true,
+);
+```
+
+### DHT Data Modules (BEP 44/50/51)
+
+```dart
+import 'dart:convert';
+
+final storage = DHTStorage();
+final target = storage.putImmutable(utf8.encode('hello'));
+
+final pubsub = DHTPubSub();
+pubsub.publish(topic: 'releases', payload: utf8.encode('v1.0'));
+
+final indexer = DHTInfohashIndexer();
+indexer.index(infoHash: '0123...', name: 'Example Linux ISO');
 ```
 
 ## Using Magnet Links
@@ -188,7 +299,7 @@ metadataListener
     final msg = decode(event.data);
     final torrentMap = <String, dynamic>{'info': msg};
     final torrentModel = parseTorrentFileContent(torrentMap);
-    
+
     if (torrentModel != null) {
       // Start download with web seeds and selected files from magnet link
       final task = TorrentTask.newTask(
@@ -198,21 +309,21 @@ metadataListener
         magnet.webSeeds.isNotEmpty ? magnet.webSeeds : null,
         magnet.acceptableSources.isNotEmpty ? magnet.acceptableSources : null,
       );
-      
+
       // Apply selected files from magnet link (BEP 0053)
-      if (magnet.selectedFileIndices != null && 
+      if (magnet.selectedFileIndices != null &&
           magnet.selectedFileIndices!.isNotEmpty) {
         task.applySelectedFiles(magnet.selectedFileIndices!);
       }
-      
+
       await task.start();
-      
+
       // Transfer peers from metadata downloader to avoid reconnection delays
       final metadataPeers = metadata.activePeers;
       for (var peer in metadataPeers) {
         task.addPeer(peer.address, PeerSource.manual, type: peer.type);
       }
-      
+
       // Add trackers from magnet link
       if (magnet.trackers.isNotEmpty) {
         final infoHashBuffer = Uint8List.fromList(
@@ -253,17 +364,15 @@ await task.detectMovedFiles();
 ```dart
 task.configureAutoMove(
   AutoMoveConfig(
-    defaultDestination: '/Volumes/Media/Incoming',
+    defaultDestinationDirectory: '/Volumes/Media/Incoming',
     rules: [
       AutoMoveRule(
-        name: 'Video',
-        destination: '/Volumes/Media/Videos',
-        extensions: {'.mkv', '.mp4', '.avi'},
+        destinationDirectory: '/Volumes/Media/Videos',
+        extensions: {'mkv', 'mp4', 'avi'},
       ),
       AutoMoveRule(
-        name: 'Audio',
-        destination: '/Volumes/Media/Audio',
-        extensions: {'.flac', '.mp3'},
+        destinationDirectory: '/Volumes/Media/Audio',
+        extensions: {'flac', 'mp3'},
       ),
     ],
   ),
@@ -283,7 +392,7 @@ task.addScheduleWindow(
   ),
 );
 
-task.startScheduling(checkInterval: const Duration(minutes: 1));
+task.startScheduling(tick: const Duration(minutes: 1));
 ```
 
 ### RSS/Atom Auto-download (5.4)
@@ -302,6 +411,7 @@ await queueManager.rssManager!.addSubscription(
 ```
 
 See:
+
 - `example/file_moving_example.dart`
 - `example/auto_move_example.dart`
 - `example/scheduling_example.dart`
@@ -399,6 +509,7 @@ await task.start();
 ```
 
 **BEP 52 Features:**
+
 - **Automatic version detection**: Detects v1, v2, or hybrid torrents via `meta version` field
 - **v2 info hash**: 32-byte SHA-256 info hash support (backward compatible with 20-byte v1)
 - **SHA-256 piece hashing**: Automatic piece validation with SHA-256 for v2 torrents
@@ -409,6 +520,7 @@ await task.start();
 - **Hybrid torrents**: Seamless support for torrents with both v1 and v2 structures
 
 **Helper Classes:**
+
 ```dart
 // File tree operations
 final fileTree = FileTreeHelper.parseFileTree(torrentData);
@@ -442,7 +554,7 @@ final task = TorrentTask.newTask(
   savePath,
   true, // Enable streaming mode
   null, // webSeeds
-  null, // acceptableSources  
+  null, // acceptableSources
   config, // Sequential configuration
 );
 
@@ -485,6 +597,7 @@ final customConfig = SequentialConfig(
 ```
 
 **Features:**
+
 - **Look-ahead buffer**: Downloads pieces ahead of playback position
 - **Adaptive strategy**: Automatically switches between sequential and rarest-first
 - **Moov atom detection**: Prioritizes MP4 metadata for faster playback start
@@ -537,6 +650,7 @@ if (validationResult.isValid) {
 ```
 
 **State File v2 Features:**
+
 - **Automatic migration**: Seamlessly migrates from v1 to v2 format
 - **Compression**: Gzip compression for large bitfields (reduces file size)
 - **Sparse storage**: Optimized storage format for partially downloaded torrents (<10% completion)
@@ -544,12 +658,14 @@ if (validationResult.isValid) {
 - **Metadata tracking**: Version, timestamp, and storage flags
 
 **File Validation:**
+
 - **Quick validation**: Fast check for file existence and sizes
 - **Full validation**: Complete hash verification of all pieces
 - **Per-file validation**: Validate specific files only
 - **Automatic validation on resume**: Enable with `validateOnResume` option
 
 **State Recovery:**
+
 - Automatic detection of corrupted state files
 - Rebuilds bitfield from validated downloaded files
 - Backup functionality before recovery operations
@@ -595,6 +711,7 @@ final customResult = await task.scrapeTracker(Uri.parse('https://tracker.example
 ```
 
 **Features:**
+
 - Get torrent statistics (seeders, leechers, downloads) without full announce
 - Automatic URL conversion from announce to scrape endpoint
 - Support for HTTP and UDP trackers
@@ -633,11 +750,13 @@ await task.start();
 ```
 
 **Proxy Types:**
+
 - **HTTP/HTTPS Proxy**: For HTTP tracker requests and web seed connections
 - **SOCKS5 Proxy**: For peer connections (TCP and uTP)
 - **Authentication**: Support for username/password authentication
 
 **Features:**
+
 - Automatic proxy selection based on connection type
 - Support for authenticated proxies
 - Transparent integration with existing code
@@ -655,46 +774,50 @@ import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 final queueManager = QueueManager(maxConcurrentDownloads: 3);
 
 // Listen to queue events
-final queueListener = queueManager.createListener();
+final queueListener = queueManager.events.createListener();
 queueListener
   ..on<QueueItemAdded>((event) {
     print('Torrent added to queue: ${event.item.metaInfo.name}');
   })
   ..on<QueueItemStarted>((event) {
-    print('Download started: ${event.item.metaInfo.name}');
+    print('Download started: ${event.queueItemId}');
   })
   ..on<QueueItemCompleted>((event) {
-    print('Download completed: ${event.item.metaInfo.name}');
+    print('Download completed: ${event.queueItemId}');
   });
 
 // Add torrents to queue with priorities
-final item1 = await queueManager.addTorrent(
-  torrent1,
-  savePath1,
+final item1 = TorrentQueueItem(
+  metaInfo: torrent1,
+  savePath: savePath1,
   priority: QueuePriority.high,
 );
+queueManager.addToQueue(item1);
 
-final item2 = await queueManager.addTorrent(
-  torrent2,
-  savePath2,
+final item2 = TorrentQueueItem(
+  metaInfo: torrent2,
+  savePath: savePath2,
   priority: QueuePriority.normal,
 );
+queueManager.addToQueue(item2);
 
 // Update priority
 queueManager.updatePriority(item1.id, QueuePriority.urgent);
 
 // Get queue status
-print('Active downloads: ${queueManager.activeDownloads}');
-print('Queued items: ${queueManager.queuedItems}');
+print('Active downloads: ${queueManager.activeDownloadsCount}');
+print('Queued items: ${queueManager.queue.length}');
 ```
 
 **Priority Levels:**
+
 - `QueuePriority.low`: Lowest priority
 - `QueuePriority.normal`: Default priority
 - `QueuePriority.high`: High priority
 - `QueuePriority.urgent`: Highest priority
 
 **Features:**
+
 - Concurrent download limit control
 - Priority-based queue ordering
 - Automatic queue progression
@@ -736,10 +859,12 @@ await portManager.dispose();
 ```
 
 **Protocols:**
+
 - **UPnP**: Universal Plug and Play port forwarding
 - **NAT-PMP**: NAT Port Mapping Protocol
 
 **Features:**
+
 - Automatic gateway discovery
 - Lease renewal for NAT-PMP
 - Support for TCP and UDP protocols
@@ -784,10 +909,12 @@ if (ipFilter.isAllowed(InternetAddress('192.168.1.100'))) {
 ```
 
 **Supported Formats:**
+
 - **eMule dat format**: Standard IP filter format used by eMule
 - **PeerGuardian format**: P2P blocklist format
 
 **Features:**
+
 - Blacklist and whitelist modes
 - CIDR block support
 - IP range support
@@ -821,12 +948,14 @@ task.disableSuperseeding();
 ```
 
 **How Superseeding Works:**
+
 - The seeder masquerades as a peer with no data (doesn't send bitfield)
 - Only rare pieces are offered to peers, one at a time
 - Next piece is offered only after previous piece is distributed to other peers
 - Reduces redundant uploads and improves seeding efficiency (from 150-200% to ~105%)
 
 **Important Notes:**
+
 - Superseeding is **NOT recommended for general use**
 - Should only be used for **initial seeding** when you are the only or primary seeder
 - Automatically activates when download completes if enabled before completion
@@ -866,12 +995,14 @@ await task.start();
 ```
 
 **Priority Levels:**
+
 - `FilePriority.high`: Downloaded first
 - `FilePriority.normal`: Default priority
 - `FilePriority.low`: Downloaded after normal and high priority files
 - `FilePriority.skip`: File is not downloaded
 
 **Features:**
+
 - Piece prioritization based on file priorities
 - Priority persistence in state file for resume support
 - Automatic priority assignment based on file types
@@ -898,6 +1029,7 @@ final model = TorrentParser.parseFromMap(torrentMap);
 ```
 
 **Features:**
+
 - Full support for BEP 3 (v1) and BEP 52 (v2) torrents
 - Automatic version detection (v1, v2, hybrid)
 - Support for file tree structure (v2)
@@ -917,7 +1049,7 @@ listener.on<StateFileUpdated>((event) {
   final seederCount = task.seederNumber;
   final downloadSpeed = task.currentDownloadSpeed;
   final avgSpeed = task.averageDownloadSpeed;
-  
+
   print('Progress: ${progress.toStringAsFixed(2)}%');
   print('Downloaded: ${(downloaded / 1024 / 1024).toStringAsFixed(2)} MB');
   print('Peers: $connectedPeers ($seederCount seeders)');
@@ -941,7 +1073,7 @@ final peerAddress = CompactAddress(
 task.addPeer(peerAddress, PeerSource.manual, type: PeerType.TCP);
 
 // Add a peer with existing socket
-task.addPeer(peerAddress, PeerSource.incoming, 
+task.addPeer(peerAddress, PeerSource.incoming,
     type: PeerType.TCP, socket: socket);
 ```
 
@@ -961,6 +1093,7 @@ task.requestPeersFromDHT();
 ```
 
 Built-in DHT implementation details:
+
 - no external `bittorrent_dht` dependency
 - standalone facade + in-repo UDP/KRPC driver
 - retry/backoff policy for bootstrap and DHT operations
@@ -1008,6 +1141,7 @@ dhtListener
 ## Features
 
 ### Stability Improvements
+
 - **uTP RangeError Protection**: Comprehensive protection against RangeError crashes in uTP protocol with:
   - Buffer bounds validation before all operations
   - Message length validation (negative, oversized, and overflow protection)
@@ -1018,6 +1152,7 @@ dhtListener
 - **Metadata Validation Hardening**: Added strict infohash validation, cache hash verification, and malformed metadata boundary guards
 
 ### Protocol Support
+
 - Full BitTorrent protocol implementation
 - **BitTorrent Protocol v2 (BEP 52)** with automatic version detection
 - **Superseeding (BEP 16)** for improved seeding efficiency
@@ -1044,6 +1179,7 @@ dhtListener
 - IP filtering with eMule dat and PeerGuardian format support
 
 ### Performance
+
 - Efficient piece management and selection
 - Memory-optimized file handling
 - Streaming support for media files with isolate-based processing
@@ -1056,6 +1192,7 @@ dhtListener
 - Sparse bitfield storage for partially downloaded torrents
 
 ### State File and Recovery
+
 - Enhanced state file format (v2) with versioning and validation
 - Automatic migration from v1 to v2 format
 - Gzip compression for bitfield storage
@@ -1066,6 +1203,7 @@ dhtListener
 - Automatic validation on resume option
 
 ### Magnet Link Features
+
 - Automatic metadata download from magnet links
 - Support for Base32 and hex infohash formats (RFC 4648)
 - Case-insensitive magnet query parsing for `xt`/`dn`/`tr`/`ws`/`as`/`so`
@@ -1077,6 +1215,7 @@ dhtListener
 - Automatic peer and tracker transfer from metadata phase to download phase
 
 ### Queue Management
+
 - Priority-based torrent queue system
 - Concurrent download limit control
 - Automatic queue progression
@@ -1084,6 +1223,7 @@ dhtListener
 - FIFO ordering within same priority level
 
 ### Network Features
+
 - HTTP/HTTPS and SOCKS5 proxy support for tracker requests and peer connections
 - UPnP and NAT-PMP automatic port forwarding
 - IPv4/IPv6 dual-stack DHT policy controls (`ipv4Only`, `ipv6Only`, preferred dual-stack)
@@ -1092,6 +1232,7 @@ dhtListener
 - CIDR block and IP range support
 
 ### Seeding Features
+
 - **Superseeding (BEP 16)**: Improved seeding efficiency for initial seeders
 - Piece rarity tracking and distribution monitoring
 - Automatic superseeding activation on download completion

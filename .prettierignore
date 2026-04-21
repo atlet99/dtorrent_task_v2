@@ -1,0 +1,7 @@
+.dart_tool/
+coverage/
+tmp/
+test_results/
+test_download_*/
+node_modules/
+pubspec.lock
