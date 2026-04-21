@@ -112,25 +112,7 @@ class TaskScheduler {
       return;
     }
 
-    // Prefer the most restrictive limits among active windows.
-    int? maxDownload;
-    int? maxUpload;
-    for (final window in active) {
-      if (window.maxDownloadRate != null) {
-        maxDownload = maxDownload == null
-            ? window.maxDownloadRate
-            : (window.maxDownloadRate! < maxDownload
-                ? window.maxDownloadRate
-                : maxDownload);
-      }
-      if (window.maxUploadRate != null) {
-        maxUpload = maxUpload == null
-            ? window.maxUploadRate
-            : (window.maxUploadRate! < maxUpload
-                ? window.maxUploadRate
-                : maxUpload);
-      }
-    }
+    final (maxDownload, maxUpload) = _mostRestrictiveLimits(active);
 
     _delegate.resumeTask();
     if (maxDownload != null || maxUpload != null) {
@@ -141,5 +123,23 @@ class TaskScheduler {
     } else {
       _delegate.clearSpeedLimits();
     }
+  }
+
+  (int?, int?) _mostRestrictiveLimits(List<ScheduleWindow> activeWindows) {
+    int? maxDownload;
+    int? maxUpload;
+
+    for (final window in activeWindows) {
+      maxDownload = _restrictiveMin(maxDownload, window.maxDownloadRate);
+      maxUpload = _restrictiveMin(maxUpload, window.maxUploadRate);
+    }
+
+    return (maxDownload, maxUpload);
+  }
+
+  int? _restrictiveMin(int? current, int? candidate) {
+    if (candidate == null) return current;
+    if (current == null) return candidate;
+    return candidate < current ? candidate : current;
   }
 }
