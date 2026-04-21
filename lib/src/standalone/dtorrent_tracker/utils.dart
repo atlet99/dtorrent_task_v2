@@ -43,7 +43,7 @@ Uint8List num2Uint64List(int n) {
   return buffer.asUint8List();
 }
 
-dynamic getPeerIPv4(ByteData byteView, [int offset = 0]) {
+Uri getPeerIPv4(ByteData byteView, [int offset = 0]) {
   var a = byteView.getUint8(offset);
   var b = byteView.getUint8(offset + 1);
   var c = byteView.getUint8(offset + 2);

@@ -76,8 +76,8 @@ mixin UDPTrackerBase {
   /// When announcing and scrape communicate, this first step must be taken, which is fixed.
   /// The parameter completer is an instance of 'Completer'. Used to intercept exceptions that occur and intercept them through completeError
   ///
-  void _connect(
-      Map options, List<CompactAddress> address, Completer completer) async {
+  void _connect<T>(Map<String, dynamic> options, List<CompactAddress> address,
+      Completer<T?> completer) async {
     if (isClosed) {
       if (!completer.isCompleted) completer.completeError('Tracker closed');
       return;
@@ -97,9 +97,9 @@ mixin UDPTrackerBase {
   }
 
   /// An entry function that communicates with Remote. Returns a Future
-  Future<T?> contactAnnouncer<T>(Map options) async {
+  Future<T?> contactAnnouncer<T>(Map<String, dynamic> options) async {
     if (isClosed) return null;
-    var completer = Completer<T>();
+    var completer = Completer<T?>();
     var adds = await addresses;
     if (adds == null || adds.isEmpty) {
       close();
@@ -118,7 +118,8 @@ mixin UDPTrackerBase {
           completer.completeError('Wrong datas');
           return;
         }
-        _processAnnounceResponseData(datagram.data, options, adds, completer);
+        _processAnnounceResponseData<T>(
+            datagram.data, options, adds, completer);
       }
     }, onError: (e) async {
       close();
@@ -130,17 +131,17 @@ mixin UDPTrackerBase {
     });
 
     // Step 1: Connect to the other party
-    _connect(options, adds, completer);
+    _connect<T>(options, adds, completer);
     return completer.future;
   }
 
   void handleSocketDone();
 
-  void handleSocketError(dynamic e);
+  void handleSocketError(Object e);
 
   /// Process the data obtained from the remote after one communication.
   ///
-  dynamic processResponseData(
+  Object? processResponseData(
       Uint8List data, int action, Iterable<CompactAddress> addresses);
 
   ///
@@ -149,11 +150,12 @@ mixin UDPTrackerBase {
   /// This method is designed for subclasses to implement different data sending
   /// logic for announce and scrape
   ///
-  Uint8List generateSecondTouchMessage(Uint8List connectionId, Map options);
+  Uint8List generateSecondTouchMessage(
+      Uint8List connectionId, Map<String, dynamic> options);
 
   ///
   /// After the first connection is successful, send the second message
-  Future<void> _announce(Uint8List connectionId, Map options,
+  Future<void> _announce(Uint8List connectionId, Map<String, dynamic> options,
       List<CompactAddress> addresses) async {
     var message = generateSecondTouchMessage(connectionId, options);
     if (message.isEmpty) {
@@ -167,8 +169,11 @@ mixin UDPTrackerBase {
   ///
   /// This method does not directly handle the final message returned from the Remote, but it fixes the entire communication flow.
   /// This method processes the entire process from sending the first message and receiving the response to receiving the second message.
-  void _processAnnounceResponseData(Uint8List data, Map options,
-      List<CompactAddress> address, Completer completer) async {
+  void _processAnnounceResponseData<T>(
+      Uint8List data,
+      Map<String, dynamic> options,
+      List<CompactAddress> address,
+      Completer<T?> completer) async {
     if (isClosed) {
       if (!completer.isCompleted) completer.completeError('Tracker Closed');
       return;
@@ -201,8 +206,8 @@ mixin UDPTrackerBase {
       }
       // Announce receives the returned result
       try {
-        var result = processResponseData(data, action, address);
-        completer.complete(result);
+        final result = processResponseData(data, action, address);
+        completer.complete(result as T?);
       } catch (e) {
         completer.completeError('Response Announce Result Data error');
       }

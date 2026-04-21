@@ -135,7 +135,7 @@ abstract class Tracker with EventsEmittable<TrackerEvent> {
     return true;
   }
 
-  Future dispose([dynamic reason]) async {
+  Future<void> dispose([Object? reason]) async {
     if (_disposed) return;
     events.dispose();
     _disposed = true;
@@ -164,7 +164,7 @@ abstract class Tracker with EventsEmittable<TrackerEvent> {
     return options;
   }
 
-  Future close();
+  Future<void> close();
 
   void stopIntervalAnnounce() {
     _announceTimer?.cancel();

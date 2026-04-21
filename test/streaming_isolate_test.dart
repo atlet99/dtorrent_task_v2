@@ -34,86 +34,74 @@ void main() {
       final address = InternetAddress('127.0.0.1');
       final port = 9090;
 
-      try {
-        final playlist = await isolateManager.getPlaylist(files, address, port);
+      final playlist = await isolateManager.getPlaylist(files, address, port);
 
-        expect(playlist, isNotNull);
-        expect(playlist.length, greaterThanOrEqualTo(0));
+      expect(playlist, isNotNull);
+      expect(playlist.length, greaterThanOrEqualTo(0));
 
-        if (playlist.isNotEmpty) {
-          final playlistString = String.fromCharCodes(playlist);
-          expect(playlistString, contains('#EXTM3U'));
-        }
-      } catch (e) {
-        // Handle "Stream has already been listened to" error
-        // This happens because ReceivePort can only be listened to once
-        if (e.toString().contains('already been listened to')) {
-          // Reinitialize isolate for next test
-          await isolateManager.dispose();
-          await isolateManager.initialize();
-          return; // Skip this test
-        }
-        rethrow;
+      if (playlist.isNotEmpty) {
+        final playlistString = String.fromCharCodes(playlist);
+        expect(playlistString, contains('#EXTM3U'));
       }
     });
 
     test('should get JSON metadata from isolate', () async {
       final files = <TorrentFileModel>[];
 
-      try {
-        final json = await isolateManager.getJsonMetadata(
-          files,
-          1024 * 1024, // totalLength
-          512 * 1024, // downloaded
-          1000.0, // downloadSpeed
-          500.0, // uploadSpeed
-          10, // totalPeers
-          5, // activePeers
-        );
+      final json = await isolateManager.getJsonMetadata(
+        files,
+        1024 * 1024, // totalLength
+        512 * 1024, // downloaded
+        1000.0, // downloadSpeed
+        500.0, // uploadSpeed
+        10, // totalPeers
+        5, // activePeers
+      );
 
-        expect(json, isNotNull);
-        expect(json.length, greaterThan(0));
+      expect(json, isNotNull);
+      expect(json.length, greaterThan(0));
 
-        final jsonString = String.fromCharCodes(json);
-        expect(jsonString, contains('totalLength'));
-        expect(jsonString, contains('downloaded'));
-        expect(jsonString, contains('downloadSpeed'));
-        expect(jsonString, contains('files'));
-      } catch (e) {
-        // Handle "Stream has already been listened to" error
-        if (e.toString().contains('already been listened to')) {
-          // Reinitialize isolate for next test
-          await isolateManager.dispose();
-          await isolateManager.initialize();
-          return; // Skip this test
-        }
-        rethrow;
-      }
+      final jsonString = String.fromCharCodes(json);
+      expect(jsonString, contains('totalLength'));
+      expect(jsonString, contains('downloaded'));
+      expect(jsonString, contains('downloadSpeed'));
+      expect(jsonString, contains('files'));
     });
 
     test('should handle timeout gracefully', () async {
       final files = <TorrentFileModel>[];
 
-      try {
-        // Should return empty result on timeout (or reinitialize)
-        final result = await isolateManager.getPlaylist(
-          files,
-          InternetAddress('127.0.0.1'),
-          9090,
-        );
+      // Should return empty result on timeout (or reinitialize)
+      final result = await isolateManager.getPlaylist(
+        files,
+        InternetAddress('127.0.0.1'),
+        9090,
+      );
 
-        // Should handle gracefully (empty or error)
-        expect(result, isNotNull);
-      } catch (e) {
-        // Handle "Stream has already been listened to" error
-        if (e.toString().contains('already been listened to')) {
-          // Reinitialize isolate for next test
-          await isolateManager.dispose();
-          await isolateManager.initialize();
-          return; // Skip this test
-        }
-        rethrow;
-      }
+      // Should handle gracefully (empty or error)
+      expect(result, isNotNull);
+    });
+
+    test('should handle concurrent requests without stream listen conflicts',
+        () async {
+      final files = <TorrentFileModel>[];
+
+      final results = await Future.wait([
+        isolateManager.getPlaylist(files, InternetAddress('127.0.0.1'), 9090),
+        isolateManager.getJsonMetadata(
+          files,
+          2048,
+          1024,
+          100.0,
+          50.0,
+          4,
+          2,
+        ),
+      ]);
+
+      expect(results[0], isNotNull);
+      expect(results[1], isNotNull);
+      expect(String.fromCharCodes(results[1]), contains('totalLength'));
     });
 
     test('should dispose isolate correctly', () async {

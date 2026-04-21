@@ -100,7 +100,7 @@ mixin HttpTrackerBase {
 
   ///
   /// close the http client
-  Future close() async {
+  Future<void> close() async {
     _closed = true;
     await _clear();
   }
@@ -148,7 +148,7 @@ mixin HttpTrackerBase {
 
       var datas = await _receiveResponseData(response);
       await _clear();
-      return processResponseData(Uint8List.fromList(datas));
+      return processResponseData(Uint8List.fromList(datas)) as T?;
     } catch (e) {
       await _clear();
       rethrow;
@@ -156,5 +156,5 @@ mixin HttpTrackerBase {
   }
 
   /// Process the remote response byte buffer and return the useful informations they need.
-  dynamic processResponseData(Uint8List data);
+  Object? processResponseData(Uint8List data);
 }

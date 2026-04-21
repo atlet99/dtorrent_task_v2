@@ -54,8 +54,8 @@ class DownloadFile {
 
   StreamController<List<int>> _hlsStreamController = StreamController();
 
-  StreamSubscription? _bytesRequestSubscription;
-  StreamController _bytesRequestController = StreamController();
+  StreamSubscription<void>? _bytesRequestSubscription;
+  StreamController<void> _bytesRequestController = StreamController<void>();
 
   int _streamEndPosition = 0;
   int _streamPosition = 0;
@@ -128,7 +128,7 @@ class DownloadFile {
     _hlsStreamController = StreamController<List<int>>();
     _streamEndPosition = endByte; //reset endposition
     _streamPosition = startByte; // reset start position
-    _bytesRequestController = StreamController();
+    _bytesRequestController = StreamController<void>();
     _bytesRequestSubscription =
         _bytesRequestController.stream.listen(_processBytes);
     _bytesRequestController.add(null);
@@ -158,10 +158,13 @@ class DownloadFile {
     return math.min(totalLastByte, end);
   }
 
-  Future<void> _processBytes(dynamic _) async {
+  Future<void> _processBytes(void _) async {
     _bytesRequestSubscription?.pause();
-    await _pushBytes();
-    _bytesRequestSubscription?.resume();
+    try {
+      await _pushBytes();
+    } finally {
+      _bytesRequestSubscription?.resume();
+    }
   }
 
   Future<void> _pushBytes() async {
@@ -211,16 +214,19 @@ class DownloadFile {
   /// the current request.
   void _processRequest(FileRequest event) async {
     _streamSubscription?.pause();
-    if (event is WriteRequest) {
-      await _write(event);
+    try {
+      if (event is WriteRequest) {
+        await _write(event);
+      }
+      if (event is ReadRequest) {
+        await _read(event);
+      }
+      if (event is FlushRequest) {
+        await _flush(event);
+      }
+    } finally {
+      _streamSubscription?.resume();
     }
-    if (event is ReadRequest) {
-      await _read(event);
-    }
-    if (event is FlushRequest) {
-      await _flush(event);
-    }
-    _streamSubscription?.resume();
   }
 
   Future<void> _write(WriteRequest request) async {
@@ -312,7 +318,7 @@ class DownloadFile {
       access = _readAccess;
     }
     if (_streamController == null) {
-      _streamController = StreamController();
+      _streamController = StreamController<FileRequest>();
       _streamSubscription = _streamController?.stream.listen(_processRequest);
     }
     return access!;

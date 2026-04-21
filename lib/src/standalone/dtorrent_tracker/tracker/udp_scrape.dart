@@ -12,8 +12,8 @@ class UDPScrape extends Scrape with UDPTrackerBase {
   UDPScrape(Uri uri) : super('${uri.host}:${uri.port}', uri);
 
   @override
-  Future scrape(Map options) {
-    return contactAnnouncer(options);
+  Future<ScrapeEvent?> scrape(Map<String, dynamic> options) {
+    return contactAnnouncer<ScrapeEvent>(options);
   }
 
   /// When scraping, the data sent to the remote includes:
@@ -23,7 +23,8 @@ class UDPScrape extends Scrape with UDPTrackerBase {
   /// - Transaction ID: It was generated during the first connection.
   /// - [info hash]: This can be the info hash of multiple Torrent files.
   @override
-  Uint8List generateSecondTouchMessage(Uint8List connectionId, Map options) {
+  Uint8List generateSecondTouchMessage(
+      Uint8List connectionId, Map<String, dynamic> options) {
     var list = <int>[];
     list.addAll(connectionId);
     list.addAll(
@@ -43,7 +44,7 @@ class UDPScrape extends Scrape with UDPTrackerBase {
   /// "downloaded" and "incomplete."
   ///
   @override
-  dynamic processResponseData(
+  ScrapeEvent processResponseData(
       Uint8List data, int action, Iterable<CompactAddress> addresses) {
     var event = ScrapeEvent(scrapeUrl);
     if (action != 2) {
@@ -68,7 +69,7 @@ class UDPScrape extends Scrape with UDPTrackerBase {
   }
 
   @override
-  void handleSocketError(e) {
+  void handleSocketError(Object e) {
     close();
   }
 

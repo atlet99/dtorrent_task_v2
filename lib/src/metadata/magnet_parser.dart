@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:logging/logging.dart';
 
 var _log = Logger('MagnetParser');
+const _trackerSchemes = {'http', 'https', 'udp'};
+const _sourceSchemes = {'http', 'https', 'ftp'};
 
 /// Tracker tier - group of trackers that should be tried together (BEP 0012)
 class TrackerTier {
@@ -134,9 +136,7 @@ class MagnetParser {
       }
 
       // Parse info hash from xt parameter (required)
-      final xtValues = params['xt'];
-      final xt =
-          xtValues != null && xtValues.isNotEmpty ? xtValues.first : null;
+      final xt = _firstValue(params, 'xt');
       if (xt == null || xt.isEmpty) {
         _log.warning('Magnet URI missing required "xt" parameter');
         return null;
@@ -187,11 +187,7 @@ class MagnetParser {
       }
 
       // Parse display name (URL decode it)
-      final displayNameValues = params['dn'];
-      final displayName =
-          displayNameValues != null && displayNameValues.isNotEmpty
-              ? displayNameValues.first
-              : null;
+      final displayName = _firstValue(params, 'dn');
 
       // Parse trackers with support for tiers (BEP 0012)
       // Trackers can be:
@@ -214,10 +210,7 @@ class MagnetParser {
           for (final url in trackerUrls) {
             try {
               final trackerUri = Uri.parse(url);
-              if (trackerUri.hasScheme &&
-                  (trackerUri.scheme == 'http' ||
-                      trackerUri.scheme == 'https' ||
-                      trackerUri.scheme == 'udp')) {
+              if (_hasAllowedScheme(trackerUri, _trackerSchemes)) {
                 trackers.add(trackerUri);
                 tier0Trackers.add(trackerUri);
               } else {
@@ -244,10 +237,7 @@ class MagnetParser {
 
             for (final trackerUrl in entry.value) {
               final trackerUri = Uri.parse(trackerUrl);
-              if (trackerUri.hasScheme &&
-                  (trackerUri.scheme == 'http' ||
-                      trackerUri.scheme == 'https' ||
-                      trackerUri.scheme == 'udp')) {
+              if (_hasAllowedScheme(trackerUri, _trackerSchemes)) {
                 trackers.add(trackerUri);
                 tierMap.putIfAbsent(tierNumber, () => []).add(trackerUri);
               }
@@ -273,9 +263,7 @@ class MagnetParser {
 
       // Parse exact length
       int? exactLength;
-      final xlValues = params['xl'];
-      final xl =
-          xlValues != null && xlValues.isNotEmpty ? xlValues.first : null;
+      final xl = _firstValue(params, 'xl');
       if (xl != null && xl.isNotEmpty) {
         exactLength = int.tryParse(xl);
         if (exactLength == null) {
@@ -284,113 +272,25 @@ class MagnetParser {
       }
 
       // Parse web seeds (BEP 0019) - parameter 'ws'
-      final webSeeds = <Uri>[];
-      final wsValues = params['ws'] ?? [];
-      for (final url in wsValues) {
-        try {
-          final wsUri = Uri.parse(url);
-          if (wsUri.hasScheme &&
-              (wsUri.scheme == 'http' ||
-                  wsUri.scheme == 'https' ||
-                  wsUri.scheme == 'ftp')) {
-            webSeeds.add(wsUri);
-          } else {
-            _log.warning('Invalid web seed URL: $url');
-          }
-        } catch (e) {
-          _log.warning('Failed to parse web seed URL: $url', e);
-        }
-      }
-      // Also check for numbered ws parameters (ws.1, ws.2, etc.)
-      for (final entry in params.entries) {
-        final key = entry.key;
-        if (key.startsWith('ws.') && key.length > 3) {
-          try {
-            for (final wsValue in entry.value) {
-              final wsUri = Uri.parse(wsValue);
-              if (wsUri.hasScheme &&
-                  (wsUri.scheme == 'http' ||
-                      wsUri.scheme == 'https' ||
-                      wsUri.scheme == 'ftp')) {
-                webSeeds.add(wsUri);
-              }
-            }
-          } catch (e) {
-            _log.warning(
-                'Failed to parse web seed URL from $key: ${entry.value}', e);
-          }
-        }
-      }
+      final webSeeds = _parseUrlListWithNumberedKeys(
+        params: params,
+        baseKey: 'ws',
+        allowedSchemes: _sourceSchemes,
+        invalidWarningPrefix: 'Invalid web seed URL',
+        numberedWarningPrefix: 'Failed to parse web seed URL from',
+      );
 
       // Parse acceptable sources (BEP 0019) - parameter 'as'
-      final acceptableSources = <Uri>[];
-      final asValues = params['as'] ?? [];
-      for (final url in asValues) {
-        try {
-          final asUri = Uri.parse(url);
-          if (asUri.hasScheme &&
-              (asUri.scheme == 'http' ||
-                  asUri.scheme == 'https' ||
-                  asUri.scheme == 'ftp')) {
-            acceptableSources.add(asUri);
-          } else {
-            _log.warning('Invalid acceptable source URL: $url');
-          }
-        } catch (e) {
-          _log.warning('Failed to parse acceptable source URL: $url', e);
-        }
-      }
-      // Also check for numbered as parameters (as.1, as.2, etc.)
-      for (final entry in params.entries) {
-        final key = entry.key;
-        if (key.startsWith('as.') && key.length > 3) {
-          try {
-            for (final asValue in entry.value) {
-              final asUri = Uri.parse(asValue);
-              if (asUri.hasScheme &&
-                  (asUri.scheme == 'http' ||
-                      asUri.scheme == 'https' ||
-                      asUri.scheme == 'ftp')) {
-                acceptableSources.add(asUri);
-              }
-            }
-          } catch (e) {
-            _log.warning(
-                'Failed to parse acceptable source URL from $key: ${entry.value}',
-                e);
-          }
-        }
-      }
+      final acceptableSources = _parseUrlListWithNumberedKeys(
+        params: params,
+        baseKey: 'as',
+        allowedSchemes: _sourceSchemes,
+        invalidWarningPrefix: 'Invalid acceptable source URL',
+        numberedWarningPrefix: 'Failed to parse acceptable source URL from',
+      );
 
       // Parse selected file indices (BEP 0053) - parameter 'so'
-      final selectedFileIndices = <int>[];
-      final soValues = params['so'] ?? [];
-      for (final value in soValues) {
-        if (value.isNotEmpty) {
-          final index = int.tryParse(value);
-          if (index != null && index >= 0) {
-            selectedFileIndices.add(index);
-          } else {
-            _log.warning('Invalid file index in so parameter: $value');
-          }
-        }
-      }
-      // Also check for numbered so parameters (so.1, so.2, etc.)
-      for (final entry in params.entries) {
-        final key = entry.key;
-        if (key.startsWith('so.') && key.length > 3) {
-          for (final value in entry.value) {
-            if (value.isNotEmpty) {
-              final index = int.tryParse(value);
-              if (index != null && index >= 0) {
-                selectedFileIndices.add(index);
-              } else {
-                _log.warning('Invalid file index in $key: $value');
-              }
-            }
-          }
-        }
-      }
+      final selectedFileIndices = _parseSelectedFileIndices(params);
       // Remove duplicates and sort
       final uniqueIndices = selectedFileIndices.toSet().toList()..sort();
       final finalSelectedIndices =
@@ -410,6 +310,84 @@ class MagnetParser {
       _log.warning('Failed to parse magnet URI: $magnetUri', e, stackTrace);
       return null;
     }
+  }
+
+  static String? _firstValue(Map<String, List<String>> params, String key) {
+    final values = params[key];
+    if (values == null || values.isEmpty) return null;
+    return values.first;
+  }
+
+  static bool _hasAllowedScheme(Uri uri, Set<String> allowedSchemes) {
+    return uri.hasScheme && allowedSchemes.contains(uri.scheme);
+  }
+
+  static List<Uri> _parseUrlListWithNumberedKeys({
+    required Map<String, List<String>> params,
+    required String baseKey,
+    required Set<String> allowedSchemes,
+    required String invalidWarningPrefix,
+    required String numberedWarningPrefix,
+  }) {
+    final urls = <Uri>[];
+    for (final value in params[baseKey] ?? const <String>[]) {
+      try {
+        final uri = Uri.parse(value);
+        if (_hasAllowedScheme(uri, allowedSchemes)) {
+          urls.add(uri);
+        } else {
+          _log.warning('$invalidWarningPrefix: $value');
+        }
+      } catch (e) {
+        _log.warning('$invalidWarningPrefix: $value', e);
+      }
+    }
+
+    for (final entry in params.entries) {
+      final key = entry.key;
+      if (!key.startsWith('$baseKey.') || key.length <= baseKey.length + 1) {
+        continue;
+      }
+      try {
+        for (final value in entry.value) {
+          final uri = Uri.parse(value);
+          if (_hasAllowedScheme(uri, allowedSchemes)) {
+            urls.add(uri);
+          }
+        }
+      } catch (e) {
+        _log.warning('$numberedWarningPrefix $key: ${entry.value}', e);
+      }
+    }
+    return urls;
+  }
+
+  static List<int> _parseSelectedFileIndices(Map<String, List<String>> params) {
+    final selectedFileIndices = <int>[];
+    for (final value in params['so'] ?? const <String>[]) {
+      if (value.isEmpty) continue;
+      final index = int.tryParse(value);
+      if (index != null && index >= 0) {
+        selectedFileIndices.add(index);
+      } else {
+        _log.warning('Invalid file index in so parameter: $value');
+      }
+    }
+
+    for (final entry in params.entries) {
+      final key = entry.key;
+      if (!key.startsWith('so.') || key.length <= 3) continue;
+      for (final value in entry.value) {
+        if (value.isEmpty) continue;
+        final index = int.tryParse(value);
+        if (index != null && index >= 0) {
+          selectedFileIndices.add(index);
+        } else {
+          _log.warning('Invalid file index in $key: $value');
+        }
+      }
+    }
+    return selectedFileIndices;
   }
 
   /// Convert hex string to bytes

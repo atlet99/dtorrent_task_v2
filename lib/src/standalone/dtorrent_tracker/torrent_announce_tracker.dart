@@ -59,12 +59,11 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
   final Map<Tracker, EventsListener<TrackerEvent>> trackerEventListeners = {};
   final Map<Uri, InternetAddress> _externalIpByTracker = {};
   final Map<Uri, TrackerRetryState> _retryStateByTracker = {};
+  final Map<Tracker, ({Timer timer, int retryTimes})> _announceRetryTimers = {};
 
   TrackerGenerator? trackerGenerator;
 
   AnnounceOptionsProvider provider;
-
-  final Map<Tracker, List<dynamic>> _announceRetryTimers = {};
 
   final int maxRetryTime;
 
@@ -181,7 +180,7 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
     _externalIpByTracker.clear();
     _retryStateByTracker.clear();
     _announceRetryTimers.forEach((key, record) {
-      record[0].cancel();
+      record.timer.cancel();
     });
     _announceRetryTimers.clear();
   }
@@ -271,7 +270,7 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
       tracker.dispose();
       runTracker(url, infoHash);
     });
-    _announceRetryTimers[tracker] = [timer, retryTimes];
+    _announceRetryTimers[tracker] = (timer: timer, retryTimes: retryTimes);
   }
 
   Tracker? _createTracker(Uri announce, Uint8List infohash) {
@@ -337,8 +336,8 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
     if (event.source.isDisposed) return;
     var times = 0;
     if (record != null) {
-      (record[0] as Timer).cancel();
-      times = record[1];
+      record.timer.cancel();
+      times = record.retryTimes;
     }
     if (times >= maxRetryTime) {
       event.source.dispose('NO MORE RETRY ($times/$maxRetryTime)');
@@ -417,7 +416,7 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
   void _fireAnnounceOver(TrackerAnnounceOverEvent event) {
     var record = _announceRetryTimers.remove(event.source);
     if (record != null) {
-      record[0].cancel();
+      record.timer.cancel();
     }
     events.emit(AnnounceOverEvent(event.source, event.intervalTime));
   }
@@ -425,7 +424,7 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
   void _firePeerEvent(TrackerPeerEventEvent event) {
     var record = _announceRetryTimers.remove(event.source);
     if (record != null) {
-      record[0].cancel();
+      record.timer.cancel();
     }
     final externalIp = event.peerEvent.externalIp;
     if (externalIp != null) {
@@ -472,7 +471,7 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
   void _fireTrackerComplete(TrackerCompleteEvent event) {
     var record = _announceRetryTimers.remove(event.source);
     if (record != null) {
-      record[0].cancel();
+      record.timer.cancel();
     }
     events.emit(AnnouncePeerEventEvent(event.source, event.peerEvent));
   }
@@ -480,7 +479,7 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
   void _fireTrackerStop(TrackerStopEvent event) {
     var record = _announceRetryTimers.remove(event.source);
     if (record != null) {
-      record[0].cancel();
+      record.timer.cancel();
     }
     events.emit(AnnouncePeerEventEvent(event.source, event.peerEvent));
   }
@@ -488,7 +487,7 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
   void _fireTrackerDisposed(TrackerDisposedEvent event) {
     var record = _announceRetryTimers.remove(event.source);
     if (record != null) {
-      record[0].cancel();
+      record.timer.cancel();
     }
     _externalIpByTracker.remove(event.source.announceUrl);
     _retryStateByTracker.remove(event.source.announceUrl);

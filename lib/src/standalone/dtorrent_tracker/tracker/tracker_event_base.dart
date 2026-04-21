@@ -1,16 +1,16 @@
 /// The tracker base event.
 class TrackerEventBase {
-  final Map<dynamic, dynamic> _others = {};
+  final Map<Object, Object?> _others = {};
 
-  Map<dynamic, dynamic> get otherInfomationsMap {
+  Map<Object, Object?> get otherInfomationsMap {
     return _others;
   }
 
-  void setInfo(dynamic key, dynamic value) {
+  void setInfo(Object key, Object? value) {
     _others[key] = value;
   }
 
-  dynamic removeInfo(dynamic key) {
+  Object? removeInfo(Object key) {
     return _others.remove(key);
   }
 }

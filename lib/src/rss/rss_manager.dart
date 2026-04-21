@@ -53,13 +53,13 @@ class RSSManager {
 
   bool removeSubscription(String id) {
     final removed = _subscriptions.remove(id) != null;
-    _timers.remove(id)?.cancel();
+    _cancelTimer(id);
     return removed;
   }
 
   void clearSubscriptions() {
-    for (final timer in _timers.values) {
-      timer.cancel();
+    for (final id in _timers.keys.toList()) {
+      _cancelTimer(id);
     }
     _timers.clear();
     _subscriptions.clear();
@@ -90,7 +90,7 @@ class RSSManager {
       final items = _parser.parse(body);
       for (final item in items) {
         if (!subscription.filter.matches(item)) continue;
-        if (!_seenItems.add('${subscription.id}:${item.dedupKey}')) {
+        if (!_seenItems.add(_dedupKey(subscription.id, item.dedupKey))) {
           continue;
         }
         await _onItem(item);
@@ -101,12 +101,19 @@ class RSSManager {
   }
 
   void _restartTimer(RSSSubscription subscription) {
-    _timers.remove(subscription.id)?.cancel();
+    _cancelTimer(subscription.id);
     _timers[subscription.id] = Timer.periodic(
       subscription.interval,
       (_) => _pollSubscription(subscription),
     );
   }
+
+  void _cancelTimer(String id) {
+    _timers.remove(id)?.cancel();
+  }
+
+  String _dedupKey(String subscriptionId, String itemKey) =>
+      '$subscriptionId:$itemKey';
 
   static Future<String> _defaultFetcher(Uri url) async {
     final response = await http.get(url);

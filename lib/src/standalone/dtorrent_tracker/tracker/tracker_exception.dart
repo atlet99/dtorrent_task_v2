@@ -1,7 +1,7 @@
 ///
 /// When tracker get the error from server , it will send this exception to client
 class TrackerException implements Exception {
-  final dynamic failureReason;
+  final Object? failureReason;
   final String id;
   final int? retryIn;
   final bool neverRetry;

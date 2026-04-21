@@ -5,33 +5,33 @@ class Debouncer<T> {
   final Duration delay;
   final void Function(T) callback;
   Timer? _timer;
-  T? _lastValue;
+  late T _lastValue;
+  bool _hasPendingValue = false;
 
   Debouncer(this.delay, this.callback);
 
   void call(T value) {
     _lastValue = value;
+    _hasPendingValue = true;
     _timer?.cancel();
-    _timer = Timer(delay, () {
-      if (_lastValue != null) {
-        callback(_lastValue as T);
-        _lastValue = null;
-      }
-    });
+    _timer = Timer(delay, _emitPendingValue);
   }
 
   void dispose() {
     _timer?.cancel();
     _timer = null;
-    _lastValue = null;
+    _hasPendingValue = false;
   }
 
   /// Immediately emit the last value if any
   void flush() {
     _timer?.cancel();
-    if (_lastValue != null) {
-      callback(_lastValue as T);
-      _lastValue = null;
-    }
+    _emitPendingValue();
+  }
+
+  void _emitPendingValue() {
+    if (!_hasPendingValue) return;
+    callback(_lastValue);
+    _hasPendingValue = false;
   }
 }

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dtorrent_task_v2/src/task.dart';
 import 'package:dtorrent_task_v2/src/task_events.dart';
 import 'package:dtorrent_task_v2/src/torrent/torrent_parser.dart';
+import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
@@ -43,7 +44,7 @@ class QueueManager {
     _maxConcurrentDownloads = value;
     _log.info('Max concurrent downloads set to $value');
     // Try to start more downloads if we have capacity now
-    _processQueue();
+    unawaited(_processQueue());
   }
 
   /// Get the number of active downloads
@@ -75,7 +76,7 @@ class QueueManager {
     _queue.add(item);
     events.emit(QueueItemAdded(item));
     _log.info('Added torrent to queue: ${item.metaInfo.name} (ID: ${item.id})');
-    _processQueue();
+    unawaited(_processQueue());
     return item.id;
   }
 
@@ -90,7 +91,7 @@ class QueueManager {
       events.emit(QueueItemAdded(item));
     }
     _log.info('Added ${items.length} torrents to queue');
-    _processQueue();
+    unawaited(_processQueue());
     return ids;
   }
 
@@ -183,10 +184,10 @@ class QueueManager {
     final task = _activeTasks[queueItemId];
     if (task != null) {
       await task.stop();
-      _removeActiveTask(queueItemId);
-      events.emit(QueueItemStopped(queueItemId));
-      _log.info('Stopped download: $queueItemId');
-      _processQueue();
+      // TaskStopped event may already be handled by listener.
+      if (_activeTasks.containsKey(queueItemId)) {
+        _onTaskStopped(queueItemId);
+      }
       return true;
     }
     return false;
@@ -219,10 +220,7 @@ class QueueManager {
 
         listener
           ..on<TaskCompleted>((event) {
-            _log.info('Download completed: ${item.id}');
-            _removeActiveTask(item.id);
-            events.emit(QueueItemCompleted(item.id));
-            _processQueue();
+            _onTaskCompleted(item.id);
           })
           ..on<TaskStopped>((event) {
             // Only process queue if this was a manual stop (not from completion)
@@ -231,10 +229,7 @@ class QueueManager {
               // Already removed by TaskCompleted
               return;
             }
-            _log.info('Download stopped: ${item.id}');
-            _removeActiveTask(item.id);
-            events.emit(QueueItemStopped(item.id));
-            _processQueue();
+            _onTaskStopped(item.id);
           });
 
         // Start the task
@@ -263,12 +258,30 @@ class QueueManager {
     for (final task in tasks) {
       await task.stop();
     }
+    _disposeAllActiveTasks();
+    _log.info('All downloads stopped');
+  }
+
+  void _onTaskCompleted(String queueItemId) {
+    _log.info('Download completed: $queueItemId');
+    _removeActiveTask(queueItemId);
+    events.emit(QueueItemCompleted(queueItemId));
+    unawaited(_processQueue());
+  }
+
+  void _onTaskStopped(String queueItemId) {
+    _log.info('Download stopped: $queueItemId');
+    _removeActiveTask(queueItemId);
+    events.emit(QueueItemStopped(queueItemId));
+    unawaited(_processQueue());
+  }
+
+  void _disposeAllActiveTasks() {
     _activeTasks.clear();
     for (final listener in _taskListeners.values) {
       listener.dispose();
     }
     _taskListeners.clear();
-    _log.info('All downloads stopped');
   }
 
   /// Enable RSS/Atom auto-download into queue.
@@ -290,28 +303,37 @@ class QueueManager {
 
   Future<void> _onRssItem(RSSFeedItem item) async {
     final savePath = _rssDefaultSavePath;
-    if (savePath == null || item.torrentUrl == null) return;
+    final torrentUrl = item.torrentUrl;
+    if (savePath == null || torrentUrl == null) return;
 
-    final url = Uri.tryParse(item.torrentUrl!);
-    if (url == null) return;
-
-    final response = await http.get(url);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      _log.warning('RSS torrent download failed: ${item.torrentUrl}');
+    final url = Uri.tryParse(torrentUrl);
+    if (url == null) {
+      _log.warning('RSS item has invalid torrent URL: $torrentUrl');
       return;
     }
 
-    final model =
-        TorrentParser.parseBytes(Uint8List.fromList(response.bodyBytes));
+    final model = await _downloadTorrentModel(url);
+    if (model == null) return;
+
     addToQueue(TorrentQueueItem(
       metaInfo: model,
       savePath: savePath,
       metadata: {
         'source': 'rss',
         'feedItem': item.title,
-        'url': item.torrentUrl,
+        'url': torrentUrl,
       },
     ));
+  }
+
+  Future<TorrentModel?> _downloadTorrentModel(Uri url) async {
+    final response = await http.get(url);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _log.warning('RSS torrent download failed: $url');
+      return null;
+    }
+
+    return TorrentParser.parseBytes(Uint8List.fromList(response.bodyBytes));
   }
 
   /// Clear the queue (only queued items, not active downloads)

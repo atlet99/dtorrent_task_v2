@@ -113,7 +113,7 @@ class AnnounceResponseParser {
     return AnnounceParseResult(event: event, trackerId: parsedTrackerId);
   }
 
-  static int? _toInt(dynamic value) {
+  static int? _toInt(Object? value) {
     if (value is int) return value;
     if (value is BigInt) return value.toInt();
     if (value is String) return int.tryParse(value);
@@ -130,7 +130,7 @@ class AnnounceResponseParser {
     return const _RetryDirective();
   }
 
-  static _RetryDirective _parseRetryDirective(String key, dynamic value) {
+  static _RetryDirective _parseRetryDirective(String key, Object? value) {
     if (value == null) return const _RetryDirective();
 
     if (value is List<int>) {
@@ -164,7 +164,7 @@ class AnnounceResponseParser {
     return const _RetryDirective();
   }
 
-  static InternetAddress? _parseExternalIp(dynamic value) {
+  static InternetAddress? _parseExternalIp(Object? value) {
     if (value == null) return null;
     if (value is String) return InternetAddress.tryParse(value);
     if (value is Uint8List && (value.length == 4 || value.length == 16)) {
@@ -186,7 +186,7 @@ class AnnounceResponseParser {
 
   static void _fillPeers(
     PeerEvent event,
-    dynamic value,
+    Object? value,
     Logger logger,
     InternetAddressType type,
   ) {
@@ -218,7 +218,7 @@ class AnnounceResponseParser {
     }
   }
 
-  static Uint8List? _asCompactPayload(dynamic value) {
+  static Uint8List? _asCompactPayload(Object? value) {
     if (value is Uint8List) return value;
     if (value is List<int>) return Uint8List.fromList(value);
     return null;

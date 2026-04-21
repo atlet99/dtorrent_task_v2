@@ -32,104 +32,80 @@ mixin PEX {
   Iterable<Peer> get activePeers;
 
   void sendUtPexPeers() {
-    var dropped = <CompactAddress>[];
-    var added = <CompactAddress>[];
-    for (var p in activePeers) {
+    final dropped = <CompactAddress>[];
+    final added = <CompactAddress>[];
+    for (final p in activePeers) {
       if (!_lastUTPEX.remove(p.address)) {
         added.add(p.address);
       }
     }
-    for (var element in _lastUTPEX) {
+    for (final element in _lastUTPEX) {
       dropped.add(element);
     }
     _lastUTPEX.clear();
 
-    var data = {};
-    data['added'] = [];
-    for (var element in added) {
+    final data = <String, List<int>>{};
+    data['added'] = <int>[];
+    for (final element in added) {
       _lastUTPEX.add(element);
-      data['added'].addAll(element.toBytes());
+      data['added']!.addAll(element.toBytes());
     }
-    data['dropped'] = [];
-    for (var element in dropped) {
-      data['dropped'].addAll(element.toBytes());
+    data['dropped'] = <int>[];
+    for (final element in dropped) {
+      data['dropped']!.addAll(element.toBytes());
     }
-    if (data['added'].isEmpty && data['dropped'].isEmpty) return;
-    var message = encode(data);
-    for (var peer in activePeers) {
+    if (data['added']!.isEmpty && data['dropped']!.isEmpty) return;
+    final message = encode(data);
+    for (final peer in activePeers) {
       peer.sendExtendMessage('ut_pex', message);
     }
   }
 
   void parsePEXDatas(Peer source, List<int> message) {
-    var datas = decode(Uint8List.fromList(message));
+    final datas = decode(Uint8List.fromList(message));
+    if (datas is! Map) return;
     _parseAdded(source, datas);
     _parseAdded(source, datas, 'added6', InternetAddressType.IPv6);
   }
 
-  dynamic _parseAdded(dynamic source, Map datas,
-      [String keyStr = 'added',
-      InternetAddressType type = InternetAddressType.IPv4]) {
-    var added = datas[keyStr];
-    if (added != null && added is List && added.isNotEmpty) {
-      if (added is! List<int>) {
-        added = _convert(added);
+  void _parseAdded(
+    Peer source,
+    Map<dynamic, dynamic> datas, [
+    String keyStr = 'added',
+    InternetAddressType type = InternetAddressType.IPv4,
+  ]) {
+    final added = _toByteList(datas[keyStr]);
+    if (added == null || added.isEmpty) return;
+
+    final ips = _parseCompactAddresses(added, type);
+    if (ips.isEmpty) return;
+
+    final flags = _toByteList(datas['$keyStr.f']);
+    if (flags == null || flags.isEmpty) return;
+
+    for (var i = 0; i < ips.length; i++) {
+      if (i > flags.length - 1) {
+        // Some messages can be malformed (flags count != ips count).
+        continue;
       }
-      List? ips;
-      try {
-        if (type == InternetAddressType.IPv4) {
-          ips = CompactAddress.parseIPv4Addresses(added);
-        }
-        if (type == InternetAddressType.IPv6) {
-          ips = CompactAddress.parseIPv6Addresses(added);
-        }
-      } catch (e) {
-        // do nothing
-      }
-      var flag = datas['$keyStr.f'];
-      if (flag != null && flag is List && flag.isNotEmpty) {
-        if (flag is! List<int>) {
-          flag = _convert(flag);
-        }
-        if (ips != null && ips.isNotEmpty) {
-          for (var i = 0; i < ips.length; i++) {
-            if (i > flag.length - 1) {
-              // some messages appear to arrive malformed,
-              // where the flags count != ips count
-              continue;
-            }
-            var f = flag[i];
-            var opts = {};
-            if (f & pex_flag_prefers_encryption ==
-                pex_flag_prefers_encryption) {
-              opts['e'] = true;
-            }
-            if (f & pex_flag_upload_only == pex_flag_upload_only) {
-              opts['uploadonly'] = true;
-            }
-            if (f & pex_flag_supports_uTP == pex_flag_supports_uTP) {
-              opts['utp'] = true;
-            }
-            if (f & pex_flag_supports_holepunch ==
-                pex_flag_supports_holepunch) {
-              opts['holepunch'] = true;
-            }
-            if (f & pex_flag_reachable == pex_flag_reachable) {
-              opts['reachable'] = true;
-            }
-            Timer.run(() => addPEXPeer(source, ips?[i], opts));
-          }
-        }
-      }
+      final f = flags[i];
+      final opts = _decodePexFlags(f);
+      final address = ips[i];
+      Timer.run(() => addPEXPeer(source, address, opts));
     }
   }
 
-  void addPEXPeer(dynamic source, CompactAddress address, Map options);
+  void addPEXPeer(
+    Peer source,
+    CompactAddress address,
+    Map<String, bool> options,
+  );
 
-  List<int>? _convert(List added) {
-    var intList = <int>[];
-    for (var i = 0; i < added.length; i++) {
-      var n = added[i];
+  List<int>? _toByteList(dynamic value) {
+    if (value is! List || value.isEmpty) return null;
+    final intList = <int>[];
+    for (var i = 0; i < value.length; i++) {
+      final n = value[i];
       if (n is int && n >= 0 && n < 256) {
         intList.add(n);
       } else {
@@ -137,6 +113,40 @@ mixin PEX {
       }
     }
     return intList;
+  }
+
+  List<CompactAddress> _parseCompactAddresses(
+    List<int> bytes,
+    InternetAddressType type,
+  ) {
+    try {
+      if (type == InternetAddressType.IPv6) {
+        return CompactAddress.parseIPv6Addresses(bytes);
+      }
+      return CompactAddress.parseIPv4Addresses(bytes);
+    } catch (_) {
+      return <CompactAddress>[];
+    }
+  }
+
+  Map<String, bool> _decodePexFlags(int f) {
+    final opts = <String, bool>{};
+    if (f & pex_flag_prefers_encryption == pex_flag_prefers_encryption) {
+      opts['e'] = true;
+    }
+    if (f & pex_flag_upload_only == pex_flag_upload_only) {
+      opts['uploadonly'] = true;
+    }
+    if (f & pex_flag_supports_uTP == pex_flag_supports_uTP) {
+      opts['utp'] = true;
+    }
+    if (f & pex_flag_supports_holepunch == pex_flag_supports_holepunch) {
+      opts['holepunch'] = true;
+    }
+    if (f & pex_flag_reachable == pex_flag_reachable) {
+      opts['reachable'] = true;
+    }
+    return opts;
   }
 
   void clearPEX() {

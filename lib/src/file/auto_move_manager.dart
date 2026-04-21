@@ -9,6 +9,9 @@ typedef AutoMoveFileAction = Future<bool> Function(
 );
 
 class AutoMoveRule {
+  /// Allowed file extensions for this rule.
+  ///
+  /// Supports both `mp4` and `.mp4` forms.
   final Set<String> extensions;
   final String destinationDirectory;
 
@@ -18,14 +21,24 @@ class AutoMoveRule {
   });
 
   bool matches(String fileName) {
-    final ext = _extensionOf(fileName);
-    return extensions.contains(ext);
+    final fileExtension = _extensionOf(fileName);
+    return extensions.any(
+      (ruleExtension) => _normalizeExtension(ruleExtension) == fileExtension,
+    );
   }
 
   static String _extensionOf(String fileName) {
     final idx = fileName.lastIndexOf('.');
     if (idx < 0 || idx == fileName.length - 1) return '';
-    return fileName.substring(idx + 1).toLowerCase();
+    return _normalizeExtension(fileName.substring(idx + 1));
+  }
+
+  static String _normalizeExtension(String extension) {
+    final normalized = extension.trim().toLowerCase();
+    if (normalized.startsWith('.')) {
+      return normalized.substring(1);
+    }
+    return normalized;
   }
 }
 
@@ -130,17 +143,18 @@ class AutoMoveManager {
   }
 
   static bool _isExternalDiskPath(String path) {
-    if (Platform.isMacOS) {
-      return path.startsWith('/Volumes/');
-    }
+    if (Platform.isMacOS) return path.startsWith('/Volumes/');
     if (Platform.isLinux) {
       return path.startsWith('/media/') || path.startsWith('/mnt/');
     }
     if (Platform.isWindows) {
       final normalized = path.replaceAll('\\', '/').toUpperCase();
-      return normalized.startsWith('E:/') ||
-          normalized.startsWith('F:/') ||
-          normalized.startsWith('G:/');
+      return switch (normalized) {
+        final p when p.startsWith('E:/') => true,
+        final p when p.startsWith('F:/') => true,
+        final p when p.startsWith('G:/') => true,
+        _ => false,
+      };
     }
     return false;
   }

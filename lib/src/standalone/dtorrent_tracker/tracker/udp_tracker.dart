@@ -53,7 +53,8 @@ class UDPTracker extends Tracker with UDPTrackerBase {
   }
 
   @override
-  Uint8List generateSecondTouchMessage(Uint8List connectionId, Map options) {
+  Uint8List generateSecondTouchMessage(
+      Uint8List connectionId, Map<String, dynamic> options) {
     final list = <int>[];
     list.addAll(connectionId);
 
@@ -90,7 +91,7 @@ class UDPTracker extends Tracker with UDPTrackerBase {
   }
 
   @override
-  dynamic processResponseData(
+  PeerEvent processResponseData(
       Uint8List data, int action, Iterable<CompactAddress> addresses) {
     if (data.length < 20) {
       // The data is incorrect
@@ -137,15 +138,13 @@ class UDPTracker extends Tracker with UDPTrackerBase {
   @override
   Future<PeerEvent?> stop([bool force = false]) async {
     await close();
-    var f = super.stop(force);
-    return f;
+    return super.stop(force);
   }
 
   @override
   Future<PeerEvent?> complete() async {
     await close();
-    var f = super.complete();
-    return f;
+    return super.complete();
   }
 
   @override
@@ -154,11 +153,11 @@ class UDPTracker extends Tracker with UDPTrackerBase {
   }
 
   @override
-  void handleSocketError(e) {
+  void handleSocketError(Object e) {
     dispose(e);
   }
 
-  int _announceIpv4FromOption(dynamic ipOption) {
+  int _announceIpv4FromOption(Object? ipOption) {
     if (ipOption == null) return 0;
     try {
       final ip = ipOption is InternetAddress

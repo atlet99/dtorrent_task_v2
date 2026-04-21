@@ -1,3 +1,26 @@
+## 0.5.2
+
+- refactor streaming isolate request/response pipeline to use single listener with request correlation IDs (removes ReceivePort re-listen conflicts and stabilizes concurrent metadata/playlist requests)
+- simplify and harden isolate tests by removing stream-listen workarounds and adding dedicated concurrent request regression coverage
+- refactor peer swarm internals (`PeersManager`) with typed request buffers (Dart records) instead of untyped nested lists for safer queue/resume/dispose flows
+- improve metadata pipeline safety and maintainability (`MetadataDownloader`, `MagnetParser`) with better payload guards, reduced duplication, and extracted parsing helpers
+- harden async file/state request handling (`DownloadFile`, `StateFile`, `StateFileV2`, `Debouncer`) with stricter typing and safer pause/resume/finally behavior
+- improve `QueueManager` and `TorrentTask` internals (deduplicated terminal event handling, extracted scheduler/auto-move helpers, cleaner logging)
+- replace dynamic state-file casts in `DownloadFileManager`/`TorrentTask` with typed `StateFile`/`StateFileV2` pattern matching for safer resume/path/update operations
+- tighten peer extension typing (`ExtendedProcessor`, `Peer`, `PeersManager`, `MetadataDownloader`, `PEX`) with explicit payload guards for `handshake`/`ut_pex`/`ut_holepunch` flows
+- refactor standalone tracker and DHT internals to stronger typed contracts (UDP/HTTP tracker response paths, socket error signatures, typed options maps, decoded datagram handling)
+- refine standalone tracker event/error models by replacing untyped payload fields with explicit `Object?` contracts and immutable announce event DTOs
+- refactor tracker retry scheduler internals to typed record storage (`timer`, `retryTimes`) instead of untyped timer lists
+- harden scrape/tracker API signatures with explicit return types (`Future<void>`, `Future<ScrapeEvent?>`) and null-safe error paths in HTTP scrape flow
+- replace remaining parser/tracker helper `dynamic` usages (`Object?`-based retry/external-ip/compact-peer parsing and typed required-option extraction)
+- remove remaining analyzer noise after refactor (including tracker extension test cast cleanup) and keep full `dart analyze` green
+- improve local developer quality gates:
+  - fix `NO_COLOR` warning in `Makefile`
+  - scope analyze targets to project source dirs
+  - keep test suite separated from analyze/check flow as configured
+- expand analyzer excludes for non-project directories (`test_results/**`, `tmp/**`, `coverage/**`, `.dart_tool/**`, `test_download_*/**`, etc.) and add explicit formatter config in `analysis_options.yaml`
+- update direct and dev dependency constraints to latest compatible versions (`b_encode_decode`, `utp_protocol`, `events_emitter2`, `collection`, `crypto`, `logging`, `lints`, `path`, `test`)
+
 ## 0.5.1
 
 - add file moving support during active downloads with state path persistence and rebind support (`moveDownloadedFile`, `detectMovedFiles`, `validateMovedFilePath`)

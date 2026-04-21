@@ -62,5 +62,37 @@ void main() {
       expect(result!.success, isFalse);
       expect(result.error, contains('External disk'));
     });
+
+    test('should match extensions with or without dot prefix', () async {
+      String? movedAbsolutePath;
+
+      final manager = AutoMoveManager(
+        moveAction: (_, newAbsolutePath) async {
+          movedAbsolutePath = newAbsolutePath;
+          return true;
+        },
+        config: const AutoMoveConfig(
+          rules: [
+            AutoMoveRule(
+              extensions: {'.mp4'},
+              destinationDirectory: '/downloads/video',
+            ),
+          ],
+        ),
+      );
+
+      final file = DownloadFile(
+        '/tmp/movie.mp4',
+        0,
+        100,
+        'movies/movie.mp4',
+        [],
+      );
+
+      final result = await manager.moveCompletedFile(file);
+      expect(result, isNotNull);
+      expect(result!.success, isTrue);
+      expect(movedAbsolutePath, '/downloads/video/movie.mp4');
+    });
   });
 }
