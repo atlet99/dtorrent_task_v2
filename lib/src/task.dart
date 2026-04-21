@@ -873,10 +873,7 @@ class _TorrentTask
   @override
   void configureAutoMove(AutoMoveConfig config) {
     _autoMoveConfig = config;
-    _autoMoveManager ??= AutoMoveManager(
-      moveAction: (torrentFilePath, newAbsolutePath) =>
-          moveDownloadedFile(torrentFilePath, newAbsolutePath),
-    );
+    _autoMoveManager ??= _createAutoMoveManager();
     _autoMoveManager!.updateConfig(config);
   }
 
@@ -891,10 +888,8 @@ class _TorrentTask
 
   @override
   void addScheduleWindow(ScheduleWindow window) {
-    _scheduler ??= TaskScheduler(
-      delegate: _TorrentTaskSchedulerDelegate(this),
-    );
-    _scheduler!.addWindow(window);
+    final scheduler = _ensureScheduler();
+    scheduler.addWindow(window);
   }
 
   @override
@@ -915,10 +910,8 @@ class _TorrentTask
 
   @override
   void startScheduling({Duration tick = const Duration(seconds: 30)}) {
-    _scheduler ??= TaskScheduler(
-      delegate: _TorrentTaskSchedulerDelegate(this),
-    );
-    _scheduler!.start(tick: tick);
+    final scheduler = _ensureScheduler();
+    scheduler.start(tick: tick);
   }
 
   @override
@@ -981,7 +974,21 @@ class _TorrentTask
   }
 
   void _processLSDPeerEvent(LSDNewPeer event) {
-    print('There is LSD! !');
+    _log.fine('LSD peer event received');
+  }
+
+  AutoMoveManager _createAutoMoveManager() {
+    return AutoMoveManager(
+      moveAction: (torrentFilePath, newAbsolutePath) =>
+          moveDownloadedFile(torrentFilePath, newAbsolutePath),
+    );
+  }
+
+  TaskScheduler _ensureScheduler() {
+    _scheduler ??= TaskScheduler(
+      delegate: _TorrentTaskSchedulerDelegate(this),
+    );
+    return _scheduler!;
   }
 
   void _processNewPeerFound(CompactAddress compact, PeerSource source) {

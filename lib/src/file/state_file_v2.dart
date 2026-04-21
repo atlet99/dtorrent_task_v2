@@ -1041,10 +1041,15 @@ class StateFileV2 {
 
   void _processRequest(Map<String, dynamic> event) async {
     _streamSubscription?.pause();
-    if (event['type'] == 'single') {
-      await _update(event);
+    try {
+      if (event['type'] == 'single') {
+        await _update(event);
+      }
+    } catch (e, stackTrace) {
+      _log.warning('State file v2 request processing failed', e, stackTrace);
+    } finally {
+      _streamSubscription?.resume();
     }
-    _streamSubscription?.resume();
   }
 
   Future<RandomAccessFile?> getAccess() async {

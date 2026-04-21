@@ -234,21 +234,29 @@ class StateFile {
 
   void _processRequest(Map<String, dynamic> event) async {
     _streamSubscription?.pause();
-    // if (event['type'] == 'all') {
-    //   await _updateAll(event);
-    // }
-    if (event['type'] == 'single') {
-      await _update(event);
+    try {
+      // if (event['type'] == 'all') {
+      //   await _updateAll(event);
+      // }
+      if (event['type'] == 'single') {
+        await _update(event);
+      }
+    } catch (e, stackTrace) {
+      _log.warning('State file request processing failed', e, stackTrace);
+    } finally {
+      _streamSubscription?.resume();
     }
-    _streamSubscription?.resume();
   }
 
   Future<RandomAccessFile?> getAccess() async {
     if (_access == null) {
       _access = await _bitfieldFile?.open(mode: FileMode.writeOnlyAppend);
       _streamController = StreamController<Map<String, dynamic>>();
-      _streamSubscription = _streamController?.stream
-          .listen(_processRequest, onError: (e) => print(e));
+      _streamSubscription = _streamController?.stream.listen(
+        _processRequest,
+        onError: (e, stackTrace) =>
+            _log.warning('State file stream error', e, stackTrace),
+      );
     }
     return _access;
   }
