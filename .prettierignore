@@ -5,3 +5,13 @@ test_results/
 test_download_*/
 node_modules/
 pubspec.lock
+.trunk/
+.idea/
+.vscode/
+*.iml
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*.DS_Store
