@@ -98,7 +98,7 @@ void main() {
         <CompactAddress>[
           CompactAddress(InternetAddress.loopbackIPv4, 6969),
         ],
-      ) as PeerEvent;
+      );
 
       expect(event.peers.length, 1);
       final peer = event.peers.first;

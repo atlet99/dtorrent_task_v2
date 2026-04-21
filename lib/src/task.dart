@@ -8,6 +8,7 @@ import 'package:dtorrent_task_v2/src/file/download_file_manager_events.dart';
 import 'package:dtorrent_task_v2/src/httpserver/server.dart';
 import 'package:dtorrent_task_v2/src/lsd/lsd_events.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
+import 'package:dtorrent_task_v2/src/peer/bitfield.dart';
 import 'package:dtorrent_task_v2/src/peer/swarm/peers_manager_events.dart';
 import 'package:dtorrent_task_v2/src/piece/piece_base.dart';
 import 'package:dtorrent_task_v2/src/piece/piece_manager_events.dart';
@@ -454,13 +455,11 @@ class _TorrentTask
 
   LSD? _lsd;
 
-  dynamic _stateFile; // Can be StateFile or StateFileV2
+  Object? _stateFile; // Can be StateFile or StateFileV2
 
   @override
   StateFile? get stateFile {
-    // StateFileV2 implements the same interface as StateFile
-    // Both have bitfield, uploaded, downloaded properties
-    return _stateFile as StateFile?;
+    return _stateFile is StateFile ? _stateFile as StateFile : null;
   }
 
   PieceManager? _pieceManager;
@@ -556,6 +555,22 @@ class _TorrentTask
   EventsListener<PieceManagerEvent>? pieceManagerListener;
   EventsListener<LSDEvent>? lsdListener;
   EventsListener<StandaloneDHTEvent>? _dhtListener;
+
+  Bitfield? get _stateBitfield => switch (_stateFile) {
+        StateFile state => state.bitfield,
+        StateFileV2 state => state.bitfield,
+        _ => null,
+      };
+  int get _stateDownloaded => switch (_stateFile) {
+        StateFile state => state.downloaded,
+        StateFileV2 state => state.downloaded,
+        _ => 0,
+      };
+  int? get _stateUploaded => switch (_stateFile) {
+        StateFile state => state.uploaded,
+        StateFileV2 state => state.uploaded,
+        _ => null,
+      };
 
   /// Debouncer for progress events (StateFileUpdated) - reduces UI update frequency
   /// Default delay: 300ms (between 250-500ms as recommended)
@@ -653,6 +668,10 @@ class _TorrentTask
     // Initialize piece manager with appropriate selector
     if (_pieceManager == null) {
       PieceSelector selector;
+      final stateBitfield = _stateBitfield;
+      if (stateBitfield == null) {
+        throw StateError('State file bitfield is not initialized');
+      }
 
       if (stream && _sequentialConfig != null) {
         // Use advanced sequential selector with configuration
@@ -689,7 +708,7 @@ class _TorrentTask
       _pieceManager = PieceManager.createPieceManager(
         selector,
         model,
-        _stateFile!.bitfield,
+        stateBitfield,
         version: torrentVersion,
       );
 
@@ -1275,13 +1294,18 @@ class _TorrentTask
     //     InternetAddress.anyIPv4, _serverSocket?.port ?? 0);
     // _utpServer?.listen(_hookUTP);
 
-    var map = {};
+    final bitfield = _stateBitfield;
+    if (bitfield == null) {
+      throw StateError('State file bitfield is not initialized');
+    }
+
+    final map = <String, dynamic>{};
     map['name'] = _metaInfo.name;
     map['tcp_socket'] = _serverSocket?.port;
-    map['complete_pieces'] = List.from(_stateFile!.bitfield.completedPieces);
-    map['total_pieces_num'] = _stateFile!.bitfield.piecesNum;
-    map['downloaded'] = _stateFile!.downloaded;
-    map['uploaded'] = _stateFile!.uploaded;
+    map['complete_pieces'] = List<int>.from(bitfield.completedPieces);
+    map['total_pieces_num'] = bitfield.piecesNum;
+    map['downloaded'] = _stateDownloaded;
+    map['uploaded'] = _stateUploaded;
     map['total_length'] = _metaInfo.length;
     // Outgoing peer:
     trackerListener = _tracker?.createListener();
@@ -1925,11 +1949,11 @@ class _TorrentTask
   @override
   Future<Map<String, dynamic>> getOptions(Uri uri, String infoHash) {
     final totalSize = _metaInfo.totalSize;
-    final downloaded = _stateFile?.downloaded ?? 0;
+    final downloaded = _stateDownloaded;
     final left = totalSize - downloaded;
-    var map = {
+    final map = {
       'downloaded': downloaded,
-      'uploaded': _stateFile?.uploaded,
+      'uploaded': _stateUploaded,
       'left': left < 0 ? 0 : left,
       'numwant': 50,
       'compact': 1,
@@ -2106,7 +2130,7 @@ class _TorrentTask
 
   @override
   bool get isPartialSeed {
-    final bitfield = _stateFile?.bitfield;
+    final bitfield = _stateBitfield;
     if (bitfield == null) return false;
     final completed = bitfield.completedPieces.length;
     final total = bitfield.piecesNum;
@@ -2147,7 +2171,7 @@ class _TorrentTask
 
   @override
   PartialSeedStatus getPartialSeedStatus() {
-    final bitfield = _stateFile?.bitfield;
+    final bitfield = _stateBitfield;
     final completed = bitfield?.completedPieces.length ?? 0;
     final total = bitfield?.piecesNum ?? 0;
     return PartialSeedStatus(

@@ -11,11 +11,11 @@ mixin ExtendedProcessor on EventsEmittable<PeerEvent> {
   int _id = 1;
 
   // The raw `m` dictionary returned from the remote peer
-  Map<String, dynamic> _rawMap = {};
+  final Map<String, int> _rawMap = <String, int>{};
   final Map<int, String> _localExtended = <int, String>{};
 
   Map<String, int> get localExtended {
-    var map = <String, int>{};
+    final map = <String, int>{};
     _localExtended.forEach((key, value) {
       map[value] = key;
     });
@@ -40,30 +40,39 @@ mixin ExtendedProcessor on EventsEmittable<PeerEvent> {
   void processExtendMessage(int id, Uint8List message) {
     if (id == 0) {
       // this is a handshake extended message
-      var data = decode(message);
+      final data = decode(message);
       processExtendHandshake(data);
     } else {
-      var name = getExtendedEventNameById(id);
+      final name = getExtendedEventNameById(id);
       if (name != null) {
-        //TODO: remove the need for casting
-        events.emit(ExtendedEvent(this as Peer, name, message));
+        final peer = _tryGetPeer();
+        if (peer != null) {
+          events.emit(ExtendedEvent(peer, name, message));
+        }
       }
     }
   }
 
-  void processExtendHandshake(dynamic data) {
-    if (data == null || !(data as Map<String, dynamic>).containsKey('m')) {
+  void processExtendHandshake(Object? data) {
+    if (data is! Map || !data.containsKey('m')) {
       // this is not a handshake message
       return;
     }
-    var m = data['m'] as Map<String, dynamic>;
-    _rawMap = m;
-    m.forEach((key, value) {
-      if (value == 0) return;
+    final extMapDynamic = data['m'];
+    if (extMapDynamic is! Map) return;
+
+    _rawMap.clear();
+    _extendedEventMap.clear();
+    extMapDynamic.forEach((key, value) {
+      if (key is! String || value is! int || value == 0) return;
+      _rawMap[key] = value;
       _extendedEventMap[value] = key;
     });
-    //TODO: remove the need for casting
-    events.emit(ExtendedEvent(this as Peer, 'handshake', data));
+
+    final peer = _tryGetPeer();
+    if (peer != null) {
+      events.emit(ExtendedEvent(peer, 'handshake', data));
+    }
   }
 
   void clearExtendedProcessors() {
@@ -71,5 +80,11 @@ mixin ExtendedProcessor on EventsEmittable<PeerEvent> {
     _rawMap.clear();
     _localExtended.clear();
     _id = 1;
+  }
+
+  Peer? _tryGetPeer() {
+    final self = this;
+    if (self is Peer) return self;
+    return null;
   }
 }

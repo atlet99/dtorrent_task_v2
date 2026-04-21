@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
@@ -8,6 +9,7 @@ import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
 import 'package:dtorrent_task_v2/src/peer/swarm/peers_manager_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:logging/logging.dart';
+import 'package:utp_protocol/utp_protocol.dart' show UTPSocket;
 
 import '../protocol/peer.dart';
 import '../extensions/pex.dart';
@@ -292,30 +294,36 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     return _activePeers.contains(id);
   }
 
-  void _processExtendedMessage(Peer source, String name, dynamic data) {
+  void _processExtendedMessage(Peer source, String name, Object? data) {
     _log.fine('Processing Extended Message $name');
     if (name == 'ut_holepunch') {
-      parseHolepunchMessage(data);
+      if (data is List<int>) {
+        parseHolepunchMessage(data);
+      }
     }
     if (name == 'ut_pex') {
-      parsePEXDatas(source, data);
+      if (data is List<int>) {
+        parsePEXDatas(source, data);
+      }
     }
     if (name == 'handshake') {
       if (data is! Map) {
         _log.fine('Ignoring invalid handshake payload from ${source.address}');
         return;
       }
+      final yourIpRaw = data['yourip'];
       if (localExternalIP != null &&
-          data['yourip'] != null &&
-          (data['yourip'].length == 4 || data['yourip'].length == 16)) {
+          yourIpRaw is List<int> &&
+          (yourIpRaw.length == 4 || yourIpRaw.length == 16)) {
+        final yourIpBytes = Uint8List.fromList(yourIpRaw);
         InternetAddress myIp;
         try {
-          myIp = InternetAddress.fromRawAddress(data['yourip']);
+          myIp = InternetAddress.fromRawAddress(yourIpBytes);
         } catch (e) {
           return;
         }
         if (IGNORE_IPS.contains(myIp)) return;
-        localExternalIP = InternetAddress.fromRawAddress(data['yourip']);
+        localExternalIP = InternetAddress.fromRawAddress(yourIpBytes);
       }
     }
   }
@@ -326,7 +334,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   /// Usually [socket] is null , unless this peer was incoming connection, but
   /// this type peer was managed by [TorrentTask] , user don't need to know that.
   void addNewPeerAddress(CompactAddress? address, PeerSource source,
-      {PeerType? type, dynamic socket}) {
+      {PeerType? type, Object? socket}) {
     if (address == null) return;
     if (IGNORE_IPS.contains(address.address)) return;
     if (address.address == localExternalIP) return;
@@ -359,7 +367,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
           address,
           _metaInfo.infoHashBuffer,
           _metaInfo.pieces!.length,
-          socket,
+          socket is Socket ? socket : null,
           source,
           proxyManager: _proxyManager,
           sslConfig: _sslConfig,
@@ -372,8 +380,12 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
               'Cannot create peer: torrent has no pieces (v2-only torrent?)');
           return;
         }
-        peer = Peer.newUTPPeer(address, _metaInfo.infoHashBuffer,
-            _metaInfo.pieces!.length, socket, source,
+        peer = Peer.newUTPPeer(
+            address,
+            _metaInfo.infoHashBuffer,
+            _metaInfo.pieces!.length,
+            socket is UTPSocket ? socket : null,
+            source,
             protocolEncryptionConfig: _protocolEncryptionConfig);
       }
       if (peer != null) {
@@ -558,16 +570,15 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     _pausedRemoteRequest.clear();
   }
 
-  Future disposeAllSeeder([dynamic reason]) async {
+  Future<void> disposeAllSeeder([Object? reason]) async {
     for (var peer in [..._activePeers]) {
       if (peer.isSeeder) {
         await peer.dispose(reason);
       }
     }
-    return;
   }
 
-  Future dispose() async {
+  Future<void> dispose() async {
     if (isDisposed) return;
     _disposed = true;
     events.dispose();
@@ -584,7 +595,8 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   //TODO: test
 
   @override
-  void addPEXPeer(dynamic source, CompactAddress address, Map options) {
+  void addPEXPeer(
+      Peer source, CompactAddress address, Map<String, bool> options) {
     // addNewPeerAddress(address);
     // return;
     // if (options['reachable'] != null) {
@@ -594,12 +606,10 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     //   addNewPeerAddress(address);
     //   return;
     // }
-    if ((options['utp'] != null || options['ut_holepunch'] != null) &&
-        options['reachable'] == null) {
-      if (source is! Peer) return;
-      final peer = source;
+    if ((options['utp'] == true || options['ut_holepunch'] == true) &&
+        options['reachable'] != true) {
       final message = getRendezvousMessage(address);
-      peer.sendExtendMessage('ut_holepunch', message);
+      source.sendExtendMessage('ut_holepunch', message);
       return;
     }
     addNewPeerAddress(address, PeerSource.pex);

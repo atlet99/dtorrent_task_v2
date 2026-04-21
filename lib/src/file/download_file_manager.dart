@@ -12,6 +12,8 @@ import '../peer/peer_base.dart';
 import '../piece/piece.dart';
 import 'download_file.dart';
 import 'file_validator.dart';
+import 'state_file.dart';
+import 'state_file_v2.dart';
 import '../torrent/file_tree.dart';
 import '../torrent/torrent_version.dart';
 
@@ -28,7 +30,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   List<List<DownloadFile>?>? get piece2fileMap => _piece2fileMap;
 
   final Map<String, List<Piece>> _file2pieceMap = {};
-  final dynamic _stateFile; // Can be StateFile or StateFileV2
+  final Object _stateFile; // Can be StateFile or StateFileV2
   String? _baseDirectory;
 
   /// TODO: File read caching
@@ -37,13 +39,13 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     this._stateFile,
     this._pieces,
   ) {
-    _piece2fileMap = List.filled(_stateFile.bitfield.piecesNum, null);
+    _piece2fileMap = List.filled(_bitfield.piecesNum, null);
   }
 
   static Future<DownloadFileManager> createFileManager(TorrentModel metainfo,
-      String localDirectory, dynamic stateFile, List<Piece> pieces,
+      String localDirectory, Object stateFile, List<Piece> pieces,
       {bool validateOnResume = false}) async {
-    var manager = DownloadFileManager(metainfo, stateFile, pieces);
+    final manager = DownloadFileManager(metainfo, stateFile, pieces);
     await manager._init(localDirectory);
 
     // Validate files on resume if requested
@@ -68,7 +70,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       }
 
       // Validate pieces that are marked as complete
-      final completedPieces = _stateFile.bitfield.completedPieces;
+      final completedPieces = _bitfield.completedPieces;
       if (completedPieces.isNotEmpty) {
         _log.info('Validating ${completedPieces.length} completed pieces...');
         var invalidCount = 0;
@@ -79,7 +81,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
             if (!isValid) {
               _log.warning(
                   'Piece $pieceIndex failed validation, marking for re-download');
-              await _stateFile.updateBitfield(pieceIndex, false);
+              await _updateStateBitfield(pieceIndex, false);
               invalidCount++;
             }
           }
@@ -99,9 +101,8 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   }
 
   Future<DownloadFileManager> _init(String directory) async {
-    var lastChar = directory.substring(directory.length - 1);
-    if (lastChar != Platform.pathSeparator) {
-      directory = directory + Platform.pathSeparator;
+    if (!directory.endsWith(Platform.pathSeparator)) {
+      directory = '$directory${Platform.pathSeparator}';
     }
     _baseDirectory = directory;
     _initFileMap(directory);
@@ -110,21 +111,20 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     return this;
   }
 
-  Bitfield get localBitfield => _stateFile.bitfield;
+  Bitfield get localBitfield => _bitfield;
 
   bool localHave(int index) {
-    return _stateFile.bitfield.getBit(index);
+    return _bitfield.getBit(index);
   }
 
   bool get isAllComplete {
-    return _stateFile.bitfield.piecesNum ==
-        _stateFile.bitfield.completedPieces.length;
+    return _bitfield.piecesNum == _bitfield.completedPieces.length;
   }
 
-  int get piecesNumber => _stateFile.bitfield.piecesNum;
+  int get piecesNumber => _bitfield.piecesNum;
 
   Future<bool> updateBitfield(int index, [bool have = true]) async {
-    var updated = await _stateFile.updateBitfield(index, have);
+    final updated = await _updateStateBitfield(index, have);
     if (updated) events.emit(StateFileUpdated());
     return updated;
   }
@@ -134,12 +134,12 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   // }
 
   Future<bool> updateUpload(int uploaded) async {
-    var updated = await _stateFile.updateUploaded(uploaded);
+    final updated = await _updateStateUploaded(uploaded);
     if (updated) events.emit(StateFileUpdated());
     return updated;
   }
 
-  int get downloaded => _stateFile.downloaded;
+  int get downloaded => _downloadedFromState;
 
   /// This method appears to only write the buffer content to the disk, but in
   /// reality,every time the cache is written, it is considered that the [Piece]
@@ -147,15 +147,13 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   /// remove the file's corresponding piece index from the _file2pieceMap. When
   /// all the pieces have been removed, a File Complete event will be triggered.
   Future<bool> flushFiles(Set<int> pieceIndices) async {
-    var d = _stateFile.downloaded;
-    var flushed = <String>{};
-    for (var i = 0; i < pieceIndices.length; i++) {
-      var pieceIndex = pieceIndices.elementAt(i);
-      var files = _piece2fileMap?[pieceIndex];
+    final d = _downloadedFromState;
+    final flushed = <String>{};
+    for (final pieceIndex in pieceIndices) {
+      final files = _piece2fileMap?[pieceIndex];
       if (files == null || files.isEmpty) continue;
-      for (var i = 0; i < files.length; i++) {
-        var file = files[i];
-        var pieces = _file2pieceMap[file.torrentFilePath];
+      for (final file in files) {
+        final pieces = _file2pieceMap[file.torrentFilePath];
         if (pieces == null) continue;
         if (flushed.add(file.filePath)) {
           await file.requestFlush();
@@ -168,8 +166,11 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       }
     }
     events.emit(StateFileUpdated());
-    var msg =
-        'downloaded：${d / (1024 * 1024)} mb , Progress ${((d / metainfo.length) * 10000).toInt() / 100} %';
+    final totalLength = metainfo.length;
+    final progress =
+        totalLength == null || totalLength == 0 ? 0.0 : (d / totalLength) * 100;
+    final msg =
+        'downloaded：${d / (1024 * 1024)} mb , Progress ${progress.toStringAsFixed(2)} %';
     _log.finer(msg);
     return true;
   }
@@ -283,24 +284,34 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   }
 
   String? _resolvePathFromState(String torrentPath) {
-    try {
-      return (_stateFile as dynamic).resolveFilePath(torrentPath) as String?;
-    } catch (_) {
-      return null;
-    }
+    return switch (_stateFile) {
+      StateFile state => state.resolveFilePath(torrentPath),
+      StateFileV2 state => state.resolveFilePath(torrentPath),
+      _ => null,
+    };
   }
 
   Future<void> _persistMovedPath(
       String torrentPath, String absolutePath) async {
-    try {
-      await (_stateFile as dynamic).updateFilePath(torrentPath, absolutePath);
-    } catch (_) {}
+    switch (_stateFile) {
+      case final StateFile state:
+        await state.updateFilePath(torrentPath, absolutePath);
+      case final StateFileV2 state:
+        await state.updateFilePath(torrentPath, absolutePath);
+      default:
+        return;
+    }
   }
 
   Future<void> _removePersistedMovedPath(String torrentPath) async {
-    try {
-      await (_stateFile as dynamic).removeFilePath(torrentPath);
-    } catch (_) {}
+    switch (_stateFile) {
+      case final StateFile state:
+        await state.removeFilePath(torrentPath);
+      case final StateFileV2 state:
+        await state.removeFilePath(torrentPath);
+      default:
+        return;
+    }
   }
 
   /// Move a torrent file while download is active and persist new path in state.
@@ -452,24 +463,22 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   }
 
   Future<List<int>?> readFile(int pieceIndex, int begin, int length) async {
-    var piece = _pieces[pieceIndex];
+    final piece = _pieces[pieceIndex];
 
-    var files = _piece2fileMap?[pieceIndex];
-    var startByte = piece.offset + begin;
-    var endByte = startByte + length;
+    final files = _piece2fileMap?[pieceIndex];
+    final startByte = piece.offset + begin;
+    final endByte = startByte + length;
     if (files == null || files.isEmpty) return null;
-    var futures = <Future<List<int>>>[];
-    for (var i = 0; i < files.length; i++) {
-      var tempFile = files[i];
-
-      var re =
+    final futures = <Future<List<int>>>[];
+    for (final tempFile in files) {
+      final re =
           blockToDownloadFilePosition(startByte, endByte, length, tempFile);
       if (re == null) continue;
       futures
           .add(tempFile.requestRead(re.position, re.blockEnd - re.blockStart));
     }
-    var blocks = await Future.wait(futures);
-    var block = blocks.fold<List<int>>(<int>[], (previousValue, element) {
+    final blocks = await Future.wait(futures);
+    final block = blocks.fold<List<int>>(<int>[], (previousValue, element) {
       previousValue.addAll(element);
       return previousValue;
     });
@@ -486,24 +495,23 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   /// The Sub Piece is from the Piece corresponding to [pieceIndex], and the content is [block] starting from [begin].
   /// This class does not validate if the written Sub Piece is a duplicate; it simply overwrites the previous content.
   Future<bool> writeFile(int pieceIndex, int begin, List<int> block) async {
-    var tempFiles = _piece2fileMap?[pieceIndex];
+    final tempFiles = _piece2fileMap?[pieceIndex];
     // TODO: Does this work for last piece?
     // this is the start position relative to  start of the entire torrent block
-    var startByte = pieceIndex * metainfo.pieceLength + begin;
-    var blockSize = block.length;
+    final startByte = pieceIndex * metainfo.pieceLength + begin;
+    final blockSize = block.length;
     // this is the end position relative to  start of the entire torrent block
-    var endByte = startByte + blockSize;
+    final endByte = startByte + blockSize;
     if (tempFiles == null || tempFiles.isEmpty) return false;
-    var futures = <Future<bool>>[];
-    for (var i = 0; i < tempFiles.length; i++) {
-      var tempFile = tempFiles[i];
-      var re =
+    final futures = <Future<bool>>[];
+    for (final tempFile in tempFiles) {
+      final re =
           blockToDownloadFilePosition(startByte, endByte, blockSize, tempFile);
       if (re == null) continue;
       futures.add(tempFile.requestWrite(
           re.position, block, re.blockStart, re.blockEnd));
     }
-    var written = await Stream.fromFutures(futures).fold<bool>(true, (p, a) {
+    final written = await Stream.fromFutures(futures).fold<bool>(true, (p, a) {
       return p && a;
     });
 
@@ -516,11 +524,10 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     return written;
   }
 
-  Future close() async {
+  Future<void> close() async {
     events.dispose();
-    await _stateFile.close();
-    for (var i = 0; i < _files.length; i++) {
-      var file = _files.elementAt(i);
+    await _closeStateFile();
+    for (final file in _files) {
       await file.close();
     }
     _clean();
@@ -531,12 +538,64 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     _piece2fileMap = null;
   }
 
-  Future delete() async {
-    await _stateFile.delete();
-    for (var i = 0; i < _files.length; i++) {
-      var file = _files.elementAt(i);
+  Future<void> delete() async {
+    await _deleteStateFile();
+    for (final file in _files) {
       await file.delete();
     }
     _clean();
+  }
+
+  Bitfield get _bitfield => switch (_stateFile) {
+        StateFile state => state.bitfield,
+        StateFileV2 state => state.bitfield,
+        _ => throw StateError(
+            'Unsupported state file type: ${_stateFile.runtimeType}'),
+      };
+  int get _downloadedFromState => switch (_stateFile) {
+        StateFile state => state.downloaded,
+        StateFileV2 state => state.downloaded,
+        _ => throw StateError(
+            'Unsupported state file type: ${_stateFile.runtimeType}'),
+      };
+
+  Future<bool> _updateStateBitfield(int index, bool have) async {
+    return switch (_stateFile) {
+      StateFile state => state.updateBitfield(index, have),
+      StateFileV2 state => state.updateBitfield(index, have),
+      _ => Future<bool>.error(
+          StateError('Unsupported state file type: ${_stateFile.runtimeType}')),
+    };
+  }
+
+  Future<bool> _updateStateUploaded(int uploaded) async {
+    return switch (_stateFile) {
+      StateFile state => state.updateUploaded(uploaded),
+      StateFileV2 state => state.updateUploaded(uploaded),
+      _ => Future<bool>.error(
+          StateError('Unsupported state file type: ${_stateFile.runtimeType}')),
+    };
+  }
+
+  Future<void> _closeStateFile() async {
+    switch (_stateFile) {
+      case final StateFile state:
+        await state.close();
+      case final StateFileV2 state:
+        await state.close();
+      default:
+        return;
+    }
+  }
+
+  Future<void> _deleteStateFile() async {
+    switch (_stateFile) {
+      case final StateFile state:
+        await state.delete();
+      case final StateFileV2 state:
+        await state.delete();
+      default:
+        return;
+    }
   }
 }

@@ -34,7 +34,7 @@ class HttpScrape extends Scrape with HttpTrackerBase {
   }
 
   @override
-  dynamic processResponseData(Uint8List data) {
+  ScrapeEvent processResponseData(Uint8List data) {
     var result = bencode.decode(data) as Map;
     if (result['failure reason'] != null) {
       throw Exception(String.fromCharCodes(result['failure reason']));

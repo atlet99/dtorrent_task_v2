@@ -254,7 +254,7 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
   }
 
   void _handleDatagram(Datagram datagram) {
-    dynamic message;
+    Object? message;
     try {
       message = decode(datagram.data);
     } catch (e) {

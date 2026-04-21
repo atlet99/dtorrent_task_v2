@@ -17,6 +17,7 @@ import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart'
 import 'package:dtorrent_task_v2/src/standalone/dtorrent_tracker.dart'
     as tracker;
 import 'package:events_emitter2/events_emitter2.dart';
+import 'package:utp_protocol/utp_protocol.dart' show UTPSocket;
 
 import '../peer/protocol/peer.dart';
 import '../peer/extensions/holepunch.dart';
@@ -126,7 +127,7 @@ class MetadataDownloader
   tracker.TorrentAnnounceTracker? _tracker;
 
   /// Tracker event listener
-  EventsListener? _trackerListener;
+  EventsListener<tracker.TorrentAnnounceEvent>? _trackerListener;
 
   /// DHT event listener
   EventsListener<StandaloneDHTEvent>? _dhtListener;
@@ -337,7 +338,7 @@ class MetadataDownloader
     }
   }
 
-  Future stop() async {
+  Future<void> stop() async {
     _running = false;
     _dhtListener?.dispose();
     _dhtListener = null;
@@ -351,7 +352,7 @@ class MetadataDownloader
     _tracker?.dispose();
     _tracker = null;
 
-    final fs = <Future>[];
+    final fs = <Future<void>>[];
     for (final peer in _activePeers) {
       unHookPeer(peer);
       fs.add(peer.dispose());
@@ -397,7 +398,7 @@ class MetadataDownloader
   /// Usually [socket] is null , unless this peer was incoming connection, but
   /// this type peer was managed by [TorrentTask] , user don't need to know that.
   void addNewPeerAddress(CompactAddress address, PeerSource source,
-      [PeerType type = PeerType.TCP, dynamic socket]) {
+      [PeerType type = PeerType.TCP, Object? socket]) {
     if (!_running) return;
     if (address.address == localExternalIP) return;
     if (socket != null) {
@@ -410,10 +411,22 @@ class MetadataDownloader
     if (_peersAddress.add(address)) {
       Peer? peer;
       if (type == PeerType.TCP) {
-        peer = Peer.newTCPPeer(address, _infoHashBuffer, 0, socket, source);
+        peer = Peer.newTCPPeer(
+          address,
+          _infoHashBuffer,
+          0,
+          socket is Socket ? socket : null,
+          source,
+        );
       }
       if (type == PeerType.UTP) {
-        peer = Peer.newUTPPeer(address, _infoHashBuffer, 0, socket, source);
+        peer = Peer.newUTPPeer(
+          address,
+          _infoHashBuffer,
+          0,
+          socket is UTPSocket ? socket : null,
+          source,
+        );
       }
       if (peer != null) _hookPeer(peer);
     }
@@ -469,7 +482,7 @@ class MetadataDownloader
     peer.sendHandShake(_localPeerId);
   }
 
-  void _processPeerDispose(Peer peer, [dynamic reason]) {
+  void _processPeerDispose(Peer peer, [Object? reason]) {
     _peerListeners.remove(peer);
 
     if (!_running) return;
@@ -478,14 +491,12 @@ class MetadataDownloader
     _activePeers.remove(peer);
   }
 
-  void _processPeerHandshake(dynamic source, String remotePeerId, data) {
+  void _processPeerHandshake(Peer source, String remotePeerId, Object? data) {
     if (!_running) return;
   }
 
-  void _processExtendedMessage(dynamic source, String name, dynamic data) {
+  void _processExtendedMessage(Peer peer, String name, Object? data) {
     if (!_running) return;
-    if (source is! Peer) return;
-    final peer = source;
     _log.fine('Received extended message "$name" from peer ${peer.address}');
 
     if (name == 'ut_metadata' && data is Uint8List) {
@@ -493,10 +504,14 @@ class MetadataDownloader
       parseMetaDataMessage(peer, data);
     }
     if (name == 'ut_holepunch') {
-      parseHolepunchMessage(data);
+      if (data is List<int>) {
+        parseHolepunchMessage(data);
+      }
     }
     if (name == 'ut_pex') {
-      parsePEXDatas(source, data);
+      if (data is List<int>) {
+        parsePEXDatas(peer, data);
+      }
     }
     if (name == 'handshake') {
       if (data is! Map) {
@@ -514,8 +529,9 @@ class MetadataDownloader
         // we've already registered it, we'll just not use PEX peers
       }
 
-      if (data['metadata_size'] != null && _metaDataSize == null) {
-        _metaDataSize = data['metadata_size'];
+      final metadataSize = data['metadata_size'];
+      if (metadataSize is int && _metaDataSize == null) {
+        _metaDataSize = metadataSize;
         _log.info('Received metadata size: $_metaDataSize bytes');
         _metadataBuffer = List.filled(_metaDataSize!, 0);
         _metaDataBlockNum = _metaDataSize! ~/ (16 * 1024);
@@ -527,17 +543,19 @@ class MetadataDownloader
         }
       }
 
+      final yourIpRaw = data['yourip'];
       if (localExternalIP != null &&
-          data['yourip'] != null &&
-          (data['yourip'].length == 4 || data['yourip'].length == 16)) {
+          yourIpRaw is List<int> &&
+          (yourIpRaw.length == 4 || yourIpRaw.length == 16)) {
+        final yourIpBytes = Uint8List.fromList(yourIpRaw);
         InternetAddress myIp;
         try {
-          myIp = InternetAddress.fromRawAddress(data['yourip']);
+          myIp = InternetAddress.fromRawAddress(yourIpBytes);
         } catch (e) {
           return;
         }
         if (ignoreIps.contains(myIp)) return;
-        localExternalIP = InternetAddress.fromRawAddress(data['yourip']);
+        localExternalIP = InternetAddress.fromRawAddress(yourIpBytes);
       }
 
       final metaDataEventId = peer.getExtendedEventId('ut_metadata');
@@ -562,10 +580,11 @@ class MetadataDownloader
       if (index == null) return;
 
       final msg = decode(data, start: 0, end: index + 1);
+      if (msg is! Map) return;
       if (msg['msg_type'] == 1) {
         // Piece message
         final piece = msg['piece'];
-        if (piece != null && piece < _metaDataBlockNum!) {
+        if (piece is int && piece < _metaDataBlockNum!) {
           _cancelRequestTimeout(remotePeerId, piece);
           // Reset retry count on successful download
           _pieceRetryCount.remove(piece);
@@ -576,7 +595,7 @@ class MetadataDownloader
       if (msg['msg_type'] == 2) {
         //  Reject piece
         final piece = msg['piece'];
-        if (piece != null && piece < _metaDataBlockNum!) {
+        if (piece is int && piece < _metaDataBlockNum!) {
           _metaDataPieces.add(piece); //Return rejected piece
           _cancelRequestTimeout(remotePeerId, piece);
           _requestMetaData();
@@ -710,19 +729,18 @@ class MetadataDownloader
   Iterable<Peer> get activePeers => _activePeers;
 
   @override
-  void addPEXPeer(source, CompactAddress address, Map options) {
+  void addPEXPeer(
+      Peer source, CompactAddress address, Map<String, bool> options) {
     // Skip PEX for private torrents (BEP 0027)
     if (_isPrivate) {
       _log.fine('Skipping PEX peer for private torrent');
       return;
     }
 
-    if ((options['utp'] != null || options['ut_holepunch'] != null) &&
-        options['reachable'] == null) {
-      if (source is! Peer) return;
-      final peer = source;
+    if ((options['utp'] == true || options['ut_holepunch'] == true) &&
+        options['reachable'] != true) {
       final message = getRendezvousMessage(address);
-      peer.sendExtendMessage('ut_holepunch', message);
+      source.sendExtendMessage('ut_holepunch', message);
       return;
     }
     addNewPeerAddress(address, PeerSource.pex);

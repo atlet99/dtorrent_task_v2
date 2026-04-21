@@ -860,9 +860,9 @@ abstract class Peer
   }
 
   @override
-  void processExtendHandshake(data) {
-    if (data['reqq'] != null && data['reqq'] is int) {
-      remoteReqq = data['reqq'];
+  void processExtendHandshake(Object? data) {
+    if (data is Map && data['reqq'] is int) {
+      remoteReqq = data['reqq'] as int;
     }
     super.processExtendHandshake(data);
   }
