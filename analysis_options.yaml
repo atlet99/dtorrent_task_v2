@@ -22,7 +22,18 @@ linter:
 
 analyzer:
   exclude:
+    - .dart_tool/**
+    - .git/**
+    - .github/**
+    - .trunk/**
+    - coverage/**
+    - tmp/**
+    - test_download_*/**
     - test_results/**
+
+formatter:
+  # Keep project formatting explicit and deterministic.
+  page_width: 80
 
 # For more information about the core and recommended set of lints, see
 # https://dart.dev/go/core-lints
