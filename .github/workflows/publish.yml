@@ -20,7 +20,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Setup Dart
+      - name: Setup Dart (attempt 1)
+        id: setup_dart_attempt_1
+        continue-on-error: true
+        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
+
+      - name: Setup Dart (attempt 2)
+        if: steps.setup_dart_attempt_1.outcome == 'failure'
+        id: setup_dart_attempt_2
+        continue-on-error: true
+        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
+
+      - name: Setup Dart (attempt 3)
+        if: steps.setup_dart_attempt_1.outcome == 'failure' && steps.setup_dart_attempt_2.outcome == 'failure'
         uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
 
       - name: Validate tag matches pubspec version
