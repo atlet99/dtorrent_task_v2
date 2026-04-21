@@ -27,6 +27,15 @@ const MAX_UPLOADED_NOTIFY_SIZE = 1024 * 1024 * 10; // 10 mb
 
 var _log = Logger('PeersManager');
 
+typedef _PendingUploadRequest = ({int pieceIndex, int begin, Peer peer});
+typedef _PausedPieceRequest = ({Peer peer, int pieceIndex});
+typedef _PausedRemoteRequest = ({
+  Peer peer,
+  int index,
+  int begin,
+  int length,
+});
+
 ///
 /// TODO:
 /// - The external Suggest Piece/Fast Allow requests are not handled.
@@ -68,15 +77,15 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   int _uploadedNotifySize = 0;
 
-  final List<List> _remoteRequest = [];
+  final List<_PendingUploadRequest> _remoteRequest = [];
 
   bool _paused = false;
 
   Timer? _keepAliveTimer;
 
-  final List<List<dynamic>> _pausedRequest = [];
+  final List<_PausedPieceRequest> _pausedRequest = [];
 
-  final Map<String, List> _pausedRemoteRequest = {};
+  final Map<String, List<_PausedRemoteRequest>> _pausedRemoteRequest = {};
 
   final String _localPeerId;
 
@@ -292,6 +301,10 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
       parsePEXDatas(source, data);
     }
     if (name == 'handshake') {
+      if (data is! Map) {
+        _log.fine('Ignoring invalid handshake payload from ${source.address}');
+        return;
+      }
       if (localExternalIP != null &&
           data['yourip'] != null &&
           (data['yourip'].length == 4 || data['yourip'].length == 16)) {
@@ -379,24 +392,15 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   /// [pieceIndex] is the index of the piece, [begin] is the byte index of the whole
   /// contents , [block] should be uint8 list, it's the sub-piece contents bytes.
   void readSubPieceComplete(int pieceIndex, int begin, List<int> block) {
-    var dindex = [];
-    for (var i = 0; i < _remoteRequest.length; i++) {
-      var request = _remoteRequest[i];
-      if (request[0] == pieceIndex && request[1] == begin) {
-        dindex.add(i);
-        var peer = request[2] as Peer;
-        if (!peer.isDisposed) {
-          if (peer.sendPiece(pieceIndex, begin, block)) {
-            _uploaded += block.length;
-            _uploadedNotifySize += block.length;
-          }
-        }
-        break;
-      }
-    }
-    if (dindex.isNotEmpty) {
-      for (var i in dindex) {
-        _remoteRequest.removeAt(i);
+    final requestIndex = _remoteRequest.indexWhere(
+      (request) => request.pieceIndex == pieceIndex && request.begin == begin,
+    );
+    if (requestIndex >= 0) {
+      final request = _remoteRequest.removeAt(requestIndex);
+      final peer = request.peer;
+      if (!peer.isDisposed && peer.sendPiece(pieceIndex, begin, block)) {
+        _uploaded += block.length;
+        _uploadedNotifySize += block.length;
       }
       if (_uploadedNotifySize >= MAX_UPLOADED_NOTIFY_SIZE) {
         _uploadedNotifySize = 0;
@@ -419,16 +423,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     _activePeers.remove(disposeEvent.peer);
 
     _pausedRemoteRequest.remove(disposeEvent.peer.id);
-    var tempIndex = [];
-    for (var i = 0; i < _pausedRequest.length; i++) {
-      var pr = _pausedRequest[i];
-      if (pr[0] == disposeEvent.peer) {
-        tempIndex.add(i);
-      }
-    }
-    for (var index in tempIndex) {
-      _pausedRequest.removeAt(index);
-    }
+    _pausedRequest.removeWhere((request) => request.peer == disposeEvent.peer);
 
     if (disposeEvent.reason is TCPConnectException) {
       // print('TCPConnectException');
@@ -461,7 +456,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   bool addPausedRequest(Peer peer, int pieceIndex) {
     if (isPaused) {
-      _pausedRequest.add([peer, pieceIndex]);
+      _pausedRequest.add((peer: peer, pieceIndex: pieceIndex));
       return true;
     }
     return false;
@@ -474,11 +469,17 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   void _processRemoteRequest(PeerRequestEvent event) {
     if (isPaused) {
       _pausedRemoteRequest[event.peer.id] ??= [];
-      var pausedRequest = _pausedRemoteRequest[event.peer.id];
-      pausedRequest?.add([event.peer, event.index, event.begin, event.length]);
+      final pausedRequest = _pausedRemoteRequest[event.peer.id];
+      pausedRequest?.add((
+        peer: event.peer,
+        index: event.index,
+        begin: event.begin,
+        length: event.length,
+      ));
       return;
     }
-    _remoteRequest.add([event.index, event.begin, event.peer]);
+    _remoteRequest
+        .add((pieceIndex: event.index, begin: event.begin, peer: event.peer));
   }
 
   void _processInterestedChange(PeerInterestedChanged event) {
@@ -530,9 +531,9 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     _paused = false;
     _keepAliveTimer?.cancel();
     _keepAliveTimer = null;
-    for (var element in _pausedRequest) {
-      var peer = element[0] as Peer;
-      var index = element[1] as int;
+    for (final element in _pausedRequest) {
+      final peer = element.peer;
+      final index = element.pieceIndex;
       if (!peer.isDisposed) {
         events.emit(PieceRequest(
           peer,
@@ -542,12 +543,12 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     }
     _pausedRequest.clear();
 
-    _pausedRemoteRequest.forEach((key, value) {
-      for (var element in value) {
-        var peer = element[0] as Peer;
-        var index = element[1];
-        var begin = element[2];
-        var length = element[3];
+    _pausedRemoteRequest.forEach((_, value) {
+      for (final element in value) {
+        final peer = element.peer;
+        final index = element.index;
+        final begin = element.begin;
+        final length = element.length;
         if (!peer.isDisposed) {
           Timer.run(() => _processRemoteRequest(
               PeerRequestEvent(peer, index, begin, length)));
@@ -577,18 +578,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     _remoteRequest.clear();
     _pausedRequest.clear();
     _pausedRemoteRequest.clear();
-    disposePeers(Set<Peer> peers) async {
-      if (peers.isNotEmpty) {
-        for (var i = 0; i < peers.length; i++) {
-          var peer = peers.elementAt(i);
-          _unHookPeer(peer);
-          await peer.dispose('Peer Manager disposed');
-        }
-      }
-      peers.clear();
-    }
-
-    await disposePeers(_activePeers);
+    await _disposePeers(_activePeers);
   }
 
   //TODO: test
@@ -606,8 +596,9 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     // }
     if ((options['utp'] != null || options['ut_holepunch'] != null) &&
         options['reachable'] == null) {
-      var peer = source as Peer;
-      var message = getRendezvousMessage(address);
+      if (source is! Peer) return;
+      final peer = source;
+      final message = getRendezvousMessage(address);
       peer.sendExtendMessage('ut_holepunch', message);
       return;
     }
@@ -659,5 +650,15 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   void holePunchRendezvous(CompactAddress ip) {
     // TODO: implement holePunchRendezvous
     _log.info('Received holePunch Rendezvous from $ip');
+  }
+
+  Future<void> _disposePeers(Set<Peer> peers) async {
+    if (peers.isNotEmpty) {
+      for (final peer in peers.toList()) {
+        _unHookPeer(peer);
+        await peer.dispose('Peer Manager disposed');
+      }
+    }
+    peers.clear();
   }
 }

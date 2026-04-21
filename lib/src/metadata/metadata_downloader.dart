@@ -282,7 +282,7 @@ class MetadataDownloader
             _applyTrackerExternalIp(event.event!);
             final peers = event.event!.peers;
             _log.info('Got ${peers.length} peer(s) from tracker');
-            for (var peer in peers) {
+            for (final peer in peers) {
               addNewPeerAddress(peer, PeerSource.tracker);
             }
           }
@@ -294,10 +294,10 @@ class MetadataDownloader
 
         if (_magnetTrackerTiers.isNotEmpty) {
           // Announce to trackers tier by tier (try first tier, then next, etc.)
-          for (var tier in _magnetTrackerTiers) {
+          for (final tier in _magnetTrackerTiers) {
             _log.info(
                 'Announcing to tier with ${tier.trackers.length} tracker(s)');
-            for (var trackerUri in tier.trackers) {
+            for (final trackerUri in tier.trackers) {
               try {
                 _tracker!.runTracker(trackerUri, infoHashBuffer);
                 _log.info('Announced to tracker: $trackerUri');
@@ -308,7 +308,7 @@ class MetadataDownloader
           }
         } else {
           // Fallback to flat list
-          for (var trackerUri in _magnetTrackers) {
+          for (final trackerUri in _magnetTrackers) {
             try {
               _tracker!.runTracker(trackerUri, infoHashBuffer);
               _log.info('Announced to tracker: $trackerUri');
@@ -351,8 +351,8 @@ class MetadataDownloader
     _tracker?.dispose();
     _tracker = null;
 
-    var fs = <Future>[];
-    for (var peer in _activePeers) {
+    final fs = <Future>[];
+    for (final peer in _activePeers) {
       unHookPeer(peer);
       fs.add(peer.dispose());
     }
@@ -362,7 +362,7 @@ class MetadataDownloader
     _incomingAddress.clear();
     _metaDataPieces.clear();
     _completedPieces.clear();
-    _requestTimeout.forEach((key, value) {
+    _requestTimeout.forEach((_, value) {
       value.cancel();
     });
     _requestTimeout.clear();
@@ -484,7 +484,8 @@ class MetadataDownloader
 
   void _processExtendedMessage(dynamic source, String name, dynamic data) {
     if (!_running) return;
-    var peer = source as Peer;
+    if (source is! Peer) return;
+    final peer = source;
     _log.fine('Received extended message "$name" from peer ${peer.address}');
 
     if (name == 'ut_metadata' && data is Uint8List) {
@@ -498,6 +499,10 @@ class MetadataDownloader
       parsePEXDatas(source, data);
     }
     if (name == 'handshake') {
+      if (data is! Map) {
+        _log.fine('Ignoring invalid handshake payload from ${peer.address}');
+        return;
+      }
       // Check for private torrent flag (BEP 0027)
       if (data['private'] == 1 && !_isPrivate) {
         _isPrivate = true;
@@ -535,7 +540,7 @@ class MetadataDownloader
         localExternalIP = InternetAddress.fromRawAddress(data['yourip']);
       }
 
-      var metaDataEventId = peer.getExtendedEventId('ut_metadata');
+      final metaDataEventId = peer.getExtendedEventId('ut_metadata');
       if (metaDataEventId != null && _metaDataSize != null) {
         _availablePeers.add(peer);
         _requestMetaData(peer);
@@ -546,7 +551,7 @@ class MetadataDownloader
   void parseMetaDataMessage(Peer peer, Uint8List data) {
     if (!_running || _metaDataBlockNum == null) return;
     int? index;
-    var remotePeerId = peer.remotePeerId;
+    final remotePeerId = peer.remotePeerId;
     try {
       for (var i = 0; i + 1 < data.length; i++) {
         if (data[i] == E && data[i + 1] == E) {
@@ -556,15 +561,12 @@ class MetadataDownloader
       }
       if (index == null) return;
 
-      var msg = decode(data, start: 0, end: index + 1);
+      final msg = decode(data, start: 0, end: index + 1);
       if (msg['msg_type'] == 1) {
         // Piece message
-        var piece = msg['piece'];
+        final piece = msg['piece'];
         if (piece != null && piece < _metaDataBlockNum!) {
-          // Remove timeout using peer ID and piece index
-          final timeoutKey = '${remotePeerId}_$piece';
-          var timer = _requestTimeout.remove(timeoutKey);
-          timer?.cancel();
+          _cancelRequestTimeout(remotePeerId, piece);
           // Reset retry count on successful download
           _pieceRetryCount.remove(piece);
           _pieceDownloadComplete(piece, index + 1, data);
@@ -573,13 +575,10 @@ class MetadataDownloader
       }
       if (msg['msg_type'] == 2) {
         //  Reject piece
-        var piece = msg['piece'];
+        final piece = msg['piece'];
         if (piece != null && piece < _metaDataBlockNum!) {
           _metaDataPieces.add(piece); //Return rejected piece
-          // Remove timeout using peer ID and piece index
-          final timeoutKey = '${remotePeerId}_$piece';
-          var timer = _requestTimeout.remove(timeoutKey);
-          timer?.cancel();
+          _cancelRequestTimeout(remotePeerId, piece);
           _requestMetaData();
         }
       }
@@ -617,18 +616,7 @@ class MetadataDownloader
               'Metadata verification failed! Hash mismatch. Retrying... (attempt $_retryAttempt/$_maxRetryAttempts)');
 
           // Clear state for retry
-          _completedPieces.clear();
-          _metadataBuffer = List.filled(_metaDataSize!, 0);
-          _metaDataPieces.clear();
-          for (var i = 0; i < _metaDataBlockNum!; i++) {
-            _metaDataPieces.add(i);
-          }
-
-          // Cancel all pending timeouts
-          _requestTimeout.forEach((key, value) {
-            value.cancel();
-          });
-          _requestTimeout.clear();
+          _resetMetadataStateForRetry();
 
           // Restart metadata download
           _log.info('Restarting metadata download...');
@@ -668,7 +656,7 @@ class MetadataDownloader
 
     // Request blocks from multiple peers in parallel
     // Use up to min(available pieces, available peers) parallel requests
-    final availablePeersList = _availablePeers.toList();
+    final availablePeersList = _prioritizedAvailablePeers(peer);
     final maxParallelRequests =
         _metaDataPieces.length < availablePeersList.length
             ? _metaDataPieces.length
@@ -692,7 +680,7 @@ class MetadataDownloader
       final timeoutDuration =
           Duration(seconds: timeoutSeconds > 30 ? 30 : timeoutSeconds);
 
-      var timer = Timer(timeoutDuration, () {
+      final timer = Timer(timeoutDuration, () {
         if (!_running) {
           _requestTimeout.remove(timeoutKey);
           return;
@@ -731,8 +719,9 @@ class MetadataDownloader
 
     if ((options['utp'] != null || options['ut_holepunch'] != null) &&
         options['reachable'] == null) {
-      var peer = source as Peer;
-      var message = getRendezvousMessage(address);
+      if (source is! Peer) return;
+      final peer = source;
+      final message = getRendezvousMessage(address);
       peer.sendExtendMessage('ut_holepunch', message);
       return;
     }
@@ -752,7 +741,7 @@ class MetadataDownloader
 
   @override
   Future<Map<String, dynamic>> getOptions(Uri uri, String infoHash) {
-    var map = {
+    final map = {
       'downloaded': 0,
       'uploaded': 0,
       'left': 16 * 1024 * 20,
@@ -762,5 +751,31 @@ class MetadataDownloader
       'port': 0
     };
     return Future.value(map);
+  }
+
+  List<Peer> _prioritizedAvailablePeers(Peer? preferredPeer) {
+    final peers = _availablePeers.toList();
+    if (preferredPeer == null) return peers;
+    if (!peers.remove(preferredPeer)) return peers;
+    return [preferredPeer, ...peers];
+  }
+
+  String _requestTimeoutKey(String? remotePeerId, int piece) =>
+      '${remotePeerId ?? 'unknown'}_$piece';
+
+  void _cancelRequestTimeout(String? remotePeerId, int piece) {
+    final timeoutKey = _requestTimeoutKey(remotePeerId, piece);
+    final timer = _requestTimeout.remove(timeoutKey);
+    timer?.cancel();
+  }
+
+  void _resetMetadataStateForRetry() {
+    _completedPieces.clear();
+    _metadataBuffer = List.filled(_metaDataSize!, 0);
+    _metaDataPieces
+      ..clear()
+      ..addAll(List<int>.generate(_metaDataBlockNum!, (index) => index));
+    _requestTimeout.forEach((_, value) => value.cancel());
+    _requestTimeout.clear();
   }
 }

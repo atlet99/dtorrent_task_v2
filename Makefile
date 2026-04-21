@@ -27,6 +27,7 @@ ANALYZE_ARGS ?=
 FLUTTER_ANALYZE_ARGS ?=
 PUB_ARGS ?=
 FIX_ARGS ?=
+NO_COLOR ?= 0
 # Safety regex for repository-wide Dart commands.
 # Matches paths relative to repo root.
 DART_SAFE_EXCLUDE_RE ?= ^(\.dart_tool/|tmp/|test_results/|coverage/|test_download_)
@@ -205,11 +206,11 @@ md-check: ## Check Markdown formatting with Prettier (no changes written)
 
 ##@ Analysis
 analyze: ## Run Dart analyzer
-	@$(DART) analyze $(ANALYZE_ARGS)
+	@$(DART) analyze $(SRC_DIRS) $(ANALYZE_ARGS)
 
 flutter-analyze: ## Run Flutter analyzer (for consumers using Flutter toolchain)
 	@if command -v $(FLUTTER) >/dev/null; then \
-		$(FLUTTER) analyze $(FLUTTER_ANALYZE_ARGS); \
+		$(FLUTTER) analyze $(SRC_DIRS) $(FLUTTER_ANALYZE_ARGS); \
 	else \
 		printf "$(C_YELLOW)Skip flutter-analyze: $(FLUTTER) not found$(C_RESET)\n"; \
 	fi

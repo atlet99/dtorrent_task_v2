@@ -56,36 +56,67 @@ class JsonMetadataResponse implements StreamingIsolateResponse {
   JsonMetadataResponse(this.data);
 }
 
+class _IsolateRequest {
+  final int requestId;
+  final StreamingIsolateMessage payload;
+
+  const _IsolateRequest(this.requestId, this.payload);
+}
+
+class _IsolateResponse {
+  final int requestId;
+  final StreamingIsolateResponse payload;
+
+  const _IsolateResponse(this.requestId, this.payload);
+}
+
 /// Streaming isolate entry point
 void _streamingIsolateEntry(SendPort sendPort) {
   final receivePort = ReceivePort();
   sendPort.send(receivePort.sendPort);
 
   receivePort.listen((message) {
-    if (message is GetPlaylistMessage) {
+    if (message is! _IsolateRequest) {
+      return;
+    }
+
+    final requestId = message.requestId;
+    final payload = message.payload;
+
+    if (payload is GetPlaylistMessage) {
       try {
         final playlist =
-            _createPlaylist(message.files, message.address, message.port);
-        sendPort.send(PlaylistResponse(Uint8List.fromList(playlist.codeUnits)));
+            _createPlaylist(payload.files, payload.address, payload.port);
+        sendPort.send(_IsolateResponse(
+          requestId,
+          PlaylistResponse(Uint8List.fromList(playlist.codeUnits)),
+        ));
       } catch (e, stackTrace) {
         _log.warning('Error creating playlist in isolate', e, stackTrace);
-        sendPort.send(PlaylistResponse(Uint8List(0)));
+        sendPort.send(
+          _IsolateResponse(requestId, PlaylistResponse(Uint8List(0))),
+        );
       }
-    } else if (message is GetJsonMetadataMessage) {
+    } else if (payload is GetJsonMetadataMessage) {
       try {
         final json = _createJsonMetadata(
-          message.files,
-          message.totalLength,
-          message.downloaded,
-          message.downloadSpeed,
-          message.uploadSpeed,
-          message.totalPeers,
-          message.activePeers,
+          payload.files,
+          payload.totalLength,
+          payload.downloaded,
+          payload.downloadSpeed,
+          payload.uploadSpeed,
+          payload.totalPeers,
+          payload.activePeers,
         );
-        sendPort.send(JsonMetadataResponse(Uint8List.fromList(json.codeUnits)));
+        sendPort.send(_IsolateResponse(
+          requestId,
+          JsonMetadataResponse(Uint8List.fromList(json.codeUnits)),
+        ));
       } catch (e, stackTrace) {
         _log.warning('Error creating JSON metadata in isolate', e, stackTrace);
-        sendPort.send(JsonMetadataResponse(Uint8List(0)));
+        sendPort.send(
+          _IsolateResponse(requestId, JsonMetadataResponse(Uint8List(0))),
+        );
       }
     }
   });
@@ -140,20 +171,31 @@ class StreamingIsolateManager {
   Isolate? _isolate;
   SendPort? _sendPort;
   ReceivePort? _receivePort;
+  StreamSubscription<dynamic>? _responseSubscription;
   bool _initialized = false;
+  int _requestCounter = 0;
+  Completer<void>? _initializationCompleter;
+  final Map<int, Completer<Uint8List>> _pendingRequests = {};
 
   Future<void> initialize() async {
     if (_initialized) return;
+    if (_initializationCompleter != null) {
+      await _initializationCompleter!.future;
+      return;
+    }
 
+    _initializationCompleter = Completer<void>();
     _receivePort = ReceivePort();
+    _responseSubscription = _receivePort!.listen(_handleIsolateMessage);
     _isolate = await Isolate.spawn(
       _streamingIsolateEntry,
       _receivePort!.sendPort,
       debugName: 'StreamingIsolate',
     );
 
-    _sendPort = await _receivePort!.first as SendPort;
+    await _initializationCompleter!.future;
     _initialized = true;
+    _initializationCompleter = null;
     _log.info('Streaming isolate initialized');
   }
 
@@ -163,26 +205,9 @@ class StreamingIsolateManager {
     int port,
   ) async {
     if (!_initialized) await initialize();
-
-    final completer = Completer<Uint8List>();
-    late StreamSubscription subscription;
-
-    subscription = _receivePort!.listen((response) {
-      if (response is PlaylistResponse) {
-        subscription.cancel();
-        completer.complete(response.data);
-      }
-    });
-
-    _sendPort!.send(GetPlaylistMessage(files, address, port));
-
-    return completer.future.timeout(
-      const Duration(seconds: 5),
-      onTimeout: () {
-        subscription.cancel();
-        _log.warning('Playlist request timeout');
-        return Uint8List(0);
-      },
+    return _sendRequest(
+      GetPlaylistMessage(files, address, port),
+      timeoutWarning: 'Playlist request timeout',
     );
   }
 
@@ -196,46 +221,83 @@ class StreamingIsolateManager {
     int activePeers,
   ) async {
     if (!_initialized) await initialize();
-
-    final completer = Completer<Uint8List>();
-    late StreamSubscription subscription;
-
-    subscription = _receivePort!.listen((response) {
-      if (response is JsonMetadataResponse) {
-        subscription.cancel();
-        completer.complete(response.data);
-      }
-    });
-
-    _sendPort!.send(GetJsonMetadataMessage(
-      files,
-      totalLength,
-      downloaded,
-      downloadSpeed,
-      uploadSpeed,
-      totalPeers,
-      activePeers,
-    ));
-
-    return completer.future.timeout(
-      const Duration(seconds: 5),
-      onTimeout: () {
-        subscription.cancel();
-        _log.warning('JSON metadata request timeout');
-        return Uint8List(0);
-      },
+    return _sendRequest(
+      GetJsonMetadataMessage(
+        files,
+        totalLength,
+        downloaded,
+        downloadSpeed,
+        uploadSpeed,
+        totalPeers,
+        activePeers,
+      ),
+      timeoutWarning: 'JSON metadata request timeout',
     );
   }
 
   Future<void> dispose() async {
     if (!_initialized) return;
 
+    await _responseSubscription?.cancel();
+    _responseSubscription = null;
+    for (final completer in _pendingRequests.values) {
+      if (!completer.isCompleted) {
+        completer.complete(Uint8List(0));
+      }
+    }
+    _pendingRequests.clear();
     _isolate?.kill(priority: Isolate.immediate);
     _receivePort?.close();
     _isolate = null;
     _sendPort = null;
     _receivePort = null;
     _initialized = false;
+    _requestCounter = 0;
+    _initializationCompleter = null;
     _log.info('Streaming isolate disposed');
+  }
+
+  Future<Uint8List> _sendRequest(
+    StreamingIsolateMessage payload, {
+    required String timeoutWarning,
+  }) async {
+    final sendPort = _sendPort;
+    if (sendPort == null) {
+      _log.warning('Streaming isolate send port is not initialized');
+      return Uint8List(0);
+    }
+
+    final requestId = ++_requestCounter;
+    final completer = Completer<Uint8List>();
+    _pendingRequests[requestId] = completer;
+    sendPort.send(_IsolateRequest(requestId, payload));
+
+    return completer.future.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {
+        _pendingRequests.remove(requestId);
+        _log.warning(timeoutWarning);
+        return Uint8List(0);
+      },
+    );
+  }
+
+  void _handleIsolateMessage(dynamic message) {
+    if (message is SendPort) {
+      _sendPort = message;
+      _initializationCompleter?.complete();
+      return;
+    }
+
+    if (message is! _IsolateResponse) return;
+    final completer = _pendingRequests.remove(message.requestId);
+    if (completer == null || completer.isCompleted) return;
+
+    switch (message.payload) {
+      case PlaylistResponse(:final data):
+        completer.complete(data);
+      case JsonMetadataResponse(:final data):
+        completer.complete(data);
+    }
   }
 }
