@@ -112,7 +112,7 @@ This package no longer requires the external `dtorrent_parser` dependency (built
 
 ```yaml
 dependencies:
-  dtorrent_task_v2: ^0.5.1
+  dtorrent_task_v2: ^0.5.2
 ```
 
 Download from: [DTORRENT_TASK_V2](https://pub.dev/packages/dtorrent_task_v2)

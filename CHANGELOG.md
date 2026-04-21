@@ -1,3 +1,18 @@
+## 0.5.2
+
+- refactor streaming isolate request/response pipeline to use single listener with request correlation IDs (removes ReceivePort re-listen conflicts and stabilizes concurrent metadata/playlist requests)
+- simplify and harden isolate tests by removing stream-listen workarounds and adding dedicated concurrent request regression coverage
+- refactor peer swarm internals (`PeersManager`) with typed request buffers (Dart records) instead of untyped nested lists for safer queue/resume/dispose flows
+- improve metadata pipeline safety and maintainability (`MetadataDownloader`, `MagnetParser`) with better payload guards, reduced duplication, and extracted parsing helpers
+- harden async file/state request handling (`DownloadFile`, `StateFile`, `StateFileV2`, `Debouncer`) with stricter typing and safer pause/resume/finally behavior
+- improve `QueueManager` and `TorrentTask` internals (deduplicated terminal event handling, extracted scheduler/auto-move helpers, cleaner logging)
+- improve local developer quality gates:
+  - fix `NO_COLOR` warning in `Makefile`
+  - scope analyze targets to project source dirs
+  - keep test suite separated from analyze/check flow as configured
+- expand analyzer excludes for non-project directories (`test_results/**`, `tmp/**`, `coverage/**`, `.dart_tool/**`, `test_download_*/**`, etc.) and add explicit formatter config in `analysis_options.yaml`
+- update direct and dev dependency constraints to latest compatible versions (`b_encode_decode`, `utp_protocol`, `events_emitter2`, `collection`, `crypto`, `logging`, `lints`, `path`, `test`)
+
 ## 0.5.1
 
 - add file moving support during active downloads with state path persistence and rebind support (`moveDownloadedFile`, `detectMovedFiles`, `validateMovedFilePath`)
