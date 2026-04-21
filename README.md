@@ -14,31 +14,32 @@ Dart library for implementing BitTorrent client.
 
 ## Quick Navigation
 
-| Section                                                          | Description                                |
-| ---------------------------------------------------------------- | ------------------------------------------ |
-| [About](#about)                                                  | High-level package overview                |
-| [BEP Support](#bep-support)                                      | Implemented BEP specifications             |
-| [How to use](#how-to-use)                                        | Minimal setup and first download           |
-| [Examples](#examples)                                            | Runnable examples from `example/`          |
-| [Feature Cookbook](#feature-cookbook)                            | Short practical snippets by capability     |
-| [Using Magnet Links](#using-magnet-links)                        | Metadata-first magnet workflow             |
-| [Download UX Automation](#download-ux-automation)                | File moving, auto-move, scheduling, RSS    |
-| [Move Files While Downloading](#move-files-while-downloading-51) | Move/rebind files during active task       |
-| [Auto-move Downloaded Files](#auto-move-downloaded-files-52)     | Rule-based destination routing             |
-| [Scheduling](#scheduling-53)                                     | Time windows and rate control              |
-| [RSS/Atom Auto-download](#rssatom-auto-download-54)              | Feed subscriptions and queue integration   |
-| [Advanced Features](#advanced-features)                          | Streaming, queue, proxy, scrape, filtering |
-| [Selected Files (BEP 0053)](#selected-files-bep-0053)            | Download specific file indices             |
-| [Tracker Scrape (BEP 48)](#tracker-scrape-bep-48)                | Seeder/leecher/download counters           |
-| [Proxy Support](#proxy-support)                                  | HTTP/SOCKS5 tracker/peer proxying          |
-| [Torrent Queue Management](#torrent-queue-management)            | Priorities, concurrency, progression       |
-| [Port Forwarding](#port-forwarding)                              | UPnP/NAT-PMP                               |
-| [IP Filtering](#ip-filtering)                                    | CIDR, eMule dat, PeerGuardian              |
-| [Superseeding (BEP 16)](#superseeding-bep-16)                    | Seeder efficiency mode                     |
-| [File Priority Management](#file-priority-management)            | high/normal/low/skip                       |
-| [Built-in Torrent Parser](#built-in-torrent-parser)              | Parse v1/v2/hybrid without external deps   |
-| [Monitoring and Error Tracking](#monitoring-and-error-tracking)  | Runtime diagnostics                        |
-| [Features](#features)                                            | Full capability summary                    |
+| Section                                                          | Description                                 |
+| ---------------------------------------------------------------- | ------------------------------------------- |
+| [About](#about)                                                  | High-level package overview                 |
+| [BEP Support](#bep-support)                                      | Implemented BEP specifications              |
+| [How to use](#how-to-use)                                        | Minimal setup and first download            |
+| [Examples](#examples)                                            | Runnable examples from `example/`           |
+| [Automated Publishing](#automated-publishing)                    | GitHub Actions + pub.dev trusted publishing |
+| [Feature Cookbook](#feature-cookbook)                            | Short practical snippets by capability      |
+| [Using Magnet Links](#using-magnet-links)                        | Metadata-first magnet workflow              |
+| [Download UX Automation](#download-ux-automation)                | File moving, auto-move, scheduling, RSS     |
+| [Move Files While Downloading](#move-files-while-downloading-51) | Move/rebind files during active task        |
+| [Auto-move Downloaded Files](#auto-move-downloaded-files-52)     | Rule-based destination routing              |
+| [Scheduling](#scheduling-53)                                     | Time windows and rate control               |
+| [RSS/Atom Auto-download](#rssatom-auto-download-54)              | Feed subscriptions and queue integration    |
+| [Advanced Features](#advanced-features)                          | Streaming, queue, proxy, scrape, filtering  |
+| [Selected Files (BEP 0053)](#selected-files-bep-0053)            | Download specific file indices              |
+| [Tracker Scrape (BEP 48)](#tracker-scrape-bep-48)                | Seeder/leecher/download counters            |
+| [Proxy Support](#proxy-support)                                  | HTTP/SOCKS5 tracker/peer proxying           |
+| [Torrent Queue Management](#torrent-queue-management)            | Priorities, concurrency, progression        |
+| [Port Forwarding](#port-forwarding)                              | UPnP/NAT-PMP                                |
+| [IP Filtering](#ip-filtering)                                    | CIDR, eMule dat, PeerGuardian               |
+| [Superseeding (BEP 16)](#superseeding-bep-16)                    | Seeder efficiency mode                      |
+| [File Priority Management](#file-priority-management)            | high/normal/low/skip                        |
+| [Built-in Torrent Parser](#built-in-torrent-parser)              | Parse v1/v2/hybrid without external deps    |
+| [Monitoring and Error Tracking](#monitoring-and-error-tracking)  | Runtime diagnostics                         |
+| [Features](#features)                                            | Full capability summary                     |
 
 <details>
 <summary>Architecture Snapshot</summary>
@@ -188,6 +189,30 @@ dart run example/auto_move_example.dart <path-to-torrent>
 dart run example/scheduling_example.dart <path-to-torrent>
 dart run example/rss_auto_download_example.dart <rss-feed-url>
 ```
+
+## Automated Publishing
+
+Automated publishing is configured with:
+
+- GitHub Actions workflow: `.github/workflows/publish.yml`
+- OIDC authentication (no long-lived pub.dev token secret)
+- Tag-triggered publish flow (`v*.*.*`)
+
+Manual one-time setup on pub.dev:
+
+1. Open package admin page: `https://pub.dev/packages/dtorrent_task_v2/admin`.
+2. In **Automated publishing**, enable **GitHub Actions**.
+3. Set repository to `atlet99/dtorrent_task_v2`.
+4. Set tag pattern to `v{{version}}`.
+5. Optional hardening: require GitHub Actions environment `pub.dev` and then uncomment `environment: pub.dev` in workflow.
+
+Release flow:
+
+1. Update `version` in `pubspec.yaml`.
+2. Commit changes to default branch.
+3. Push tag matching the version:
+   `git tag v0.5.2 && git push origin v0.5.2`
+4. Check workflow run in GitHub Actions and audit log on pub.dev.
 
 ## Feature Cookbook
 

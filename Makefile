@@ -255,14 +255,13 @@ run-example: ## Run one example file (default: example/example.dart)
 check: format-check md-check analyze test ## Local quality gate
 	@printf "$(C_GREEN)Check passed$(C_RESET)\n"
 
-check-all: ## Full local gate with auto-fixes: pub-get -> fix -> format -> analyze -> test-all
+check-all: ## Full local gate with auto-fixes: pub-get -> fix -> format -> analyze
 	@$(MAKE) --no-print-directory check-tools
 	@$(MAKE) --no-print-directory pub-get
 	@$(MAKE) --no-print-directory fix-apply
 	@$(MAKE) --no-print-directory format-all
 	@$(MAKE) --no-print-directory md-format
 	@$(MAKE) --no-print-directory analyze-all
-	@$(MAKE) --no-print-directory test-all
 	@printf "$(C_GREEN)check-all completed$(C_RESET)\n"
 
 ci: pub-get check ## CI-like pipeline

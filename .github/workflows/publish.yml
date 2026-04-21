@@ -1,0 +1,17 @@
+name: Publish to pub.dev
+
+on:
+  push:
+    tags:
+      # Must align with the tag pattern configured on pub.dev.
+      # For tag pattern `v{{version}}` this can be broad, while pub.dev
+      # will still validate the exact version against pubspec.yaml.
+      - 'v*.*.*'
+
+jobs:
+  publish:
+    permissions:
+      id-token: write
+    uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
+    # with:
+    #   environment: pub.dev

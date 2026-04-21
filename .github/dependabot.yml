@@ -1,21 +1,16 @@
 version: 2
 updates:
-  # Enable version updates for pub (Dart/Flutter)
+  # Dart/Flutter dependencies from pubspec.yaml.
   - package-ecosystem: "pub"
-    # Look for `pubspec.yaml` in the root directory
     directory: "/"
-    # Check for updates daily
     schedule:
-      interval: "daily"
-      time: "09:00"
+      interval: "cron"
+      cronjob: "0 */5 * * *"
       timezone: "Asia/Tashkent"
-    # Limit the number of open pull requests for version updates
     open-pull-requests-limit: 10
-    # Add labels to pull requests
     labels:
       - "dependencies"
       - "dart"
-    # Group all patch and minor updates together
     groups:
       minor-and-patch:
         patterns:
@@ -23,10 +18,23 @@ updates:
         update-types:
           - "minor"
           - "patch"
-    # Allow both direct and indirect dependencies
     allow:
       - dependency-type: "all"
-    # Commit message prefix
     commit-message:
-      prefix: "chore"
+      prefix: "[UPD]"
+      include: "scope"
+
+  # GitHub Actions updates (including pinned SHAs in workflows).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "cron"
+      cronjob: "0 */5 * * *"
+      timezone: "Asia/Tashkent"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "[UPD]"
       include: "scope"
