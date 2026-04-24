@@ -2,6 +2,7 @@ test_results/
 tmp/
 test_download_*/
 coverage/
+example/test_*.dart
 
 # Local planning notes
 .*-docs.md

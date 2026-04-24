@@ -40,7 +40,7 @@ class LSD with EventsEmittable<LSDEvent> {
 
   Future<void> start() async {
     if (port == null) {
-      throw Exception('lsd port is not set');
+      throw StateError('LSD port is not set');
     }
     _socket ??= await RawDatagramSocket.bind(InternetAddress.anyIPv4, lsdPort);
     _socket?.listen((event) {
@@ -97,9 +97,9 @@ class LSD with EventsEmittable<LSDEvent> {
     _timer = Timer(Duration(seconds: 5 * 60), () => _announce());
   }
 
-  Future<dynamic>? _sendMessage(String message, [Completer? completer]) {
-    if (_socket == null) return null;
-    completer ??= Completer();
+  Future<void> _sendMessage(String message, [Completer<void>? completer]) {
+    if (_socket == null) return Future<void>.value();
+    completer ??= Completer<void>();
     var success = _socket?.send(message.codeUnits, lsdHost, lsdPort);
     if (success != null && !(success > 0)) {
       Timer.run(() => _sendMessage(message, completer));

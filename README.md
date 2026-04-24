@@ -1168,11 +1168,11 @@ final peerAddress = CompactAddress(
   InternetAddress('192.168.1.100'),
   6881,
 );
-task.addPeer(peerAddress, PeerSource.manual, type: PeerType.TCP);
+task.addPeer(peerAddress, PeerSource.manual, type: PeerType.tcp);
 
 // Add a peer with existing socket
 task.addPeer(peerAddress, PeerSource.incoming,
-    type: PeerType.TCP, socket: socket);
+    type: PeerType.tcp, socket: socket);
 ```
 
 ### DHT Support

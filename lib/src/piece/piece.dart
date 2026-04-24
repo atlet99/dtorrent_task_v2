@@ -52,20 +52,34 @@ class Piece {
       bool isComplete = false,
       TorrentVersion? version})
       : version = version ?? TorrentVersion.v1,
-        _subPieceSize = requestLength,
-        _subPiecesCount = (byteLength + requestLength - 1) ~/ requestLength {
-    if (requestLength <= 0) {
-      throw Exception('Request length should bigger than zero');
-    }
-    if (requestLength > defaultRequestLength) {
-      throw Exception('Request length should smaller than 16kb');
-    }
+        _subPieceSize = _validateRequestLength(requestLength),
+        _subPiecesCount =
+            (byteLength + _validateRequestLength(requestLength) - 1) ~/
+                _validateRequestLength(requestLength) {
     _subPiecesQueue =
         Queue.from(List.generate(_subPiecesCount, (index) => index));
     if (isComplete) {
       _flushed = true;
       _onDiskSubPieces.addAll(_subPiecesQueue);
     }
+  }
+
+  static int _validateRequestLength(int requestLength) {
+    if (requestLength <= 0) {
+      throw ArgumentError.value(
+        requestLength,
+        'requestLength',
+        'must be greater than zero',
+      );
+    }
+    if (requestLength > defaultRequestLength) {
+      throw ArgumentError.value(
+        requestLength,
+        'requestLength',
+        'must not be greater than $defaultRequestLength bytes',
+      );
+    }
+    return requestLength;
   }
 
   void init() {
@@ -255,7 +269,7 @@ class Piece {
     if (_block == null ||
         _block!.length < byteLength ||
         !isCompletelyDownloaded) {
-      throw Exception("Piece is cleared");
+      throw StateError('Piece is cleared or incomplete');
     }
 
     // For v2, use Merkle tree validation if piece hash is available
