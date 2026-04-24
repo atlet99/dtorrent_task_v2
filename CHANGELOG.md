@@ -14,6 +14,8 @@
 - document `0.5.3` WebTorrent compatibility in README, including WebSocket trackers, `ws` web seeds, and `xs` exact-source magnet URLs
 - expand `example/example.dart` with a runnable WebTorrent-style magnet section for WSS trackers, web seeds, and current WebRTC scope
 - improve WebTorrent regression coverage for binary tracker responses, update announces, signalling payload variants, invalid peer IDs, `xs` round-trips, numbered exact sources, and invalid scheme filtering
+- fix pub.dev static-analysis score issues by renaming legacy ALL_CAPS constants/fields to lowerCamelCase and re-enabling identifier-name lints locally
+- exclude generated coverage output from the publish archive via `.pubignore`
 
 ## 0.5.2
 
