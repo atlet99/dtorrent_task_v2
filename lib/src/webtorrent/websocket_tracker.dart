@@ -65,7 +65,7 @@ class WebSocketTracker extends Tracker {
       'uploaded': _asInt(options['uploaded']) ?? 0,
       'left': _asInt(options['left']) ?? 0,
       'numwant': _asInt(options['numwant']) ?? 50,
-      if (eventType != EVENT_UPDATE) 'event': eventType,
+      if (eventType != eventUpdate) 'event': eventType,
     };
   }
 

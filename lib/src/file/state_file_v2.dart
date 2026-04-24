@@ -10,10 +10,10 @@ import 'file_priority.dart';
 var _log = Logger('StateFileV2');
 
 /// Current state file format version
-const int STATE_FILE_VERSION = 2;
+const int stateFileVersion = 2;
 
 /// Magic bytes to identify state file format
-const List<int> STATE_FILE_MAGIC = [
+const List<int> stateFileMagic = [
   0x44,
   0x54,
   0x53,
@@ -36,14 +36,14 @@ const List<int> STATE_FILE_MAGIC = [
 /// Total header: 72 bytes (4+4+20+4+8+8+8+8+1+1+2+4)
 
 /// Storage format flags
-const int FLAG_COMPRESSED = 0x01;
-const int FLAG_SPARSE = 0x02;
+const int flagCompressed = 0x01;
+const int flagSparse = 0x02;
 
 /// Threshold for using sparse storage (if completed pieces < this percentage, use sparse)
-const double SPARSE_THRESHOLD = 0.1; // 10%
+const double sparseThreshold = 0.1; // 10%
 
 /// Threshold for using compression (if bitfield size > this, compress)
-const int COMPRESSION_THRESHOLD = 1024; // 1KB
+const int compressionThreshold = 1024; // 1KB
 
 /// Enhanced state file with versioning, validation, and recovery support
 class StateFileV2 {
@@ -59,7 +59,7 @@ class StateFileV2 {
   StreamController<Map<String, dynamic>>? _streamController;
 
   /// State file metadata
-  int _version = STATE_FILE_VERSION;
+  int _version = stateFileVersion;
   DateTime? _lastModified;
   bool _isValid = false;
   bool _compressed = false;
@@ -131,7 +131,7 @@ class StateFileV2 {
       }
       _bitfield = Bitfield.createEmptyBitfield(metainfo.pieces!.length);
       _uploaded = 0;
-      _version = STATE_FILE_VERSION;
+      _version = stateFileVersion;
       _lastModified = DateTime.now();
       _isValid = true;
       await _writeHeader();
@@ -204,8 +204,8 @@ class StateFileV2 {
     var offset = 0;
 
     // Magic bytes
-    for (var i = 0; i < STATE_FILE_MAGIC.length; i++) {
-      header.setUint8(offset++, STATE_FILE_MAGIC[i]);
+    for (var i = 0; i < stateFileMagic.length; i++) {
+      header.setUint8(offset++, stateFileMagic[i]);
     }
 
     // Version
@@ -248,8 +248,8 @@ class StateFileV2 {
 
     // Storage flags
     int flags = 0;
-    if (_compressed) flags |= FLAG_COMPRESSED;
-    if (_sparse) flags |= FLAG_SPARSE;
+    if (_compressed) flags |= flagCompressed;
+    if (_sparse) flags |= flagSparse;
     header.setUint8(offset++, flags);
 
     // Compression level
@@ -282,7 +282,7 @@ class StateFileV2 {
         totalPieces > 0 ? completedCount / totalPieces : 0.0;
 
     // Use sparse storage if completion ratio is low
-    if (completionRatio < SPARSE_THRESHOLD && completedCount > 0) {
+    if (completionRatio < sparseThreshold && completedCount > 0) {
       _sparse = true;
       await _writeSparseBitfield(access);
     } else {
@@ -298,7 +298,7 @@ class StateFileV2 {
     Uint8List dataToWrite = _bitfield.buffer;
 
     // Compress if bitfield is large enough
-    if (_bitfield.buffer.length >= COMPRESSION_THRESHOLD) {
+    if (_bitfield.buffer.length >= compressionThreshold) {
       try {
         // Use gzip compression
         final compressed = gzip.encoder.convert(_bitfield.buffer);
@@ -478,10 +478,10 @@ class StateFileV2 {
 
       // Check if it's v2 format (has magic bytes)
       if (bytes.length >= 4 &&
-          bytes[0] == STATE_FILE_MAGIC[0] &&
-          bytes[1] == STATE_FILE_MAGIC[1] &&
-          bytes[2] == STATE_FILE_MAGIC[2] &&
-          bytes[3] == STATE_FILE_MAGIC[3]) {
+          bytes[0] == stateFileMagic[0] &&
+          bytes[1] == stateFileMagic[1] &&
+          bytes[2] == stateFileMagic[2] &&
+          bytes[3] == stateFileMagic[3]) {
         // Load v2 format
         await _loadV2Format(bytes);
       } else {
@@ -499,7 +499,7 @@ class StateFileV2 {
       }
       _bitfield = Bitfield.createEmptyBitfield(metainfo.pieces!.length);
       _uploaded = 0;
-      _version = STATE_FILE_VERSION;
+      _version = stateFileVersion;
       _lastModified = DateTime.now();
       await _writeHeader();
       await _writeBitfield();
@@ -554,8 +554,8 @@ class StateFileV2 {
 
     // Read storage flags
     final flags = header.getUint8(offset++);
-    _compressed = (flags & FLAG_COMPRESSED) != 0;
-    _sparse = (flags & FLAG_SPARSE) != 0;
+    _compressed = (flags & flagCompressed) != 0;
+    _sparse = (flags & flagSparse) != 0;
 
     // Read compression level
     _compressionLevel = header.getUint8(offset++);
@@ -754,7 +754,7 @@ class StateFileV2 {
     final uploadedView = ByteData.view(bytes.buffer, bitfieldBufferLength, 8);
     _uploaded = uploadedView.getUint64(0, Endian.little);
 
-    _version = STATE_FILE_VERSION;
+    _version = stateFileVersion;
     _lastModified = DateTime.now();
     _isValid = true;
 
@@ -813,7 +813,7 @@ class StateFileV2 {
 
       // Switch to/from sparse format if needed
       final shouldBeSparse =
-          completionRatio < SPARSE_THRESHOLD && completedCount > 0;
+          completionRatio < sparseThreshold && completedCount > 0;
       if (shouldBeSparse != _sparse) {
         _log.info(
             'Switching bitfield storage format (sparse: $shouldBeSparse)');
@@ -877,7 +877,7 @@ class StateFileV2 {
     final completionRatio =
         totalPieces > 0 ? completedCount / totalPieces : 0.0;
     final shouldBeSparse =
-        completionRatio < SPARSE_THRESHOLD && completedCount > 0;
+        completionRatio < sparseThreshold && completedCount > 0;
     _sparse = shouldBeSparse;
 
     if (_sparse) {
@@ -903,8 +903,8 @@ class StateFileV2 {
     var offset = 0;
 
     // Magic bytes
-    for (var i = 0; i < STATE_FILE_MAGIC.length; i++) {
-      header.setUint8(offset++, STATE_FILE_MAGIC[i]);
+    for (var i = 0; i < stateFileMagic.length; i++) {
+      header.setUint8(offset++, stateFileMagic[i]);
     }
 
     // Version
@@ -946,8 +946,8 @@ class StateFileV2 {
 
     // Storage flags
     int flags = 0;
-    if (_compressed) flags |= FLAG_COMPRESSED;
-    if (_sparse) flags |= FLAG_SPARSE;
+    if (_compressed) flags |= flagCompressed;
+    if (_sparse) flags |= flagSparse;
     header.setUint8(offset++, flags);
 
     // Compression level
@@ -1098,10 +1098,10 @@ class StateFileV2 {
       if (bytes.length < 72) return false;
 
       // Check magic bytes
-      if (bytes[0] != STATE_FILE_MAGIC[0] ||
-          bytes[1] != STATE_FILE_MAGIC[1] ||
-          bytes[2] != STATE_FILE_MAGIC[2] ||
-          bytes[3] != STATE_FILE_MAGIC[3]) {
+      if (bytes[0] != stateFileMagic[0] ||
+          bytes[1] != stateFileMagic[1] ||
+          bytes[2] != stateFileMagic[2] ||
+          bytes[3] != stateFileMagic[3]) {
         return false;
       }
 
@@ -1124,8 +1124,8 @@ class StateFileV2 {
       offset += 8; // Skip uploaded
       offset += 8; // Skip timestamp
       final flags = header.getUint8(offset++);
-      final compressed = (flags & FLAG_COMPRESSED) != 0;
-      final sparse = (flags & FLAG_SPARSE) != 0;
+      final compressed = (flags & flagCompressed) != 0;
+      final sparse = (flags & flagSparse) != 0;
       offset += 1; // Skip compression level
       offset += 2; // Skip reserved
 

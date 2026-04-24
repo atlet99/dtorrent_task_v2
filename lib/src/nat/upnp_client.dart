@@ -14,11 +14,11 @@ final _log = Logger('UPnPClient');
 /// Supports discovery, port mapping, and port deletion.
 class UPnPClient {
   /// UPnP discovery multicast address
-  static final InternetAddress SSDP_ADDRESS =
+  static final InternetAddress ssdpAddress =
       InternetAddress.fromRawAddress(Uint8List.fromList([239, 255, 255, 250]));
-  static const int SSDP_PORT = 1900;
-  static const String SSDP_MX = '3';
-  static const String SSDP_ST =
+  static const int ssdpPort = 1900;
+  static const String ssdpMx = '3';
+  static const String ssdpSt =
       'urn:schemas-upnp-org:device:InternetGatewayDevice:1';
 
   /// Discovered gateway device
@@ -42,8 +42,8 @@ class UPnPClient {
         final searchRequest = _buildMSearchRequest();
         socket.send(
           searchRequest.codeUnits,
-          SSDP_ADDRESS,
-          SSDP_PORT,
+          ssdpAddress,
+          ssdpPort,
         );
 
         // Wait for response
@@ -110,10 +110,10 @@ class UPnPClient {
   /// Build M-SEARCH request for SSDP discovery
   String _buildMSearchRequest() {
     return 'M-SEARCH * HTTP/1.1\r\n'
-        'HOST: ${SSDP_ADDRESS.address}:$SSDP_PORT\r\n'
+        'HOST: ${ssdpAddress.address}:$ssdpPort\r\n'
         'MAN: "ssdp:discover"\r\n'
-        'MX: $SSDP_MX\r\n'
-        'ST: $SSDP_ST\r\n'
+        'MX: $ssdpMx\r\n'
+        'ST: $ssdpSt\r\n'
         '\r\n';
   }
 

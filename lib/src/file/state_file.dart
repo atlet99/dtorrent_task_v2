@@ -7,13 +7,13 @@ import 'package:logging/logging.dart';
 import '../peer/bitfield.dart';
 
 /// Update payload type for bitfield mutations in state file write queue.
-const BITFIELD_TYPE = 'bitfield';
+const bitfieldType = 'bitfield';
 
 /// Update payload type for downloaded-bytes bookkeeping.
-const DOWNLOADED_TYPE = 'downloaded';
+const downloadedType = 'downloaded';
 
 /// Update payload type for uploaded-bytes bookkeeping.
-const UPLOADED_TYPE = 'uploaded';
+const uploadedType = 'uploaded';
 
 var _log = Logger('StateFile');
 

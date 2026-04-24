@@ -9,10 +9,10 @@ import 'package:events_emitter2/events_emitter2.dart';
 
 import 'peer_event.dart';
 
-const EVENT_STARTED = 'started';
-const EVENT_UPDATE = 'update';
-const EVENT_COMPLETED = 'completed';
-const EVENT_STOPPED = 'stopped';
+const eventStarted = 'started';
+const eventUpdate = 'update';
+const eventCompleted = 'completed';
+const eventStopped = 'stopped';
 
 ///
 /// An abstract class for accessing Announce to obtain data.
@@ -71,7 +71,7 @@ abstract class Tracker with EventsEmittable<TrackerEvent> {
     if (isDisposed) throw Exception('This tracker was disposed');
     if (isRunning) return true;
     _running = true;
-    return _intervalAnnounce(EVENT_STARTED);
+    return _intervalAnnounce(eventStarted);
   }
 
   ///
@@ -186,8 +186,8 @@ abstract class Tracker with EventsEmittable<TrackerEvent> {
       return null;
     }
     try {
-      var re = await announce(EVENT_STOPPED, await _announceOptions);
-      re?.eventType = EVENT_STOPPED;
+      var re = await announce(eventStopped, await _announceOptions);
+      re?.eventType = eventStopped;
       events.emit(TrackerStopEvent(this, re));
       await close();
       return re;
@@ -205,8 +205,8 @@ abstract class Tracker with EventsEmittable<TrackerEvent> {
     if (isDisposed) return null;
     stopIntervalAnnounce();
     try {
-      var re = await announce(EVENT_COMPLETED, await _announceOptions);
-      re?.eventType = EVENT_COMPLETED;
+      var re = await announce(eventCompleted, await _announceOptions);
+      re?.eventType = eventCompleted;
       events.emit(TrackerCompleteEvent(this, re));
       await close();
       return re;

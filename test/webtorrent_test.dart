@@ -22,7 +22,10 @@ class _StubAnnounceOptionsProvider implements AnnounceOptionsProvider {
 }
 
 Future<({HttpServer server, Uri uri, Future<Map<String, dynamic>> request})>
-    _startTrackerServer(Map<String, dynamic> response) async {
+    _startTrackerServer(
+  Map<String, dynamic> response, {
+  bool binaryResponse = false,
+}) async {
   final requestCompleter = Completer<Map<String, dynamic>>();
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   server.transform(WebSocketTransformer()).listen((socket) {
@@ -31,7 +34,12 @@ Future<({HttpServer server, Uri uri, Future<Map<String, dynamic>> request})>
       if (!requestCompleter.isCompleted) {
         requestCompleter.complete(decoded);
       }
-      socket.add(jsonEncode(response));
+      final encoded = jsonEncode(response);
+      if (binaryResponse) {
+        socket.add(utf8.encode(encoded));
+      } else {
+        socket.add(encoded);
+      }
     });
   });
 
@@ -63,13 +71,13 @@ void main() {
       );
 
       final event = await tracker.announce(
-        EVENT_STARTED,
+        eventStarted,
         await _StubAnnounceOptionsProvider().getOptions(fixture.uri, ''),
       );
       final request = await fixture.request;
 
       expect(request['action'], 'announce');
-      expect(request['event'], EVENT_STARTED);
+      expect(request['event'], eventStarted);
       expect((request['info_hash'] as String).codeUnits, hasLength(20));
       expect(request['peer_id'], '-DT0201-123456789012');
       expect(request['downloaded'], 12);
@@ -100,10 +108,102 @@ void main() {
 
       expect(
         tracker.announce(
-          EVENT_STARTED,
+          eventStarted,
           await _StubAnnounceOptionsProvider().getOptions(fixture.uri, ''),
         ),
         throwsA(isA<TrackerException>()),
+      );
+    });
+
+    test('omits event for update announces and parses binary response',
+        () async {
+      final fixture = await _startTrackerServer(
+        <String, dynamic>{
+          'action': 'announce',
+          'interval': '180',
+          'min_interval': 60,
+          'complete': 8,
+          'incomplete': 1,
+        },
+        binaryResponse: true,
+      );
+      addTearDown(() async => fixture.server.close(force: true));
+
+      final tracker = WebSocketTracker(
+        fixture.uri,
+        Uint8List(20),
+        provider: _StubAnnounceOptionsProvider(),
+      );
+
+      final event = await tracker.announce(
+        eventUpdate,
+        await _StubAnnounceOptionsProvider().getOptions(fixture.uri, ''),
+      );
+      final request = await fixture.request;
+
+      expect(request, isNot(contains('event')));
+      expect(event, isNotNull);
+      expect(event!.interval, 180);
+      expect(event.minInterval, 60);
+      expect(event.complete, 8);
+      expect(event.incomplete, 1);
+    });
+
+    test('preserves WebTorrent signalling payload variants', () async {
+      final fixture = await _startTrackerServer(<String, dynamic>{
+        'action': 'announce',
+        'answer': <String, dynamic>{'type': 'answer', 'sdp': 'answer-sdp'},
+        'offers': [
+          <String, dynamic>{
+            'offer_id': 'offer-1',
+            'offer': <String, dynamic>{'type': 'offer'},
+          },
+        ],
+        'ice': <String, dynamic>{'candidate': 'candidate:1'},
+        'to_peer_id': '-WW0001-targetpeer1',
+        'peers': [
+          <String, dynamic>{'peer_id': '-WW0001-peer000001'},
+        ],
+      });
+      addTearDown(() async => fixture.server.close(force: true));
+
+      final tracker = WebSocketTracker(
+        fixture.uri,
+        Uint8List(20),
+        provider: _StubAnnounceOptionsProvider(),
+      );
+
+      final event = await tracker.announce(
+        eventStarted,
+        await _StubAnnounceOptionsProvider().getOptions(fixture.uri, ''),
+      );
+
+      expect(event, isNotNull);
+      expect(event!.otherInfomationsMap['answer'], isA<Map>());
+      expect(event.otherInfomationsMap['offers'], isA<List>());
+      expect(event.otherInfomationsMap['ice'], isA<Map>());
+      expect(event.otherInfomationsMap['to_peer_id'], '-WW0001-targetpeer1');
+      expect(event.otherInfomationsMap['webtorrent_peers'], isA<List>());
+    });
+
+    test('rejects missing or invalid peer id before sending announce',
+        () async {
+      final fixture = await _startTrackerServer(<String, dynamic>{
+        'action': 'announce',
+      });
+      addTearDown(() async => fixture.server.close(force: true));
+
+      final tracker = WebSocketTracker(
+        fixture.uri,
+        Uint8List(20),
+        provider: _StubAnnounceOptionsProvider(),
+      );
+
+      expect(
+        tracker.announce(eventStarted, <String, dynamic>{
+          'peerId': 'too-short',
+        }),
+        throwsA(isA<ArgumentError>()),
       );
     });
   });

@@ -89,15 +89,15 @@ void main() {
     });
 
     test('Hash request message ID is 21', () {
-      expect(ID_HASH_REQUEST, equals(21));
+      expect(idHashRequest, equals(21));
     });
 
     test('Hashes message ID is 22', () {
-      expect(ID_HASHES, equals(22));
+      expect(idHashes, equals(22));
     });
 
     test('Hash reject message ID is 23', () {
-      expect(ID_HASH_REJECT, equals(23));
+      expect(idHashReject, equals(23));
     });
 
     test('Hash request message minimum size is 42 bytes', () {

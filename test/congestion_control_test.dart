@@ -19,7 +19,7 @@ void main() {
 
     test('should initialize with default window size', () {
       expect(peer.currentWindow,
-          equals(1)); // DEFAULT_REQUEST_LENGTH / DEFAULT_REQUEST_LENGTH
+          equals(1)); // defaultRequestLength / defaultRequestLength
     });
 
     test('should update RTO based on RTT', () {
@@ -56,7 +56,7 @@ void main() {
       expect(peer.currentWindow, greaterThanOrEqualTo(1));
     });
 
-    test('should limit window to MAX_WINDOW', () {
+    test('should limit window to maxWindow', () {
       // Simulate many successful ACKs
       for (var i = 0; i < 100; i++) {
         final requests = [
@@ -72,7 +72,7 @@ void main() {
       }
 
       // Window should be capped
-      final maxWindow = 1048576 ~/ 16384; // MAX_WINDOW / DEFAULT_REQUEST_LENGTH
+      final maxWindow = 1048576 ~/ 16384; // maxWindow / defaultRequestLength
       expect(peer.currentWindow, lessThanOrEqualTo(maxWindow));
     });
 

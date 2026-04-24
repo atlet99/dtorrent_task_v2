@@ -19,7 +19,7 @@ void main() {
     });
 
     test('NAT-PMP port constant', () {
-      expect(NATPMPClient.NATPMP_PORT, equals(5351));
+      expect(NATPMPClient.natPmpPort, equals(5351));
     });
 
     test('addPortMapping API structure', () async {

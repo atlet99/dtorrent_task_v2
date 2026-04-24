@@ -175,7 +175,7 @@ And there are methods to control the `TorrentTask`:
 
 For pub.dev and local onboarding, start from:
 
-- `example/example.dart` - full feature tour (magnet, queue, RSS, proxy, filtering, encryption, DHT, sequential presets)
+- `example/example.dart` - full feature tour (magnet, WebTorrent-style magnets, queue, RSS, proxy, filtering, encryption, DHT, sequential presets)
 - `example/file_moving_example.dart` - move files while downloading (`moveDownloadedFile`, `detectMovedFiles`)
 - `example/auto_move_example.dart` - auto-move rules by extension
 - `example/scheduling_example.dart` - time-window scheduling and speed limits

@@ -15,15 +15,15 @@ import '../congestion_control.dart';
 import '../speed_calculator.dart';
 import '../extensions/extended_processor.dart';
 
-const KEEP_ALIVE_MESSAGE = [0, 0, 0, 0];
+const keepAliveMessage = [0, 0, 0, 0];
 
 // [BEP 0003](http://www.bittorrent.org/beps/bep_0003.html) states:
 // All later integers sent in the protocol are encoded as four bytes big-endian
-const MESSAGE_INTEGER = 4;
+const messageInteger = 4;
 
 // This is the length of the handshake message which consist of
 // 20 bytes for the header
-const HAND_SHAKE_HEAD = [
+const handshakeHead = [
   19,
   66,
   105,
@@ -46,60 +46,60 @@ const HAND_SHAKE_HEAD = [
   108
 ];
 // 8 reserved bytes
-const RESERVED = [0, 0, 0, 0, 0, 0, 0, 0];
+const reservedBytes = [0, 0, 0, 0, 0, 0, 0, 0];
 // 20 bytes for the infohash
-const INFO_HASH_START = 28;
+const infoHashStart = 28;
 // 20 bytes for peer id
-const PEER_ID_START = 48;
+const peerIdStart = 48;
 
 // which totals to: 68
-const HAND_SHAKE_MESSAGE_LENGTH = 68;
+const handshakeMessageLength = 68;
 
-const ID_CHOKE = 0;
-const ID_UNCHOKE = 1;
-const ID_INTERESTED = 2;
-const ID_NOT_INTERESTED = 3;
-const ID_HAVE = 4;
-const ID_BITFIELD = 5;
-const ID_REQUEST = 6;
-const ID_PIECE = 7;
-const ID_CANCEL = 8;
-const ID_PORT = 9;
-const ID_EXTENDED = 20;
+const idChoke = 0;
+const idUnchoke = 1;
+const idInterested = 2;
+const idNotInterested = 3;
+const idHave = 4;
+const idBitfield = 5;
+const idRequest = 6;
+const idPiece = 7;
+const idCancel = 8;
+const idPort = 9;
+const idExtended = 20;
 // BEP 52 v2 protocol messages
-const ID_HASH_REQUEST = 21;
-const ID_HASHES = 22;
-const ID_HASH_REJECT = 23;
+const idHashRequest = 21;
+const idHashes = 22;
+const idHashReject = 23;
 
-const EXTENSION_LT_DONTHAVE = 'lt_donthave';
+const extensionLtDontHave = 'lt_donthave';
 
-const OP_HAVE_ALL = 0x0e;
-const OP_HAVE_NONE = 0x0f;
-const OP_SUGGEST_PIECE = 0x0d;
-const OP_REJECT_REQUEST = 0x10;
-const OP_ALLOW_FAST = 0x11;
+const opHaveAll = 0x0e;
+const opHaveNone = 0x0f;
+const opSuggestPiece = 0x0d;
+const opRejectRequest = 0x10;
+const opAllowFast = 0x11;
 
 /// Maximum message size in bytes (2MB)
 ///
 /// Messages larger than this size will be rejected to prevent buffer overflows
 /// and excessive memory usage. This limit applies to both sending and receiving.
-const MAX_MESSAGE_SIZE = 1024 * 1024 * 2;
+const maxMessageSize = 1024 * 1024 * 2;
 
 /// Buffer size threshold for warnings (10MB)
 ///
 /// When the total buffer size (cache buffer + incoming data) exceeds this threshold,
 /// a warning is logged to help identify potential memory issues or buffer buildup.
-const BUFFER_SIZE_WARNING_THRESHOLD = 10 * 1024 * 1024;
+const bufferSizeWarningThreshold = 10 * 1024 * 1024;
 
 /// Maximum signed 32-bit integer value (2^31 - 1)
 ///
 /// Used to prevent integer overflow in buffer offset calculations.
-const MAX_INT32 = 0x7FFFFFFF;
+const maxInt32 = 0x7FFFFFFF;
 
-enum PeerType { TCP, UTP }
+enum PeerType { tcp, utp }
 
 /// 30 Seconds
-const DEFAULT_CONNECT_TIMEOUT = 30;
+const defaultConnectTimeout = 30;
 
 enum PeerSource { tracker, dht, pex, lsd, incoming, manual, holepunch }
 
@@ -231,7 +231,7 @@ abstract class Peer
   final _remoteRequestBuffer = <List<int>>[];
 
   /// Max request count in one piple ,5
-  static const MAX_REQUEST_COUNT = 5;
+  static const maxRequestCount = 5;
 
   bool remoteEnableFastPeer = false;
 
@@ -297,7 +297,7 @@ abstract class Peer
   /// [localEnableExtended] indicates whether local peers can use the
   /// [Extension Protocol](http://www.bittorrent.org/beps/bep_0010.html).
   Peer(this.address, this._infoHashBuffer, this._piecesNum, this.source,
-      {this.type = PeerType.TCP,
+      {this.type = PeerType.tcp,
       this.localEnableFastPeer = true,
       this.localEnableExtended = true,
       this.reqq = 100}) {
@@ -389,7 +389,7 @@ abstract class Peer
   }
 
   /// Connect remote peer
-  Future connect([int timeout = DEFAULT_CONNECT_TIMEOUT]) async {
+  Future connect([int timeout = defaultConnectTimeout]) async {
     _log.fine('Connecting to peer $address (source: $source)');
     try {
       _init();
@@ -404,7 +404,7 @@ abstract class Peer
       }, onError: (e) {
         if (e is RangeError) {
           var reason = 'STREAM_ERROR';
-          Peer._recordRangeError(reason, isUtp: type == PeerType.UTP);
+          Peer._recordRangeError(reason, isUtp: type == PeerType.utp);
           _log.severe(
               'RangeError in peer stream: peer=$address, type=$type, error=${e.message}',
               e);
@@ -496,14 +496,14 @@ abstract class Peer
       if (data.isNotEmpty) _startToCountdown();
 
       // Log incoming data details for uTP debugging with buffer size tracking
-      if (type == PeerType.UTP && data.isNotEmpty) {
+      if (type == PeerType.utp && data.isNotEmpty) {
         var totalBufferSize = _cacheBuffer.length + data.length;
         _log.fine(
             'uTP received data: peer=$address, dataLength=${data.length}, '
             'cacheBufferLength=${_cacheBuffer.length}, totalBufferSize=$totalBufferSize');
 
         // Warn if buffer is getting too large (potential memory issue)
-        if (totalBufferSize > BUFFER_SIZE_WARNING_THRESHOLD) {
+        if (totalBufferSize > bufferSizeWarningThreshold) {
           _log.warning(
               'uTP buffer size warning: peer=$address, totalBufferSize=$totalBufferSize bytes');
         }
@@ -515,14 +515,13 @@ abstract class Peer
       if (_cacheBuffer.isEmpty) return;
       // Check if it's a handshake header.
       if (_cacheBuffer[0] == 19 &&
-          _cacheBuffer.length >= HAND_SHAKE_MESSAGE_LENGTH) {
+          _cacheBuffer.length >= handshakeMessageLength) {
         if (_isHandShakeHead(_cacheBuffer)) {
           if (_validateInfoHash(_cacheBuffer)) {
-            var handshakeBuffer = Uint8List(HAND_SHAKE_MESSAGE_LENGTH);
-            handshakeBuffer.setRange(
-                0, HAND_SHAKE_MESSAGE_LENGTH, _cacheBuffer);
+            var handshakeBuffer = Uint8List(handshakeMessageLength);
+            handshakeBuffer.setRange(0, handshakeMessageLength, _cacheBuffer);
             // clear the buffer to only the handshake
-            _cacheBuffer = _cacheBuffer.sublist(HAND_SHAKE_MESSAGE_LENGTH);
+            _cacheBuffer = _cacheBuffer.sublist(handshakeMessageLength);
             Timer.run(() => _processHandShake(handshakeBuffer));
             if (_cacheBuffer.isNotEmpty) {
               Timer.run(() => _processReceiveData(Uint8List(0)));
@@ -535,29 +534,29 @@ abstract class Peer
           }
         }
       }
-      if (_cacheBuffer.length >= MESSAGE_INTEGER) {
+      if (_cacheBuffer.length >= messageInteger) {
         var start = 0;
-        var lengthBuffer = Uint8List(MESSAGE_INTEGER);
+        var lengthBuffer = Uint8List(messageInteger);
 
         // Validate buffer bounds before setRange
-        if (start + MESSAGE_INTEGER > _cacheBuffer.length) {
+        if (start + messageInteger > _cacheBuffer.length) {
           _log.warning(
               'Invalid buffer bounds: start=$start, bufferLength=${_cacheBuffer.length}, peer=$address');
           return;
         }
 
-        lengthBuffer.setRange(0, MESSAGE_INTEGER, _cacheBuffer, start);
+        lengthBuffer.setRange(0, messageInteger, _cacheBuffer, start);
         var length = ByteData.view(lengthBuffer.buffer).getInt32(0, Endian.big);
 
         // Log message parsing details for uTP debugging
-        if (type == PeerType.UTP) {
+        if (type == PeerType.utp) {
           _log.fine(
               'uTP parsing message: peer=$address, start=$start, length=$length, bufferLength=${_cacheBuffer.length}');
         }
 
         // Validate length value - protect against negative or extremely large values
         // Also protect against potential integer overflow in calculations
-        if (length < 0 || length > MAX_MESSAGE_SIZE) {
+        if (length < 0 || length > maxMessageSize) {
           _log.warning(
               'Invalid message length: $length, peer=$address, bufferLength=${_cacheBuffer.length}, type=$type');
           dispose('Invalid message length: $length');
@@ -565,7 +564,7 @@ abstract class Peer
         }
 
         // Additional validation: check if length would cause overflow in subsequent calculations
-        if (start + MESSAGE_INTEGER + length > MAX_INT32) {
+        if (start + messageInteger + length > maxInt32) {
           _log.warning(
               'Message length would cause integer overflow: start=$start, length=$length, peer=$address');
           dispose('Message length overflow: $length');
@@ -574,13 +573,13 @@ abstract class Peer
 
         List<Uint8List>? piecesMessage;
         List<Uint8List>? haveMessages;
-        while (_cacheBuffer.length - start - MESSAGE_INTEGER >= length) {
+        while (_cacheBuffer.length - start - messageInteger >= length) {
           if (length == 0) {
             // keep alive
             Timer.run(() => _processMessage(null, null));
           } else {
             // Validate bounds before accessing message ID
-            if (start + MESSAGE_INTEGER >= _cacheBuffer.length) {
+            if (start + messageInteger >= _cacheBuffer.length) {
               _log.warning(
                   'Buffer bounds exceeded when reading message ID: start=$start, bufferLength=${_cacheBuffer.length}, peer=$address');
               break;
@@ -588,7 +587,7 @@ abstract class Peer
 
             // skip the message length to read the id
             // the id is a single byte
-            var id = _cacheBuffer[start + MESSAGE_INTEGER];
+            var id = _cacheBuffer[start + messageInteger];
 
             // Messages without payload (choke, unchoke, interested, not interested) have length = 1
             // Messages with payload have length > 1
@@ -603,7 +602,7 @@ abstract class Peer
             Uint8List? messageBuffer;
             if (length > 1) {
               // Validate bounds before setRange for message buffer
-              var messageStart = start + MESSAGE_INTEGER + 1;
+              var messageStart = start + messageInteger + 1;
               var messageEnd = messageStart + (length - 1);
               if (messageEnd > _cacheBuffer.length) {
                 _log.warning(
@@ -626,13 +625,13 @@ abstract class Peer
             }
 
             switch (id) {
-              case ID_PIECE:
+              case idPiece:
                 if (messageBuffer != null) {
                   piecesMessage ??= <Uint8List>[];
                   piecesMessage.add(messageBuffer);
                 }
                 break;
-              case ID_HAVE:
+              case idHave:
                 if (messageBuffer != null) {
                   haveMessages ??= <Uint8List>[];
                   haveMessages.add(messageBuffer);
@@ -643,22 +642,22 @@ abstract class Peer
             }
           }
           // set to the start of the next message
-          start += (MESSAGE_INTEGER + length);
-          if (_cacheBuffer.length - start < MESSAGE_INTEGER) break;
+          start += (messageInteger + length);
+          if (_cacheBuffer.length - start < messageInteger) break;
 
           // Validate bounds before reading next message length
-          if (start + MESSAGE_INTEGER > _cacheBuffer.length) {
+          if (start + messageInteger > _cacheBuffer.length) {
             _log.warning(
                 'Buffer bounds exceeded when reading next message: start=$start, bufferLength=${_cacheBuffer.length}, peer=$address');
             break;
           }
 
-          lengthBuffer.setRange(0, MESSAGE_INTEGER, _cacheBuffer, start);
+          lengthBuffer.setRange(0, messageInteger, _cacheBuffer, start);
           var nextLength =
               ByteData.view(lengthBuffer.buffer).getInt32(0, Endian.big);
 
           // Validate next length value
-          if (nextLength < 0 || nextLength > MAX_MESSAGE_SIZE) {
+          if (nextLength < 0 || nextLength > maxMessageSize) {
             _log.warning(
                 'Invalid next message length: $nextLength, peer=$address');
             break;
@@ -682,7 +681,7 @@ abstract class Peer
       }
     } on RangeError catch (e, stackTrace) {
       var reason = 'PROCESS_RECEIVE_DATA';
-      Peer._recordRangeError(reason, isUtp: type == PeerType.UTP);
+      Peer._recordRangeError(reason, isUtp: type == PeerType.utp);
       _log.severe(
           'RangeError in _processReceiveData: peer=$address, type=$type, '
           'bufferLength=${_cacheBuffer.length}, dataLength=${data.length}, '
@@ -697,9 +696,9 @@ abstract class Peer
   }
 
   bool _isHandShakeHead(List<int> buffer) {
-    if (buffer.length < HAND_SHAKE_MESSAGE_LENGTH) return false;
-    for (var i = 0; i < HAND_SHAKE_HEAD.length; i++) {
-      if (buffer[i] != HAND_SHAKE_HEAD[i]) return false;
+    if (buffer.length < handshakeMessageLength) return false;
+    for (var i = 0; i < handshakeHead.length; i++) {
+      if (buffer[i] != handshakeHead[i]) return false;
     }
     return true;
   }
@@ -707,9 +706,9 @@ abstract class Peer
   bool _validateInfoHash(List<int> buffer) {
     try {
       // Validate buffer has enough length before accessing
-      if (buffer.length < PEER_ID_START) {
+      if (buffer.length < peerIdStart) {
         _log.warning(
-            'Buffer too short for infohash validation: length=${buffer.length}, required=$PEER_ID_START, peer=$address');
+            'Buffer too short for infohash validation: length=${buffer.length}, required=$peerIdStart, peer=$address');
         return false;
       }
 
@@ -717,7 +716,7 @@ abstract class Peer
       // v2 info hash (32 bytes) is communicated via Extension Protocol (BEP 10)
       // For hybrid torrents, v1 info hash is used in handshake
       var expectedInfoHashLength =
-          PEER_ID_START - INFO_HASH_START; // Always 20 bytes
+          peerIdStart - infoHashStart; // Always 20 bytes
 
       // Support both v1 (20 bytes) and v2 (32 bytes) info hash buffers
       // But in handshake, we only validate the first 20 bytes
@@ -728,13 +727,13 @@ abstract class Peer
       }
 
       // Validate first 20 bytes (standard handshake format)
-      for (var i = INFO_HASH_START; i < PEER_ID_START; i++) {
-        if (buffer[i] != _infoHashBuffer[i - INFO_HASH_START]) return false;
+      for (var i = infoHashStart; i < peerIdStart; i++) {
+        if (buffer[i] != _infoHashBuffer[i - infoHashStart]) return false;
       }
       return true;
     } on RangeError catch (e, stackTrace) {
       var reason = 'VALIDATE_INFO_HASH';
-      Peer._recordRangeError(reason, isUtp: type == PeerType.UTP);
+      Peer._recordRangeError(reason, isUtp: type == PeerType.utp);
       _log.severe(
           'RangeError in _validateInfoHash: peer=$address, type=$type, bufferLength=${buffer.length}, error=${e.message}',
           e,
@@ -750,86 +749,86 @@ abstract class Peer
       return;
     } else {
       switch (id) {
-        case ID_CHOKE:
+        case idChoke:
           _log.fine('remote choke me : $address');
           chokeMe = true; // choke message
           return;
-        case ID_UNCHOKE:
+        case idUnchoke:
           _log.fine('remote unchoke me : $address');
           chokeMe = false; // unchoke message
           return;
-        case ID_INTERESTED:
+        case idInterested:
           _log.fine('remote interested me : $address');
           interestedMe = true;
           return; // interested message
-        case ID_NOT_INTERESTED:
+        case idNotInterested:
           _log.fine('remote not interested me : $address');
           interestedMe = false;
           return; // not interested message
-        // case ID_HAVE:
+        // case idHave:
         //   _log('process have from : $address');
         //   var index = ByteData.view(message.buffer).getUint32(0);
         //   _processHave(index);
         //   return; // have message
-        case ID_BITFIELD:
+        case idBitfield:
           // log('process bitfield from $address');
           if (message != null) initRemoteBitfield(message);
           return; // bitfield message
-        case ID_REQUEST:
+        case idRequest:
           _log.fine('process request from $address');
           if (message != null) _processRemoteRequest(message);
           return; // request message
-        // case ID_PIECE:
+        // case idPiece:
         //   _log('process pieces : $address');
         //   _processReceivePiece(message);
         //   return; // pieces message
-        case ID_CANCEL:
+        case idCancel:
           _log.fine('process cancel : $address');
           if (message != null) _processCancel(message);
           return; // cancel message
-        case ID_PORT:
+        case idPort:
           _log.fine('process port : $address');
           if (message != null) {
             var port = ByteData.view(message.buffer).getUint16(0);
             _processPortChange(port);
           }
           return; // port message
-        case OP_HAVE_ALL:
+        case opHaveAll:
           _log.fine('process have all : $address');
           _processHaveAll();
           return;
-        case OP_HAVE_NONE:
+        case opHaveNone:
           _log.fine('process have none : $address');
           _processHaveNone();
           return;
-        case OP_SUGGEST_PIECE:
+        case opSuggestPiece:
           _log.fine('process suggest pieces : $address');
           if (message != null) _processSuggestPiece(message);
           return;
-        case OP_REJECT_REQUEST:
+        case opRejectRequest:
           _log.fine('process reject request : $address');
           if (message != null) _processRejectRequest(message);
           return;
-        case OP_ALLOW_FAST:
+        case opAllowFast:
           _log.fine('process allow fast : $address');
           if (message != null) _processAllowFast(message);
           return;
-        case ID_EXTENDED:
+        case idExtended:
           if (message != null) {
             var extensionId = message[0];
             message = message.sublist(1);
             processExtendMessage(extensionId, message);
           }
           return;
-        case ID_HASH_REQUEST:
+        case idHashRequest:
           _log.fine('process hash request from $address');
           if (message != null) _processHashRequest(message);
           return;
-        case ID_HASHES:
+        case idHashes:
           _log.fine('process hashes from $address');
           if (message != null) _processHashes(message);
           return;
-        case ID_HASH_REJECT:
+        case idHashReject:
           _log.fine('process hash reject from $address');
           if (message != null) _processHashReject(message);
           return;
@@ -871,7 +870,7 @@ abstract class Peer
   void processExtendMessage(int id, Uint8List message) {
     if (id != 0) {
       final extensionName = getExtendedEventNameById(id);
-      if (extensionName == EXTENSION_LT_DONTHAVE) {
+      if (extensionName == extensionLtDontHave) {
         _processDontHaveExtension(message);
         return;
       }
@@ -885,7 +884,7 @@ abstract class Peer
       var message = <int>[];
       message.add(id);
       message.addAll(data);
-      sendMessage(ID_EXTENDED, message);
+      sendMessage(idExtended, message);
     }
   }
 
@@ -1144,10 +1143,10 @@ abstract class Peer
     var index = view.getUint32(0);
     var begin = view.getUint32(4);
     var length = view.getUint32(8);
-    if (length > MAX_REQUEST_LENGTH) {
+    if (length > maxRequestLength) {
       _log.warning('TOO LARGE BLOCK', 'BLOCK $length');
       dispose(BadException(
-          '$address : request block length larger than limit : $length > $MAX_REQUEST_LENGTH'));
+          '$address : request block length larger than limit : $length > $maxRequestLength'));
       return;
     }
     if (chokeRemote) {
@@ -1182,13 +1181,13 @@ abstract class Peer
   void _processReceivePieces(List<Uint8List> messages) {
     var requests = <List<int>>[];
     for (var message in messages) {
-      // MESSAGE_INTEGER * 2 for index + begin
-      var dataHead = Uint8List(MESSAGE_INTEGER * 2);
-      dataHead.setRange(0, MESSAGE_INTEGER * 2, message);
+      // messageInteger * 2 for index + begin
+      var dataHead = Uint8List(messageInteger * 2);
+      dataHead.setRange(0, messageInteger * 2, message);
       var view = ByteData.view(dataHead.buffer);
       var index = view.getUint32(0, Endian.big);
       var begin = view.getUint32(4, Endian.big);
-      var blockLength = message.length - MESSAGE_INTEGER * 2;
+      var blockLength = message.length - messageInteger * 2;
       var request = removeRequest(index, begin, blockLength);
 
       /// Per BEP 6: Receiving a piece without a corresponding request is a protocol violation.
@@ -1201,7 +1200,7 @@ abstract class Peer
         return;
       }
       var block = Uint8List(blockLength);
-      block.setRange(0, blockLength, message, MESSAGE_INTEGER * 2);
+      block.setRange(0, blockLength, message, messageInteger * 2);
       requests.add(request);
       _log.fine(
           'Received request for Piece ($index, $begin) content, downloaded $downloaded bytes from the current Peer $type $address');
@@ -1263,7 +1262,7 @@ abstract class Peer
 
   void _processHandShake(List<int> data) {
     _remotePeerId = _parseRemotePeerId(data);
-    var reserved = data.getRange(HAND_SHAKE_HEAD.length, INFO_HASH_START);
+    var reserved = data.getRange(handshakeHead.length, infoHashStart);
     var fast = reserved.elementAt(7) & 0x04;
     remoteEnableFastPeer = (fast == 0x04);
     var extended = reserved.elementAt(5);
@@ -1287,13 +1286,13 @@ abstract class Peer
   void _sendExtendedHandshake() async {
     if (localEnableExtended && remoteEnableExtended) {
       var m = await _createExtendedHandshakeMessage();
-      sendMessage(ID_EXTENDED, m);
+      sendMessage(idExtended, m);
     }
   }
 
   String _parseRemotePeerId(List<int> data) {
     return String.fromCharCodes(
-        data.sublist(PEER_ID_START, HAND_SHAKE_MESSAGE_LENGTH));
+        data.sublist(peerIdStart, handshakeMessageLength));
   }
 
   /// Connect remote peer and return a [Stream] future
@@ -1310,7 +1309,7 @@ abstract class Peer
     if (isDisposed) return;
     if (id == null) {
       // it's keep alive
-      sendByteMessage(KEEP_ALIVE_MESSAGE);
+      sendByteMessage(keepAliveMessage);
       _startToCountdown();
       return;
     }
@@ -1323,8 +1322,8 @@ abstract class Peer
     var length = 0;
     if (message != null) length = message.length;
     length = length + 1;
-    var datas = Uint8List(length + MESSAGE_INTEGER);
-    var head = Uint8List(MESSAGE_INTEGER);
+    var datas = Uint8List(length + messageInteger);
+    var head = Uint8List(messageInteger);
     var view1 = ByteData.view(head.buffer);
     view1.setUint32(0, length, Endian.big);
     datas.setRange(0, head.length, head);
@@ -1348,8 +1347,8 @@ abstract class Peer
   void sendHandShake(String localPeerId) {
     if (_handShaked) return;
     var message = <int>[];
-    message.addAll(HAND_SHAKE_HEAD);
-    var reserved = List<int>.from(RESERVED);
+    message.addAll(handshakeHead);
+    var reserved = List<int>.from(reservedBytes);
     if (localEnableFastPeer) {
       reserved[7] |= 0x04;
     }
@@ -1435,7 +1434,7 @@ abstract class Peer
     view.setUint32(4, begin, Endian.big);
     bytes.addAll(messageHead);
     bytes.addAll(block);
-    sendMessage(ID_PIECE, bytes);
+    sendMessage(idPiece, bytes);
     updateUpload(bytes.length);
     return true;
   }
@@ -1455,8 +1454,7 @@ abstract class Peer
   /// - [length]: integer specifying the requested length.
   /// - [timeout]: when send request to remote , after [timeout] of not getting response,
   /// it will fire [requestTimeout] event
-  bool sendRequest(int index, int begin,
-      [int length = DEFAULT_REQUEST_LENGTH]) {
+  bool sendRequest(int index, int begin, [int length = defaultRequestLength]) {
     if (_chokeMe) {
       _log.fine(
           'Peer $address is choking me, cannot send request for Piece ($index, $begin, $length)');
@@ -1479,7 +1477,7 @@ abstract class Peer
     view.setUint32(0, index, Endian.big);
     view.setUint32(4, begin, Endian.big);
     view.setUint32(8, length, Endian.big);
-    sendMessage(ID_REQUEST, bytes);
+    sendMessage(idRequest, bytes);
   }
 
   @override
@@ -1528,14 +1526,14 @@ abstract class Peer
       } else if (bitfield.haveAll()) {
         sendHaveAll();
       } else {
-        sendMessage(ID_BITFIELD, bitfield.buffer);
+        sendMessage(idBitfield, bitfield.buffer);
       }
     } else {
       // According to BEP 0003, bitfield is optional if we have no pieces
       // But we should send it if we have any pieces, or if we want to indicate we have none
       // For compatibility, always send bitfield if we have any pieces
       if (bitfield.haveCompletePiece()) {
-        sendMessage(ID_BITFIELD, bitfield.buffer);
+        sendMessage(idBitfield, bitfield.buffer);
       }
       // If we have no pieces, we don't send bitfield (this is allowed by BEP 0003)
       // But peers may not be interested in us if we don't send bitfield
@@ -1551,7 +1549,7 @@ abstract class Peer
     var bytes = Uint8List(4);
     _log.fine('Sending have information to the peer: $bytes, $index');
     ByteData.view(bytes.buffer).setUint32(0, index, Endian.big);
-    sendMessage(ID_HAVE, bytes);
+    sendMessage(idHave, bytes);
   }
 
   /// BEP 54 lt_donthave extension message.
@@ -1561,7 +1559,7 @@ abstract class Peer
     if (index < 0 || index >= _piecesNum) return;
     final bytes = Uint8List(4);
     ByteData.view(bytes.buffer).setUint32(0, index, Endian.big);
-    sendExtendMessage(EXTENSION_LT_DONTHAVE, bytes);
+    sendExtendMessage(extensionLtDontHave, bytes);
   }
 
   /// - `choke: <len=0001><id=0>`
@@ -1578,8 +1576,8 @@ abstract class Peer
       return;
     }
     chokeRemote = choke;
-    var id = ID_CHOKE;
-    if (!choke) id = ID_UNCHOKE;
+    var id = idChoke;
+    if (!choke) id = idUnchoke;
     sendMessage(id);
 
     // Per BEP 6: When choking, reject all pending requests except allowed fast
@@ -1619,8 +1617,8 @@ abstract class Peer
       return;
     }
     interestedRemote = iamInterested;
-    var id = ID_INTERESTED;
-    if (!iamInterested) id = ID_NOT_INTERESTED;
+    var id = idInterested;
+    if (!iamInterested) id = idNotInterested;
     _log.fine(
         'iam interested: $iamInterested, send id: $id to remote peer $address');
     sendMessage(id);
@@ -1650,7 +1648,7 @@ abstract class Peer
     offset += 4;
     bytes[offset] = proofLayers;
 
-    sendMessage(ID_HASH_REQUEST, bytes);
+    sendMessage(idHashRequest, bytes);
   }
 
   /// Send hashes message (BEP 52)
@@ -1679,7 +1677,7 @@ abstract class Peer
     offset += 1;
     bytes.setRange(offset, offset + hashes.length, hashes);
 
-    sendMessage(ID_HASHES, bytes);
+    sendMessage(idHashes, bytes);
   }
 
   /// Send hash reject message (BEP 52)
@@ -1705,7 +1703,7 @@ abstract class Peer
     offset += 4;
     bytes[offset] = proofLayers;
 
-    sendMessage(ID_HASH_REJECT, bytes);
+    sendMessage(idHashReject, bytes);
   }
 
   /// `cancel: <len=0013><id=8><index><begin><length>`
@@ -1718,7 +1716,7 @@ abstract class Peer
     view.setUint32(0, index, Endian.big);
     view.setUint32(4, begin, Endian.big);
     view.setUint32(8, length, Endian.big);
-    sendMessage(ID_CANCEL, bytes);
+    sendMessage(idCancel, bytes);
   }
 
   /// `port: <len=0003><id=9><listen-port>`
@@ -1729,7 +1727,7 @@ abstract class Peer
   void sendPortChange(int port) {
     var bytes = Uint8List(2);
     ByteData.view(bytes.buffer).setUint16(0, port);
-    sendMessage(ID_PORT, bytes);
+    sendMessage(idPort, bytes);
   }
 
   /// [BEP 0006](http://www.bittorrent.org/beps/bep_0006.html)
@@ -1737,7 +1735,7 @@ abstract class Peer
   /// Have all message
   void sendHaveAll() {
     if (remoteEnableFastPeer && localEnableFastPeer) {
-      sendMessage(OP_HAVE_ALL);
+      sendMessage(opHaveAll);
     }
   }
 
@@ -1746,7 +1744,7 @@ abstract class Peer
   /// Have none message
   void sendHaveNone() {
     if (remoteEnableFastPeer && localEnableFastPeer) {
-      sendMessage(OP_HAVE_NONE);
+      sendMessage(opHaveNone);
     }
   }
 
@@ -1768,7 +1766,7 @@ abstract class Peer
       var bytes = Uint8List(4);
       var view = ByteData.view(bytes.buffer);
       view.setUint32(0, index, Endian.big);
-      sendMessage(OP_SUGGEST_PIECE, bytes);
+      sendMessage(opSuggestPiece, bytes);
     }
   }
 
@@ -1785,7 +1783,7 @@ abstract class Peer
       view.setUint32(0, index, Endian.big);
       view.setUint32(4, begin, Endian.big);
       view.setUint32(8, length, Endian.big);
-      sendMessage(OP_REJECT_REQUEST, bytes);
+      sendMessage(opRejectRequest, bytes);
     }
   }
 
@@ -1805,7 +1803,7 @@ abstract class Peer
         var bytes = Uint8List(4);
         var view = ByteData.view(bytes.buffer);
         view.setUint32(0, index, Endian.big);
-        sendMessage(OP_ALLOW_FAST, bytes);
+        sendMessage(opAllowFast, bytes);
       }
     }
   }
@@ -1996,7 +1994,7 @@ class _TCPPeer extends Peer {
       : _proxyManager = proxyManager,
         _sslConfig = sslConfig,
         super(address, infoHashBuffer, piecesNum, source,
-            type: PeerType.TCP,
+            type: PeerType.tcp,
             localEnableExtended: enableExtend,
             localEnableFastPeer: enableFast) {
     setProtocolEncryptionConfig(protocolEncryptionConfig);
@@ -2081,7 +2079,7 @@ class _UTPPeer extends Peer {
     bool enableFast = true,
     ProtocolEncryptionConfig? protocolEncryptionConfig,
   }) : super(address, infoHashBuffer, piecesNum, source,
-            type: PeerType.UTP,
+            type: PeerType.utp,
             localEnableExtended: enableExtend,
             localEnableFastPeer: enableFast) {
     setProtocolEncryptionConfig(protocolEncryptionConfig);
@@ -2123,7 +2121,7 @@ class _UTPPeer extends Peer {
       }
 
       // Validate bytes list bounds
-      if (bytes.length > MAX_MESSAGE_SIZE) {
+      if (bytes.length > maxMessageSize) {
         _log.warning('Message too large: ${bytes.length} bytes, peer=$address');
         return;
       }
@@ -2132,7 +2130,7 @@ class _UTPPeer extends Peer {
         _socket?.add(Uint8List.fromList(encodeOutgoing(bytes)));
 
         // Log successful send for uTP debugging (only in fine mode to avoid spam)
-        if (type == PeerType.UTP) {
+        if (type == PeerType.utp) {
           _log.fine(
               'uTP sent message: peer=$address, bytesLength=${bytes.length}');
         }

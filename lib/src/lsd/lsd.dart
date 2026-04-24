@@ -10,17 +10,17 @@ import 'package:logging/logging.dart';
 
 var _log = Logger('lsd');
 
-// const LSD_HOST = '239.192.152.143';
-// const LSD_PORT = 6771;
+// const lsdHost = '239.192.152.143';
+// const lsdPort = 6771;
 
 class LSD with EventsEmittable<LSDEvent> {
-  static final String LSD_HOST_STRING = '239.192.152.143:6771\r\n';
+  static final String lsdHostString = '239.192.152.143:6771\r\n';
 
-  static final InternetAddress LSD_HOST =
+  static final InternetAddress lsdHost =
       InternetAddress.fromRawAddress(Uint8List.fromList([239, 192, 152, 143]));
-  static final LSD_PORT = 6771;
+  static final lsdPort = 6771;
 
-  static final String ANNOUNCE_FIRST_LINE = 'BT-SEARCH * HTTP/1.1\r\n';
+  static final String announceFirstLine = 'BT-SEARCH * HTTP/1.1\r\n';
 
   bool _closed = false;
 
@@ -42,7 +42,7 @@ class LSD with EventsEmittable<LSDEvent> {
     if (port == null) {
       throw Exception('lsd port is not set');
     }
-    _socket ??= await RawDatagramSocket.bind(InternetAddress.anyIPv4, LSD_PORT);
+    _socket ??= await RawDatagramSocket.bind(InternetAddress.anyIPv4, lsdPort);
     _socket?.listen((event) {
       if (event == RawSocketEvent.read) {
         var datagram = _socket?.receive();
@@ -67,7 +67,7 @@ class LSD with EventsEmittable<LSDEvent> {
 
   void _processReceive(String str, InternetAddress source) {
     var strings = str.split('\r\n');
-    if (strings[0] != ANNOUNCE_FIRST_LINE) return;
+    if (strings[0] != announceFirstLine) return;
     int? port;
     String? infoHash;
     for (var i = 1; i < strings.length; i++) {
@@ -100,7 +100,7 @@ class LSD with EventsEmittable<LSDEvent> {
   Future<dynamic>? _sendMessage(String message, [Completer? completer]) {
     if (_socket == null) return null;
     completer ??= Completer();
-    var success = _socket?.send(message.codeUnits, LSD_HOST, LSD_PORT);
+    var success = _socket?.send(message.codeUnits, lsdHost, lsdPort);
     if (success != null && !(success > 0)) {
       Timer.run(() => _sendMessage(message, completer));
     } else {
@@ -123,7 +123,7 @@ class LSD with EventsEmittable<LSDEvent> {
   ///
   ///\r\n
   String _createMessage() {
-    return '${ANNOUNCE_FIRST_LINE}Host: ${LSD_HOST_STRING}Port: $port\r\nInfohash: $_infoHashHex\r\ncookie: dt-client$_peerId\r\n\r\n\r\n';
+    return '${announceFirstLine}Host: ${lsdHostString}Port: $port\r\nInfohash: $_infoHashHex\r\ncookie: dt-client$_peerId\r\n\r\n\r\n';
   }
 
   void close() {

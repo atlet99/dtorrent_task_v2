@@ -59,7 +59,7 @@ class UDPTracker extends Tracker with UDPTrackerBase {
     list.addAll(connectionId);
 
     list.addAll(
-        ACTION_ANNOUNCE); // The type of Action is currently 'announce', which is represented as 1.
+        actionAnnounce); // The type of Action is currently 'announce', which is represented as 1.
     list.addAll(transcationId!); // Session id
     list.addAll(infoHashBuffer);
     final peerId = (options['peerId'] ?? options['peer_id']) as String?;
@@ -71,7 +71,7 @@ class UDPTracker extends Tracker with UDPTrackerBase {
     list.addAll(num2Uint64List(options['downloaded']));
     list.addAll(num2Uint64List(options['left']));
     list.addAll(num2Uint64List(options['uploaded']));
-    var event = EVENTS[currentEvent];
+    var event = eventsByType[currentEvent];
     event ??= 0;
     list.addAll(num2Uint32List(event)); // This is the event type.
     list.addAll(

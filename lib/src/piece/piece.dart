@@ -48,7 +48,7 @@ class Piece {
   bool get flushed => _flushed;
 
   Piece(this.hashString, this.index, this.byteLength, this.offset,
-      {int requestLength = DEFAULT_REQUEST_LENGTH,
+      {int requestLength = defaultRequestLength,
       bool isComplete = false,
       TorrentVersion? version})
       : version = version ?? TorrentVersion.v1,
@@ -57,7 +57,7 @@ class Piece {
     if (requestLength <= 0) {
       throw Exception('Request length should bigger than zero');
     }
-    if (requestLength > DEFAULT_REQUEST_LENGTH) {
+    if (requestLength > defaultRequestLength) {
       throw Exception('Request length should smaller than 16kb');
     }
     _subPiecesQueue =
@@ -161,7 +161,7 @@ class Piece {
   bool subPieceReceived(int begin, List<int> block) {
     init();
     _block?.setRange(begin, begin + block.length, block);
-    var subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
+    var subindex = begin ~/ defaultRequestLength;
     _subPiecesQueue.remove(subindex);
     return _inMemorySubPieces.add(subindex);
   }

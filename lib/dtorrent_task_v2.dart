@@ -58,7 +58,7 @@ export 'src/standalone/dht/standalone_dht.dart';
 export 'src/webtorrent/websocket_tracker.dart';
 
 /// Peer ID prefix
-const ID_PREFIX = '-DT0201-';
+const idPrefix = '-DT0201-';
 
 /// Current version number
 Future<String?> getTorrentTaskVersion() async {

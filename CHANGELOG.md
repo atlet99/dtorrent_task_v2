@@ -12,6 +12,8 @@
 - align analyzer excludes with generated/non-project folders (`build/**`, `doc/api/**`, `example/bttest/**`) so `dart fix`/analysis skip local artifacts consistently
 - update padding-file regression tests to use real `StateFileV2` instead of an outdated fake state file, matching the current `DownloadFileManager` contract
 - document `0.5.3` WebTorrent compatibility in README, including WebSocket trackers, `ws` web seeds, and `xs` exact-source magnet URLs
+- expand `example/example.dart` with a runnable WebTorrent-style magnet section for WSS trackers, web seeds, and current WebRTC scope
+- improve WebTorrent regression coverage for binary tracker responses, update announces, signalling payload variants, invalid peer IDs, `xs` round-trips, numbered exact sources, and invalid scheme filtering
 
 ## 0.5.2
 

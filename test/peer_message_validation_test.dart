@@ -95,7 +95,7 @@ void main() {
 
       await peer.connect();
 
-      // 2MB + 1 byte -> invalid by MAX_MESSAGE_SIZE.
+      // 2MB + 1 byte -> invalid by maxMessageSize.
       serverSocket.add(const [0x00, 0x20, 0x00, 0x01]);
 
       final disposeEvent = await disposeCompleter.future.timeout(

@@ -287,7 +287,7 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
   /// This class will generate a tracker via [announce] , duplicate [announce]
   /// will be ignore.
   void runTracker(Uri url, Uint8List infoHash,
-      {String event = EVENT_STARTED, bool force = false}) {
+      {String event = eventStarted, bool force = false}) {
     if (isDisposed) return;
     var tracker = _trackers[url];
     if (tracker == null) {
@@ -297,13 +297,13 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
       _trackers[url] = tracker;
     }
     if (tracker.isDisposed) return;
-    if (event == EVENT_STARTED) {
+    if (event == eventStarted) {
       tracker.start();
     }
-    if (event == EVENT_STOPPED) {
+    if (event == eventStopped) {
       tracker.stop(force);
     }
-    if (event == EVENT_COMPLETED) {
+    if (event == eventCompleted) {
       tracker.complete();
     }
   }
@@ -312,7 +312,7 @@ class TorrentAnnounceTracker with EventsEmittable<TorrentAnnounceEvent> {
   ///
   /// [infoHash] is the bytes of the torrent infohash.
   void runTrackers(Iterable<Uri> announces, Uint8List infoHash,
-      {String event = EVENT_STARTED,
+      {String event = eventStarted,
       bool forceStop = false,
       int maxRetryTimes = 3}) {
     if (isDisposed) return;

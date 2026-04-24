@@ -85,7 +85,7 @@ void main() {
           ..on<PeerRequestEvent>((event) {
             callMap['request'] = true;
             expect(event.begin, equals(0));
-            expect(event.length, equals(DEFAULT_REQUEST_LENGTH));
+            expect(event.length, equals(defaultRequestLength));
             if (event.index == 1) {
               // sendRejectRequest only works if fast extension is enabled
               // It should be enabled by default, but check anyway
@@ -94,7 +94,7 @@ void main() {
                 event.peer.sendRejectRequest(
                   event.index,
                   event.begin,
-                  DEFAULT_REQUEST_LENGTH,
+                  defaultRequestLength,
                 );
               }
             }
@@ -103,7 +103,7 @@ void main() {
             callMap['cancel'] = true;
             expect(event.index, equals(1));
             expect(event.begin, equals(0));
-            expect(event.length, equals(DEFAULT_REQUEST_LENGTH));
+            expect(event.length, equals(defaultRequestLength));
           })
           ..on<PeerPortChanged>((event) {
             callMap['port'] = true;
@@ -134,7 +134,7 @@ void main() {
           })
           ..on<PeerPieceEvent>((event) async {
             callMap['piece'] = true;
-            expect(event.block.length, equals(DEFAULT_REQUEST_LENGTH));
+            expect(event.block.length, equals(defaultRequestLength));
             expect(event.block[0], equals(event.index));
             expect(event.block[1], equals(event.begin));
             final id = String.fromCharCodes(event.block.getRange(2, 22));
@@ -173,7 +173,7 @@ void main() {
         ..on<PeerChokeChanged>((event) async {
           if (!event.choked) {
             event.peer.sendRequest(1, 0);
-            event.peer.requestCancel(1, 0, DEFAULT_REQUEST_LENGTH);
+            event.peer.requestCancel(1, 0, defaultRequestLength);
             event.peer.sendRequest(1, 0);
             event.peer.sendHave(2);
             event.peer.sendKeepAlive();
@@ -188,11 +188,11 @@ void main() {
         ..on<PeerRejectEvent>((event) {
           expect(event.index, equals(1));
           expect(event.begin, equals(0));
-          expect(event.length, equals(DEFAULT_REQUEST_LENGTH));
+          expect(event.length, equals(defaultRequestLength));
           callMap['reject_request'] = true;
         })
         ..on<PeerRequestEvent>((event) {
-          final content = Uint8List(DEFAULT_REQUEST_LENGTH);
+          final content = Uint8List(defaultRequestLength);
           final view = ByteData.view(content.buffer);
           view.setUint8(0, event.index);
           view.setUint8(1, event.begin);

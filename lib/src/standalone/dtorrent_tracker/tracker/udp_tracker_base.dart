@@ -7,19 +7,19 @@ import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 
 /// During the first connection, the connection ID is set by yourself, and all
 /// documents mention using this number, referring to it as a "magic number."
-const START_CONNECTION_ID_NUMER = 0x41727101980;
+const startConnectionIdNumber = 0x41727101980;
 
 /// The starting connection ID is a fixed value: 0x41727101980.
-const START_CONNECTION_ID = [0, 0, 4, 23, 39, 16, 25, 128];
-const ACTION_CONNECT = [0, 0, 0, 0];
-const ACTION_ANNOUNCE = [0, 0, 0, 1];
-const ACTION_SCRAPE = [0, 0, 0, 2];
-const ACTION_ERROR = [0, 0, 0, 3];
+const startConnectionId = [0, 0, 4, 23, 39, 16, 25, 128];
+const actionConnect = [0, 0, 0, 0];
+const actionAnnounce = [0, 0, 0, 1];
+const actionScrape = [0, 0, 0, 2];
+const actionError = [0, 0, 0, 3];
 
 /// The socket's receive message timeout is set to 15 seconds.
-const TIME_OUT = Duration(seconds: 15);
+const timeOut = Duration(seconds: 15);
 
-const EVENTS = <String, int>{'completed': 1, 'started': 2, 'stopped': 3};
+const eventsByType = <String, int>{'completed': 1, 'started': 2, 'stopped': 3};
 
 ///
 /// The access steps for announce and scrape are exactly the same;
@@ -83,8 +83,8 @@ mixin UDPTrackerBase {
       return;
     }
     var list = <int>[];
-    list.addAll(START_CONNECTION_ID); //This is a magic ID
-    list.addAll(ACTION_CONNECT);
+    list.addAll(startConnectionId); //This is a magic ID
+    list.addAll(actionConnect);
     list.addAll(transcationId!);
     var messageBytes = Uint8List.fromList(list);
     try {

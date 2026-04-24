@@ -9,13 +9,13 @@ enum HolepunchType { rendezvous, connect, error }
 
 var _log = Logger('HolePunchMixin');
 mixin Holepunch {
-  static final MESSAGE_TYPE = [
+  static final messageType = [
     HolepunchType.rendezvous,
     HolepunchType.connect,
     HolepunchType.error
   ];
 
-  static final ERROR_MSG = [
+  static final errorMsg = [
     'NoSuchPeer - The target endpoint is invalid.',
     'NotConnected	The relaying peer is not connected to the target peer.',
     'NoSupport	The target peer does not support the holepunch extension.',
@@ -79,7 +79,7 @@ mixin Holepunch {
       err--;
       var errMsg = 'Unknown error';
       if (err >= 0) {
-        errMsg = ERROR_MSG[err];
+        errMsg = errorMsg[err];
       }
       Timer.run(() => holePunchError(errMsg, ip!));
       return;

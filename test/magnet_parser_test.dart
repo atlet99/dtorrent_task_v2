@@ -432,5 +432,70 @@ void main() {
       );
       expect(magnet.exactSources, isEmpty);
     });
+
+    test('should round-trip WebTorrent magnet fields to URI', () {
+      final magnet = MagnetLink(
+        infoHash: Uint8List.fromList(List<int>.filled(20, 0xdd)),
+        displayName: 'WebTorrent Sample',
+        trackers: [
+          Uri.parse('udp://tracker.opentrackr.org:1337'),
+          Uri.parse('wss://tracker.openwebtorrent.com'),
+        ],
+        webSeeds: [
+          Uri.parse('https://webtorrent.io/torrents/sample.mp4'),
+        ],
+        exactSources: [
+          Uri.parse('https://webtorrent.io/torrents/sample.torrent'),
+        ],
+      );
+
+      final uri = MagnetParser.toUri(magnet);
+      final parsed = MagnetParser.parse(uri);
+
+      expect(uri, contains('tr=udp'));
+      expect(uri, contains('tr=wss'));
+      expect(uri, contains('ws='));
+      expect(uri, contains('xs='));
+      expect(parsed, isNotNull);
+      expect(parsed!.trackers.map((uri) => uri.scheme), contains('wss'));
+      expect(parsed.webSeeds, magnet.webSeeds);
+      expect(parsed.exactSources, magnet.exactSources);
+    });
+
+    test('should parse numbered exact source parameters', () {
+      final magnetUri =
+          'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567'
+          '&xs.1=https://example.com/one.torrent'
+          '&xs.2=https://example.com/two.torrent';
+
+      final magnet = MagnetParser.parse(magnetUri);
+
+      expect(magnet, isNotNull);
+      expect(magnet!.exactSources.length, equals(2));
+      expect(
+        magnet.exactSources.map((uri) => uri.path).toList(),
+        equals(['/one.torrent', '/two.torrent']),
+      );
+    });
+
+    test('should filter invalid WebTorrent tracker and exact source schemes',
+        () {
+      final magnetUri =
+          'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567'
+          '&tr=wss://tracker.openwebtorrent.com'
+          '&tr=mailto:not-a-tracker'
+          '&xs=https://example.com/sample.torrent'
+          '&xs=magnet:?xt=urn:btih:bad';
+
+      final magnet = MagnetParser.parse(magnetUri);
+
+      expect(magnet, isNotNull);
+      expect(magnet!.trackers,
+          equals([Uri.parse('wss://tracker.openwebtorrent.com')]));
+      expect(
+        magnet.exactSources,
+        equals([Uri.parse('https://example.com/sample.torrent')]),
+      );
+    });
   });
 }

@@ -52,8 +52,8 @@ import 'file/file_priority_manager.dart';
 import 'file/auto_move_manager.dart';
 import 'schedule/scheduler.dart';
 
-const MAX_PEERS = 50;
-const MAX_IN_PEERS = 10;
+const maxPeers = 50;
+const maxInPeers = 10;
 
 enum TaskState { running, paused, stopped }
 
@@ -431,7 +431,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
 class _TorrentTask
     with EventsEmittable<TaskEvent>
     implements TorrentTask, tracker.AnnounceOptionsProvider {
-  static InternetAddress LOCAL_ADDRESS =
+  static InternetAddress localAddress =
       InternetAddress.fromRawAddress(Uint8List.fromList([127, 0, 0, 1]));
 
   tracker.TorrentAnnounceTracker? _tracker;
@@ -522,7 +522,7 @@ class _TorrentTask
   int? _scheduledMaxUploadRate;
 
   /// The maximum size of the disk write cache.
-  final int maxWriteBufferSize = MAX_WRITE_BUFFER_SIZE;
+  final int _maxWriteBufferSize = maxPeerWriteBufferSize;
 
   final _flushIndicesBuffer = <int>{};
   @override
@@ -1041,11 +1041,11 @@ class _TorrentTask
   }
 
   void _hookInPeer(Socket socket) {
-    if (socket.remoteAddress == LOCAL_ADDRESS) {
+    if (socket.remoteAddress == localAddress) {
       socket.close();
       return;
     }
-    if (_comingIp.length >= MAX_IN_PEERS || !_comingIp.add(socket.address)) {
+    if (_comingIp.length >= maxInPeers || !_comingIp.add(socket.address)) {
       socket.close();
       return;
     }
@@ -1055,7 +1055,7 @@ class _TorrentTask
     _peersManager?.addNewPeerAddress(
         CompactAddress(socket.remoteAddress, socket.remotePort),
         PeerSource.incoming,
-        type: PeerType.TCP,
+        type: PeerType.tcp,
         socket: socket);
   }
 
@@ -1383,7 +1383,7 @@ class _TorrentTask
       await announcePausedToTrackers(_metaInfo.announces);
     } else {
       _tracker?.runTrackers(_metaInfo.announces, _metaInfo.infoHashBuffer,
-          event: tracker.EVENT_STARTED);
+          event: tracker.eventStarted);
     }
     events.emit(TaskStarted());
     return map;
@@ -1433,7 +1433,7 @@ class _TorrentTask
       if (data != null && data.length == pieceSize) {
         // Process the downloaded piece as if it came from a peer
         // Write it in blocks to match the normal flow
-        final blockSize = DEFAULT_REQUEST_LENGTH;
+        final blockSize = defaultRequestLength;
         for (var begin = 0; begin < pieceSize; begin += blockSize) {
           final end =
               (begin + blockSize < pieceSize) ? begin + blockSize : pieceSize;
@@ -1510,7 +1510,7 @@ class _TorrentTask
     if (indices.isEmpty || _fileManager == null) return;
     var piecesSize = _metaInfo.pieceLength;
     var buffer = indices.length * piecesSize;
-    if (buffer >= maxWriteBufferSize || _fileManager!.isAllComplete) {
+    if (buffer >= _maxWriteBufferSize || _fileManager!.isAllComplete) {
       var temp = Set<int>.from(indices);
       indices.clear();
       await _fileManager?.flushFiles(temp);
@@ -1530,7 +1530,7 @@ class _TorrentTask
 
   void _processRejectRequest(PeerRejectEvent event) {
     var piece = _pieceManager?[event.index];
-    piece?.pushSubPieceLast(event.begin ~/ DEFAULT_REQUEST_LENGTH);
+    piece?.pushSubPieceLast(event.begin ~/ defaultRequestLength);
   }
 
   void _processPeerDispose(PeerDisposeEvent event) {
@@ -1556,7 +1556,7 @@ class _TorrentTask
       var begin = element[1];
       // TODO This is dangerous here. Currently, we are dividing a piece into 16 KB chunks. What if it's not the case?
       var piece = _pieceManager![pieceIndex];
-      var subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
+      var subindex = begin ~/ defaultRequestLength;
       piece?.pushSubPiece(subindex);
     }
   }
@@ -1729,7 +1729,7 @@ class _TorrentTask
       final begin = request[1];
       final length = request[2];
       event.peer.requestCancel(index, begin, length);
-      final subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
+      final subindex = begin ~/ defaultRequestLength;
       piece.pushSubPieceBack(subindex);
       cancelledAny = true;
     }
@@ -1770,7 +1770,7 @@ class _TorrentTask
         Timer.run(() => peer.requestCancel(request[0], request[1], request[2]));
         var index = request[0];
         var begin = request[1];
-        var subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
+        var subindex = begin ~/ defaultRequestLength;
         var piece = _pieceManager![index];
         piece?.pushSubPiece(subindex);
       }
@@ -1831,7 +1831,7 @@ class _TorrentTask
 
     var subIndex = piece.popSubPiece();
     if (subIndex == null) return;
-    var size = DEFAULT_REQUEST_LENGTH; // Block size is calculated dynamically.
+    var size = defaultRequestLength; // Block size is calculated dynamically.
     var begin = subIndex * size;
     if ((begin + size) > piece.byteLength) {
       size = piece.byteLength - begin;
