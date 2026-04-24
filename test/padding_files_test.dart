@@ -7,25 +7,6 @@ import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:dtorrent_task_v2/src/piece/base_piece_selector.dart';
 import 'package:test/test.dart';
 
-class _FakeStateFile {
-  final Bitfield bitfield;
-  int downloaded = 0;
-
-  _FakeStateFile(int piecesNum)
-      : bitfield = Bitfield.createEmptyBitfield(piecesNum);
-
-  Future<bool> updateBitfield(int index, bool have) async {
-    bitfield.setBit(index, have);
-    return true;
-  }
-
-  Future<bool> updateUploaded(int uploaded) async => true;
-
-  Future<void> close() async {}
-
-  Future<void> delete() async {}
-}
-
 void main() {
   group('Padding files and attributes (BEP 47)', () {
     test('parses v1 attr and detects padding by name/attr', () {
@@ -146,7 +127,7 @@ void main() {
         nodes: const <Uri>[],
         version: TorrentVersion.v1,
       );
-      final state = _FakeStateFile(1);
+      final state = await StateFileV2.getStateFile(tempDir.path, model);
       final pieces = <Piece>[Piece('00' * 20, 0, 4, 0)];
 
       final manager = await DownloadFileManager.createFileManager(
@@ -296,7 +277,7 @@ void main() {
       final manager = await DownloadFileManager.createFileManager(
         model,
         tempDir.path,
-        _FakeStateFile(1),
+        await StateFileV2.getStateFile(tempDir.path, model),
         <Piece>[Piece('00' * 20, 0, 1, 0)],
       );
       addTearDown(() async {

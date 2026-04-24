@@ -21,7 +21,9 @@ Dart library for implementing BitTorrent client.
 | [How to use](#how-to-use)                                        | Minimal setup and first download            |
 | [Examples](#examples)                                            | Runnable examples from `example/`           |
 | [Automated Publishing](#automated-publishing)                    | GitHub Actions + pub.dev trusted publishing |
+| [Local Quality Gates](#local-quality-gates)                      | Format, fixes, analyze, tests, coverage     |
 | [Feature Cookbook](#feature-cookbook)                            | Short practical snippets by capability      |
+| [WebTorrent Compatibility](#webtorrent-compatibility)            | WebTorrent magnets and WSS trackers         |
 | [Using Magnet Links](#using-magnet-links)                        | Metadata-first magnet workflow              |
 | [Download UX Automation](#download-ux-automation)                | File moving, auto-move, scheduling, RSS     |
 | [Move Files While Downloading](#move-files-while-downloading-51) | Move/rebind files during active task        |
@@ -114,6 +116,12 @@ This package no longer requires the external `dtorrent_parser` dependency (built
 dependencies:
   dtorrent_task_v2: ^0.5.3
 ```
+
+Current documented release: `0.5.3`.
+
+This release focuses on WebTorrent-style magnet compatibility (`ws://`/`wss://`
+trackers and `xs` exact-source URLs), safer standalone tracker internals, and
+faster local quality gates.
 
 Download from: [DTORRENT_TASK_V2](https://pub.dev/packages/dtorrent_task_v2)
 
@@ -214,6 +222,31 @@ Release flow:
    `git tag v0.5.3 && git push origin v0.5.3`
 4. Check workflow run in GitHub Actions and audit log on pub.dev.
 
+## Local Quality Gates
+
+The project includes a Makefile for repeatable local checks:
+
+| Command            | Purpose                                                          |
+| ------------------ | ---------------------------------------------------------------- |
+| `make check-all`   | Install deps, apply Dart fixes, format Dart/Markdown, analyze    |
+| `make test-all`    | Run the full test suite once with coverage output                |
+| `make fix-dry-run` | Preview analyzer-backed `dart fix` changes                       |
+| `make format-all`  | Format tracked/project Dart files with safety excludes           |
+| `make analyze-all` | Run Dart analyzer and Flutter analyzer when Flutter is available |
+| `make test-file`   | Run one test file via `FILE=test/name_test.dart`                 |
+| `make test-name`   | Run one named test via `TEST_NAME="..."`                         |
+
+`dart fix` uses the analyzer context, so ignored folders are managed in
+`analysis_options.yaml`. Generated and non-project directories such as
+`test_results/`, `tmp/`, `coverage/`, `build/`, `.dart_tool/`, and
+`test_download_*/` are excluded from analysis/fix flows.
+
+Coverage is written to `coverage/` by default. Override it when needed:
+
+```bash
+make test-all COVERAGE_DIR=tmp/coverage
+```
+
 ## Feature Cookbook
 
 ### Queue + Priority
@@ -295,6 +328,46 @@ pubsub.publish(topic: 'releases', payload: utf8.encode('v1.0'));
 final indexer = DHTInfohashIndexer();
 indexer.index(infoHash: '0123...', name: 'Example Linux ISO');
 ```
+
+## WebTorrent Compatibility
+
+`0.5.3` adds the first WebTorrent compatibility layer for Dart VM usage:
+
+- `MagnetParser` accepts WebTorrent-style magnets with mixed `udp://` and
+  `wss://` trackers.
+- Web seed (`ws`) and exact-source (`xs`) URLs are preserved from magnet links.
+- `WebSocketTracker` supports `ws://` and `wss://` tracker announce signalling.
+- Tracker responses can carry WebTorrent signalling metadata such as peer IDs,
+  offers, answers, ICE data, and WebTorrent peer payloads.
+- Local regression tests cover well-known Sintel and Big Buck Bunny WebTorrent
+  magnet fixtures.
+
+Example:
+
+```dart
+const torrentId =
+    'magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c'
+    '&dn=Big+Buck+Bunny'
+    '&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337'
+    '&tr=wss%3A%2F%2Ftracker.openwebtorrent.com'
+    '&ws=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2Fbig-buck-bunny.mp4';
+
+final magnet = MagnetParser.parse(torrentId);
+if (magnet == null) {
+  throw ArgumentError('Invalid magnet link');
+}
+
+final websocketTrackers =
+    magnet.trackers.where((uri) => uri.scheme == 'ws' || uri.scheme == 'wss');
+
+print('WebTorrent trackers: ${websocketTrackers.length}');
+print('Web seeds: ${magnet.webSeeds}');
+print('Exact sources: ${magnet.exactSources}');
+```
+
+Current scope: WebTorrent-style magnet parsing and WebSocket tracker signalling
+are supported. Browser WebRTC peer transport and service-worker streaming are
+separate future layers.
 
 ## Using Magnet Links
 

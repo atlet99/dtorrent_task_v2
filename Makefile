@@ -20,6 +20,10 @@ TEST ?= $(DART) test
 PROJECT_NAME ?= dtorrent_task_v2
 SRC_DIRS ?= lib test example bin
 EXAMPLE ?= example/example.dart
+# dart fix uses the analyzer context, so ignores are controlled by
+# analysis_options.yaml rather than .gitignore.
+DART_FIX_TARGET ?= .
+COVERAGE_DIR ?= coverage
 
 # Optional passthrough args
 TEST_ARGS ?=
@@ -136,37 +140,11 @@ format-all-check: ## Check all Dart files in repository formatting with safety i
 	fi; \
 	$(DART) format --output=none --set-exit-if-changed "$${files[@]}"
 
-fix-apply: ## Apply dart fix --apply for repository Dart files with safety ignores
-	@files=(); \
-	while IFS= read -r -d '' file; do \
-		if [[ "$$file" =~ $(DART_SAFE_EXCLUDE_RE) ]]; then \
-			continue; \
-		fi; \
-		files+=("$$file"); \
-	done < <(git ls-files -z --cached --others --exclude-standard -- '*.dart'); \
-	if [ "$${#files[@]}" -eq 0 ]; then \
-		printf "$(C_YELLOW)No Dart files found for fix-apply$(C_RESET)\n"; \
-		exit 0; \
-	fi; \
-	for file in "$${files[@]}"; do \
-		$(DART) fix --apply $(FIX_ARGS) "$$file"; \
-	done
+fix-apply: ## Apply dart fix once using analysis_options excludes
+	@$(DART) fix --apply $(FIX_ARGS) $(DART_FIX_TARGET)
 
-fix-dry-run: ## Preview dart fixes (dry-run) for repository Dart files with safety ignores
-	@files=(); \
-	while IFS= read -r -d '' file; do \
-		if [[ "$$file" =~ $(DART_SAFE_EXCLUDE_RE) ]]; then \
-			continue; \
-		fi; \
-		files+=("$$file"); \
-	done < <(git ls-files -z --cached --others --exclude-standard -- '*.dart'); \
-	if [ "$${#files[@]}" -eq 0 ]; then \
-		printf "$(C_YELLOW)No Dart files found for fix-dry-run$(C_RESET)\n"; \
-		exit 0; \
-	fi; \
-	for file in "$${files[@]}"; do \
-		$(DART) fix --dry-run $(FIX_ARGS) "$$file"; \
-	done
+fix-dry-run: ## Preview dart fixes once using analysis_options excludes
+	@$(DART) fix --dry-run $(FIX_ARGS) $(DART_FIX_TARGET)
 
 md-format: ## Format Markdown files with Prettier (uses .prettierrc.json/.prettierignore)
 	@if ! command -v $(PRETTIER) >/dev/null; then \
@@ -240,11 +218,11 @@ test-file: ## Run a specific test file: make test-file FILE=test/foo_test.dart
 	@$(TEST) "$$FILE" $(TEST_ARGS)
 
 test-coverage: ## Run tests with coverage output to coverage/
-	@$(TEST) --coverage=coverage $(TEST_ARGS)
-	@printf "$(C_GREEN)Coverage written to coverage/$(C_RESET)\n"
+	@rm -rf $(COVERAGE_DIR)
+	@$(TEST) --coverage=$(COVERAGE_DIR) $(TEST_ARGS)
+	@printf "$(C_GREEN)Coverage written to $(COVERAGE_DIR)/$(C_RESET)\n"
 
-test-all: ## Unified test pipeline (tests + coverage)
-	@$(MAKE) --no-print-directory test
+test-all: ## Unified test pipeline (single coverage run)
 	@$(MAKE) --no-print-directory test-coverage
 	@printf "$(C_GREEN)test-all completed$(C_RESET)\n"
 
@@ -273,5 +251,5 @@ dev: pub-get analyze test ## Developer flow: dependencies -> analyze -> tests
 
 ##@ Cleanup
 clean: ## Remove build/test artifacts
-	@rm -rf .dart_tool coverage
-	@printf "$(C_DIM)Cleaned .dart_tool and coverage$(C_RESET)\n"
+	@rm -rf .dart_tool $(COVERAGE_DIR)
+	@printf "$(C_DIM)Cleaned .dart_tool and $(COVERAGE_DIR)$(C_RESET)\n"

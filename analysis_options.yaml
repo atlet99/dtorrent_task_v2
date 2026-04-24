@@ -26,7 +26,10 @@ analyzer:
     - .git/**
     - .github/**
     - .trunk/**
+    - build/**
     - coverage/**
+    - doc/api/**
+    - example/bttest/**
     - tmp/**
     - test_download_*/**
     - test_results/**

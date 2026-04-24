@@ -7,6 +7,11 @@
 - refactor tracker retry scheduler internals to typed record storage (`timer`, `retryTimes`) instead of untyped timer lists
 - harden scrape/tracker API signatures with explicit return types (`Future<void>`, `Future<ScrapeEvent?>`) and null-safe error paths in HTTP scrape flow
 - replace remaining parser/tracker helper `dynamic` usages (`Object?`-based retry/external-ip/compact-peer parsing and typed required-option extraction)
+- optimize `Makefile` quality gates: run `dart fix` once through analyzer context, keep `check-all` focused on fixes/format/analyze, and make `test-all` a single coverage run
+- clean coverage output before test coverage generation and expose `COVERAGE_DIR`/`DART_FIX_TARGET` for local customization
+- align analyzer excludes with generated/non-project folders (`build/**`, `doc/api/**`, `example/bttest/**`) so `dart fix`/analysis skip local artifacts consistently
+- update padding-file regression tests to use real `StateFileV2` instead of an outdated fake state file, matching the current `DownloadFileManager` contract
+- document `0.5.3` WebTorrent compatibility in README, including WebSocket trackers, `ws` web seeds, and `xs` exact-source magnet URLs
 
 ## 0.5.2
 
