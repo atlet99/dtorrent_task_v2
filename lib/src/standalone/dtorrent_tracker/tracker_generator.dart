@@ -21,6 +21,9 @@ class BaseTrackerGenerator implements TrackerGenerator {
     if (announce.isScheme('udp')) {
       return UDPTracker(announce, infoHashBuffer, provider: provider);
     }
+    if (announce.isScheme('ws') || announce.isScheme('wss')) {
+      return WebSocketTracker(announce, infoHashBuffer, provider: provider);
+    }
     return null;
   }
 }

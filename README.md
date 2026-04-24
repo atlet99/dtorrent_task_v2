@@ -112,7 +112,7 @@ This package no longer requires the external `dtorrent_parser` dependency (built
 
 ```yaml
 dependencies:
-  dtorrent_task_v2: ^0.5.2
+  dtorrent_task_v2: ^0.5.3
 ```
 
 Download from: [DTORRENT_TASK_V2](https://pub.dev/packages/dtorrent_task_v2)
@@ -211,7 +211,7 @@ Release flow:
 1. Update `version` in `pubspec.yaml`.
 2. Commit changes to default branch.
 3. Push tag matching the version:
-   `git tag v0.5.2 && git push origin v0.5.2`
+   `git tag v0.5.3 && git push origin v0.5.3`
 4. Check workflow run in GitHub Actions and audit log on pub.dev.
 
 ## Feature Cookbook
@@ -1184,6 +1184,7 @@ dhtListener
 - **Tracker Scrape (BEP 48)** for torrent statistics without full announce
 - **Tracker Retry Extension (BEP 31)** with normalized retry policy handling
 - **UDP Tracker Protocol Extensions (BEP 41)** including URLData support
+- **WebSocket tracker announce support** for WebTorrent-style `ws://`/`wss://` trackers
 - **Standalone in-repo DHT stack** (no external `bittorrent_dht` dependency)
 - **Read-only and extended DHT modules (BEP 43/44/45/50/51)**
 - **Padding files and file attributes (BEP 47)** including virtual padding IO
@@ -1231,10 +1232,11 @@ dhtListener
 
 - Automatic metadata download from magnet links
 - Support for Base32 and hex infohash formats (RFC 4648)
-- Case-insensitive magnet query parsing for `xt`/`dn`/`tr`/`ws`/`as`/`so`
+- Case-insensitive magnet query parsing for `xt`/`dn`/`tr`/`ws`/`xs`/`as`/`so`
 - Tracker tier support (BEP 0012) with tier-by-tier announcement
-- Stable handling for duplicate and numbered parameters (`tr.N`, `ws.N`, `as.N`, `so.N`)
+- Stable handling for duplicate and numbered parameters (`tr.N`, `ws.N`, `xs.N`, `as.N`, `so.N`)
 - Web seed URL parsing and integration (BEP 0019)
+- Exact source URL parsing (`xs`) for WebTorrent-style magnets
 - Acceptable source URL support
 - Selected file indices parsing (BEP 0053)
 - Automatic peer and tracker transfer from metadata phase to download phase

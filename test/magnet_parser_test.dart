@@ -2,6 +2,12 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:dtorrent_task_v2/src/metadata/magnet_parser.dart';
 
+const sintelWebTorrentMagnet =
+    'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.empire-js.us%3A1337&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.fastcast.nz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com&ws=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2F&xs=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2Fsintel.torrent';
+
+const bigBuckBunnyWebTorrentMagnet =
+    'magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Big+Buck+Bunny&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.fastcast.nz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com&ws=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2Fbig-buck-bunny.mp4';
+
 void main() {
   group('MagnetParser Tests', () {
     test('should parse basic magnet URI', () {
@@ -369,6 +375,62 @@ void main() {
       expect(magnet.trackerTiers[0].trackers.length, equals(2));
       expect(magnet.trackerTiers[1].trackers.length, equals(1));
       expect(magnet.trackers.length, equals(3));
+    });
+
+    test('should parse Sintel WebTorrent magnet fixture', () {
+      final magnet = MagnetParser.parse(sintelWebTorrentMagnet);
+
+      expect(magnet, isNotNull);
+      expect(
+        magnet!.infoHashString,
+        equals('08ada5a7a6183aae1e09d831df6748d566095a10'),
+      );
+      expect(magnet.displayName, equals('Sintel'));
+      expect(magnet.trackers.length, equals(8));
+      expect(
+        magnet.trackers.where((tracker) => tracker.scheme == 'udp').length,
+        equals(5),
+      );
+      expect(
+        magnet.trackers.where((tracker) => tracker.scheme == 'wss').length,
+        equals(3),
+      );
+      expect(magnet.trackerTiers.length, equals(1));
+      expect(magnet.trackerTiers.single.trackers.length, equals(8));
+      expect(magnet.webSeeds,
+          equals([Uri.parse('https://webtorrent.io/torrents/')]));
+      expect(
+        magnet.exactSources,
+        equals([Uri.parse('https://webtorrent.io/torrents/sintel.torrent')]),
+      );
+    });
+
+    test('should parse Big Buck Bunny WebTorrent magnet fixture', () {
+      final magnet = MagnetParser.parse(bigBuckBunnyWebTorrentMagnet);
+
+      expect(magnet, isNotNull);
+      expect(
+        magnet!.infoHashString,
+        equals('dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c'),
+      );
+      expect(magnet.displayName, equals('Big Buck Bunny'));
+      expect(magnet.trackers.length, equals(8));
+      expect(
+        magnet.trackers.where((tracker) => tracker.scheme == 'udp').length,
+        equals(5),
+      );
+      expect(
+        magnet.trackers.where((tracker) => tracker.scheme == 'wss').length,
+        equals(3),
+      );
+      expect(magnet.trackerTiers.length, equals(1));
+      expect(magnet.trackerTiers.single.trackers.length, equals(8));
+      expect(
+        magnet.webSeeds,
+        equals(
+            [Uri.parse('https://webtorrent.io/torrents/big-buck-bunny.mp4')]),
+      );
+      expect(magnet.exactSources, isEmpty);
     });
   });
 }

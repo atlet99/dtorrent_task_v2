@@ -1,3 +1,13 @@
+## 0.5.3
+
+- add initial WebTorrent tracker support with `WebSocketTracker` for `ws://`/`wss://` announce signalling and regression tests
+- extend magnet parsing for WebTorrent-style links with `ws://`/`wss://` trackers and `xs` exact-source URLs
+- add Sintel and Big Buck Bunny WebTorrent magnet fixtures covering UDP/WSS trackers, web seeds, and exact sources
+- refine standalone tracker event/error models by replacing untyped payload fields with explicit `Object?` contracts and immutable announce event DTOs
+- refactor tracker retry scheduler internals to typed record storage (`timer`, `retryTimes`) instead of untyped timer lists
+- harden scrape/tracker API signatures with explicit return types (`Future<void>`, `Future<ScrapeEvent?>`) and null-safe error paths in HTTP scrape flow
+- replace remaining parser/tracker helper `dynamic` usages (`Object?`-based retry/external-ip/compact-peer parsing and typed required-option extraction)
+
 ## 0.5.2
 
 - refactor streaming isolate request/response pipeline to use single listener with request correlation IDs (removes ReceivePort re-listen conflicts and stabilizes concurrent metadata/playlist requests)
@@ -9,10 +19,6 @@
 - replace dynamic state-file casts in `DownloadFileManager`/`TorrentTask` with typed `StateFile`/`StateFileV2` pattern matching for safer resume/path/update operations
 - tighten peer extension typing (`ExtendedProcessor`, `Peer`, `PeersManager`, `MetadataDownloader`, `PEX`) with explicit payload guards for `handshake`/`ut_pex`/`ut_holepunch` flows
 - refactor standalone tracker and DHT internals to stronger typed contracts (UDP/HTTP tracker response paths, socket error signatures, typed options maps, decoded datagram handling)
-- refine standalone tracker event/error models by replacing untyped payload fields with explicit `Object?` contracts and immutable announce event DTOs
-- refactor tracker retry scheduler internals to typed record storage (`timer`, `retryTimes`) instead of untyped timer lists
-- harden scrape/tracker API signatures with explicit return types (`Future<void>`, `Future<ScrapeEvent?>`) and null-safe error paths in HTTP scrape flow
-- replace remaining parser/tracker helper `dynamic` usages (`Object?`-based retry/external-ip/compact-peer parsing and typed required-option extraction)
 - remove remaining analyzer noise after refactor (including tracker extension test cast cleanup) and keep full `dart analyze` green
 - improve local developer quality gates:
   - fix `NO_COLOR` warning in `Makefile`

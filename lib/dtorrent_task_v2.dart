@@ -55,6 +55,7 @@ export 'src/rss/feed_filter.dart';
 export 'src/rss/rss_manager.dart';
 export 'src/standalone/dtorrent_common.dart';
 export 'src/standalone/dht/standalone_dht.dart';
+export 'src/webtorrent/websocket_tracker.dart';
 
 /// Peer ID prefix
 const ID_PREFIX = '-DT0201-';
