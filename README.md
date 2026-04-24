@@ -1161,7 +1161,7 @@ listener.on<StateFileUpdated>((event) {
 You can add peer addresses manually:
 
 ```dart
-import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 
 // Add a peer by address
 final peerAddress = CompactAddress(
@@ -1203,7 +1203,7 @@ Built-in DHT implementation details:
 The library includes comprehensive error tracking for uTP protocol stability:
 
 ```dart
-import 'package:dtorrent_task_v2/src/peer/protocol/peer.dart';
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 
 // Check RangeError metrics
 if (Peer.rangeErrorCount > 0) {

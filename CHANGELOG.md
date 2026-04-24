@@ -17,6 +17,10 @@
 - fix pub.dev static-analysis score issues by renaming legacy ALL_CAPS constants/fields to lowerCamelCase and re-enabling identifier-name lints locally
 - exclude generated coverage output and internal `example/test_*.dart` smoke files from the publish archive via `.pubignore`
 - tighten LSD/piece/scrape internals with typed futures, `Object?` scrape payloads, and precise `StateError`/`ArgumentError` failures instead of broad `Exception`
+- harden SOCKS5 proxy reads with a buffered socket reader and typed `Socks5Exception` errors
+- normalize `FileValidator` torrent file path resolution and replace missing-file generic exceptions with `FileSystemException` in validator/example flows
+- update README snippets to import public `dtorrent_task_v2.dart` API instead of package-internal `src/` paths
+- expose documented LSD, NAT/port-forwarding, and standalone announce tracker helpers through the public barrel API so published examples no longer depend on package-internal imports
 
 ## 0.5.2
 

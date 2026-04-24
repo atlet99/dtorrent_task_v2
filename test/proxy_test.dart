@@ -1,5 +1,6 @@
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:test/test.dart';
+import 'dart:io';
 
 void main() {
   group('ProxyConfig', () {
@@ -137,6 +138,46 @@ void main() {
         port: 8080,
       );
       expect(() => Socks5Client(config), throwsArgumentError);
+    });
+
+    test('handles coalesced SOCKS5 proxy responses', () async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() async => server.close());
+
+      server.listen((socket) {
+        var responded = false;
+        socket.listen((_) {
+          if (responded) return;
+          responded = true;
+
+          socket.add(<int>[
+            0x05, 0x00, // auth accepted
+            0x05, 0x00, 0x00, 0x01, // connect accepted, IPv4 bound address
+            127, 0, 0, 1, // bound address
+            0x1A, 0xE1, // bound port 6881
+          ]);
+          Future<void>.delayed(const Duration(milliseconds: 10), () {
+            socket.add(<int>[0xAA, 0xBB]);
+          });
+        });
+      });
+
+      final config = ProxyConfig.socks5(
+        host: InternetAddress.loopbackIPv4.address,
+        port: server.port,
+      );
+      final client = Socks5Client(config);
+      final socket = await client.connect(InternetAddress.loopbackIPv4, 6881);
+      addTearDown(() async => socket.close());
+
+      expect(socket.remotePort, server.port);
+      expect(socket, emits(<int>[0xAA, 0xBB]));
+    });
+
+    test('exposes typed SOCKS5 exception messages', () {
+      const error = Socks5Exception('example failure');
+
+      expect(error.toString(), 'Socks5Exception: example failure');
     });
   });
 
