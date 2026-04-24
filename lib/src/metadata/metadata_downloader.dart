@@ -392,13 +392,13 @@ class MetadataDownloader
     _log.warning('Metadata DHT error #$_dhtErrorEvents: ${event.message}');
   }
 
-  /// Add a new peer [address] , the default [type] is `PeerType.TCP`,
+  /// Add a new peer [address] , the default [type] is `PeerType.tcp`,
   /// [socket] is null.
   ///
   /// Usually [socket] is null , unless this peer was incoming connection, but
   /// this type peer was managed by [TorrentTask] , user don't need to know that.
   void addNewPeerAddress(CompactAddress address, PeerSource source,
-      [PeerType type = PeerType.TCP, Object? socket]) {
+      [PeerType type = PeerType.tcp, Object? socket]) {
     if (!_running) return;
     if (address.address == localExternalIP) return;
     if (socket != null) {
@@ -410,7 +410,7 @@ class MetadataDownloader
     }
     if (_peersAddress.add(address)) {
       Peer? peer;
-      if (type == PeerType.TCP) {
+      if (type == PeerType.tcp) {
         peer = Peer.newTCPPeer(
           address,
           _infoHashBuffer,
@@ -419,7 +419,7 @@ class MetadataDownloader
           source,
         );
       }
-      if (type == PeerType.UTP) {
+      if (type == PeerType.utp) {
         peer = Peer.newUTPPeer(
           address,
           _infoHashBuffer,
@@ -748,7 +748,7 @@ class MetadataDownloader
 
   @override
   void holePunchConnect(CompactAddress ip) {
-    addNewPeerAddress(ip, PeerSource.holepunch, PeerType.UTP);
+    addNewPeerAddress(ip, PeerSource.holepunch, PeerType.utp);
   }
 
   @override

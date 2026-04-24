@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
-import 'package:dtorrent_task_v2/src/lsd/lsd.dart';
 import 'package:path/path.dart' as path;
 import 'test_torrent_helper.dart';
 

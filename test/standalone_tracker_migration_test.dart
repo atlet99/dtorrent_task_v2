@@ -20,7 +20,7 @@ class _StubAnnounceOptionsProvider implements AnnounceOptionsProvider {
 
 void main() {
   group('Standalone Tracker Migration', () {
-    test('BaseTrackerGenerator creates HTTP and UDP trackers', () {
+    test('BaseTrackerGenerator creates HTTP, UDP, and WebSocket trackers', () {
       final generator = TrackerGenerator.base();
       final provider = _StubAnnounceOptionsProvider();
       final infoHash = Uint8List(20);
@@ -35,14 +35,20 @@ void main() {
         infoHash,
         provider,
       );
-      final unsupported = generator.createTracker(
+      final ws = generator.createTracker(
         Uri.parse('ws://tracker.example.org/announce'),
+        infoHash,
+        provider,
+      );
+      final unsupported = generator.createTracker(
+        Uri.parse('ftp://tracker.example.org/announce'),
         infoHash,
         provider,
       );
 
       expect(http, isA<HttpTracker>());
       expect(udp, isA<UDPTracker>());
+      expect(ws, isA<WebSocketTracker>());
       expect(unsupported, isNull);
     });
 

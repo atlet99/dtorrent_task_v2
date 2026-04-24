@@ -8,18 +8,18 @@ import 'package:events_emitter2/events_emitter2.dart';
 import '../utils.dart';
 
 /// 500 ms
-const CCONTROL_TARGET = 1000000;
+const ccontrolTarget = 1000000;
 
-const MAX_WINDOW = 1048576;
+const maxWindow = 1048576;
 
-const RECORD_TIME = 5000000;
+const recordTime = 5000000;
 
 /// The maximum number of requests to be increased in each round is 3.
-const MAX_CWND_INCREASE_REQUESTS_PER_RTT = 3 * 16384;
+const maxCwndIncreaseRequestsPerRtt = 3 * 16384;
 
 /// Initial congestion window size for uTP (optimized for better performance)
-/// Set to 2.5x DEFAULT_REQUEST_LENGTH (40960 bytes) for faster startup
-const INITIAL_UTP_CWND = 40960; // DEFAULT_REQUEST_LENGTH * 2.5 = 16384 * 2.5
+/// Set to 2.5x defaultRequestLength (40960 bytes) for faster startup
+const initialUtpCwnd = 40960; // defaultRequestLength * 2.5 = 16384 * 2.5
 
 /// LEDBAT Congestion Control
 ///
@@ -34,13 +34,13 @@ mixin CongestionControl on EventsEmittable<PeerEvent> {
 
   Timer? _timeout;
 
-  int _allowWindowSize = DEFAULT_REQUEST_LENGTH;
+  int _allowWindowSize = defaultRequestLength;
 
   final List<List<dynamic>> _downloadedHistory = <List<dynamic>>[];
 
   /// Initialize congestion window for uTP peers with optimized initial value
   void initializeUtpCwnd() {
-    _allowWindowSize = INITIAL_UTP_CWND;
+    _allowWindowSize = initialUtpCwnd;
   }
 
   /// Update the timeout.
@@ -90,7 +90,7 @@ mixin CongestionControl on EventsEmittable<PeerEvent> {
 
       times++;
       _rto *= 2;
-      _allowWindowSize = DEFAULT_REQUEST_LENGTH;
+      _allowWindowSize = defaultRequestLength;
       //TODO: remove the need for casting
       events.emit(RequestTimeoutEvent(timeoutR, this as Peer));
       startRequestDataTimeout(times);
@@ -113,19 +113,18 @@ mixin CongestionControl on EventsEmittable<PeerEvent> {
     }
     if (downloaded == 0 || minRtt == null) return;
     var artt = minRtt;
-    var delayFactor = (CCONTROL_TARGET - artt) / CCONTROL_TARGET;
+    var delayFactor = (ccontrolTarget - artt) / ccontrolTarget;
     var windowFactor = downloaded / _allowWindowSize;
-    var scaledGain =
-        MAX_CWND_INCREASE_REQUESTS_PER_RTT * delayFactor * windowFactor;
+    var scaledGain = maxCwndIncreaseRequestsPerRtt * delayFactor * windowFactor;
 
     _allowWindowSize += scaledGain.toInt();
-    _allowWindowSize = max(DEFAULT_REQUEST_LENGTH, _allowWindowSize);
-    _allowWindowSize = min(MAX_WINDOW, _allowWindowSize);
+    _allowWindowSize = max(defaultRequestLength, _allowWindowSize);
+    _allowWindowSize = min(maxWindow, _allowWindowSize);
   }
 
   int get currentWindow {
-    var c = _allowWindowSize ~/ DEFAULT_REQUEST_LENGTH;
-    // var cw = 2 + (currentSpeed * 500 / DEFAULT_REQUEST_LENGTH).ceil();
+    var c = _allowWindowSize ~/ defaultRequestLength;
+    // var cw = 2 + (currentSpeed * 500 / defaultRequestLength).ceil();
     // print('$cw, $c');
     return c;
   }

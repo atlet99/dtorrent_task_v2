@@ -60,14 +60,15 @@ void main() {
     test('Quick validation checks file existence and sizes', () async {
       // Create empty files
       for (var file in testTorrent.files) {
-        final filePath = File('${testDir.path}${file.path}');
+        final filePath = File('${testDir.path}${Platform.pathSeparator}'
+            '${file.path.replaceAll('/', Platform.pathSeparator)}');
         await filePath.create(recursive: true);
         await filePath.writeAsBytes(List.filled(file.length, 0));
       }
 
-      // Note: We can't create a full validator without pieces,
-      // so this test is a placeholder for the structure
-      expect(testTorrent.files.length, greaterThan(0));
+      final validator = FileValidator(testTorrent, const [], testDir.path);
+
+      expect(await validator.quickValidate(), isTrue);
     });
   });
 }

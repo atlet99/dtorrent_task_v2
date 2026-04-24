@@ -18,7 +18,7 @@ class NATPMPClient {
   bool _discoveryAttempted = false;
 
   /// NAT-PMP server port (always 5351)
-  static const int NATPMP_PORT = 5351;
+  static const int natPmpPort = 5351;
 
   /// Request timeout
   final Duration timeout;
@@ -133,7 +133,7 @@ class NATPMPClient {
         request.setUint8(0, 0); // Version
         request.setUint8(1, 0); // Opcode: Public IP Address Request
 
-        socket.send(request.buffer.asUint8List(), gateway, NATPMP_PORT);
+        socket.send(request.buffer.asUint8List(), gateway, natPmpPort);
 
         // Wait for response
         final completer = Completer<bool>();
@@ -145,7 +145,7 @@ class NATPMPClient {
             final datagram = socket.receive();
             if (datagram != null &&
                 datagram.address == gateway &&
-                datagram.port == NATPMP_PORT) {
+                datagram.port == natPmpPort) {
               timeoutTimer?.cancel();
               subscription?.cancel();
               // Check response format
@@ -224,7 +224,7 @@ class NATPMPClient {
         socket.send(
           request.buffer.asUint8List(),
           _gatewayAddress!,
-          NATPMP_PORT,
+          natPmpPort,
         );
 
         // Wait for response
@@ -237,7 +237,7 @@ class NATPMPClient {
             final datagram = socket.receive();
             if (datagram != null &&
                 datagram.address == _gatewayAddress &&
-                datagram.port == NATPMP_PORT) {
+                datagram.port == natPmpPort) {
               timeoutTimer?.cancel();
               subscription?.cancel();
 
@@ -321,7 +321,7 @@ class NATPMPClient {
         socket.send(
           request.buffer.asUint8List(),
           _gatewayAddress!,
-          NATPMP_PORT,
+          natPmpPort,
         );
 
         // Wait for response
@@ -334,7 +334,7 @@ class NATPMPClient {
             final datagram = socket.receive();
             if (datagram != null &&
                 datagram.address == _gatewayAddress &&
-                datagram.port == NATPMP_PORT) {
+                datagram.port == natPmpPort) {
               timeoutTimer?.cancel();
               subscription?.cancel();
 

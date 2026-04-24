@@ -40,7 +40,7 @@ void main() {
         final listener = serverPeer.createListener();
 
         listener.on<PeerConnected>((event) {
-          event.peer.registerExtend(EXTENSION_LT_DONTHAVE);
+          event.peer.registerExtend(extensionLtDontHave);
           event.peer.sendHandShake(_peerId('SERVER'));
         });
 
@@ -66,7 +66,7 @@ void main() {
       final clientListener = client.createListener();
 
       clientListener.on<PeerConnected>((event) {
-        event.peer.registerExtend(EXTENSION_LT_DONTHAVE);
+        event.peer.registerExtend(extensionLtDontHave);
         event.peer.sendHandShake(_peerId('CLIENT'));
       });
 
@@ -109,7 +109,7 @@ void main() {
         final listener = serverPeer.createListener();
 
         listener.on<PeerConnected>((event) {
-          event.peer.registerExtend(EXTENSION_LT_DONTHAVE);
+          event.peer.registerExtend(extensionLtDontHave);
           event.peer.sendHandShake(_peerId('SERVER'));
         });
 
@@ -132,7 +132,7 @@ void main() {
       final clientListener = client.createListener();
 
       clientListener.on<PeerConnected>((event) {
-        event.peer.registerExtend(EXTENSION_LT_DONTHAVE);
+        event.peer.registerExtend(extensionLtDontHave);
         event.peer.sendHandShake(_peerId('CLIENT'));
       });
 

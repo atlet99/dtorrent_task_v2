@@ -31,6 +31,9 @@ export 'src/proxy/proxy_config.dart';
 export 'src/proxy/proxy_manager.dart';
 export 'src/proxy/http_proxy_client.dart';
 export 'src/proxy/socks5_client.dart';
+export 'src/nat/natpmp_client.dart';
+export 'src/nat/port_forwarding_manager.dart';
+export 'src/nat/upnp_client.dart';
 export 'src/queue/torrent_queue_item.dart';
 export 'src/queue/torrent_queue.dart';
 export 'src/queue/queue_manager.dart';
@@ -53,11 +56,17 @@ export 'src/schedule/scheduler.dart';
 export 'src/rss/rss_parser.dart';
 export 'src/rss/feed_filter.dart';
 export 'src/rss/rss_manager.dart';
+export 'src/lsd/lsd.dart';
+export 'src/lsd/lsd_events.dart';
 export 'src/standalone/dtorrent_common.dart';
+export 'src/standalone/dtorrent_tracker/torrent_announce_events.dart';
+export 'src/standalone/dtorrent_tracker/torrent_announce_tracker.dart'
+    show TorrentAnnounceTracker, TrackerRetryState;
 export 'src/standalone/dht/standalone_dht.dart';
+export 'src/webtorrent/websocket_tracker.dart';
 
 /// Peer ID prefix
-const ID_PREFIX = '-DT0201-';
+const idPrefix = '-DT0201-';
 
 /// Current version number
 Future<String?> getTorrentTaskVersion() async {

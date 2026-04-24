@@ -15,9 +15,6 @@ include: package:lints/recommended.yaml
 
 linter:
   rules:
-    # Disable constant identifier names check
-    constant_identifier_names: false
-    non_constant_identifier_names: false
     camel_case_types: true
 
 analyzer:
@@ -26,7 +23,10 @@ analyzer:
     - .git/**
     - .github/**
     - .trunk/**
+    - build/**
     - coverage/**
+    - doc/api/**
+    - example/bttest/**
     - tmp/**
     - test_download_*/**
     - test_results/**

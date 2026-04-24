@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:logging/logging.dart';
 
 var _log = Logger('MagnetParser');
-const _trackerSchemes = {'http', 'https', 'udp'};
+const _trackerSchemes = {'http', 'https', 'udp', 'ws', 'wss'};
 const _sourceSchemes = {'http', 'https', 'ftp'};
 
 /// Tracker tier - group of trackers that should be tried together (BEP 0012)
@@ -43,6 +43,10 @@ class MagnetLink {
   /// Parameter 'as' (Acceptable Source) - direct file URLs
   final List<Uri> acceptableSources;
 
+  /// Exact source URLs
+  /// Parameter 'xs' - exact source for metadata or content.
+  final List<Uri> exactSources;
+
   /// Selected file indices (BEP 0053)
   /// Parameter 'so' (select only) - indices of files to download
   final List<int>? selectedFileIndices;
@@ -60,6 +64,7 @@ class MagnetLink {
     this.exactLength,
     List<Uri>? webSeeds,
     List<Uri>? acceptableSources,
+    List<Uri>? exactSources,
     this.selectedFileIndices,
   })  : trackers = trackers ?? [],
         trackerTiers = trackerTiers ??
@@ -67,7 +72,8 @@ class MagnetLink {
                 ? [TrackerTier(trackers)]
                 : []),
         webSeeds = webSeeds ?? [],
-        acceptableSources = acceptableSources ?? [];
+        acceptableSources = acceptableSources ?? [],
+        exactSources = exactSources ?? [];
 
   @override
   String toString() {
@@ -82,6 +88,9 @@ class MagnetLink {
     }
     if (acceptableSources.isNotEmpty) {
       parts.add('acceptableSources: ${acceptableSources.length}');
+    }
+    if (exactSources.isNotEmpty) {
+      parts.add('exactSources: ${exactSources.length}');
     }
     if (selectedFileIndices != null) {
       parts.add('selectedFiles: ${selectedFileIndices!.length}');
@@ -99,6 +108,7 @@ class MagnetLink {
 /// - xl: exact length
 /// - ws: web seed URL (BEP 0019) - HTTP/FTP seeding
 /// - as: acceptable source URL (BEP 0019) - direct file URLs
+/// - xs: exact source URL
 /// - so: select only file index (BEP 0053) - can be multiple
 ///
 /// Example:
@@ -289,6 +299,15 @@ class MagnetParser {
         numberedWarningPrefix: 'Failed to parse acceptable source URL from',
       );
 
+      // Parse exact sources - parameter 'xs'
+      final exactSources = _parseUrlListWithNumberedKeys(
+        params: params,
+        baseKey: 'xs',
+        allowedSchemes: _sourceSchemes,
+        invalidWarningPrefix: 'Invalid exact source URL',
+        numberedWarningPrefix: 'Failed to parse exact source URL from',
+      );
+
       // Parse selected file indices (BEP 0053) - parameter 'so'
       final selectedFileIndices = _parseSelectedFileIndices(params);
       // Remove duplicates and sort
@@ -304,6 +323,7 @@ class MagnetParser {
         exactLength: exactLength,
         webSeeds: webSeeds,
         acceptableSources: acceptableSources,
+        exactSources: exactSources,
         selectedFileIndices: finalSelectedIndices,
       );
     } catch (e, stackTrace) {
@@ -466,6 +486,10 @@ class MagnetParser {
 
     for (var acceptableSource in magnet.acceptableSources) {
       buffer.write('&as=${Uri.encodeComponent(acceptableSource.toString())}');
+    }
+
+    for (var exactSource in magnet.exactSources) {
+      buffer.write('&xs=${Uri.encodeComponent(exactSource.toString())}');
     }
 
     if (magnet.selectedFileIndices != null) {

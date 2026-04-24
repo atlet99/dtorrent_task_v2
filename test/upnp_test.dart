@@ -17,10 +17,10 @@ void main() {
     });
 
     test('SSDP address and port constants', () {
-      expect(UPnPClient.SSDP_ADDRESS.address, equals('239.255.255.250'));
-      expect(UPnPClient.SSDP_PORT, equals(1900));
-      expect(UPnPClient.SSDP_MX, equals('3'));
-      expect(UPnPClient.SSDP_ST, contains('InternetGatewayDevice'));
+      expect(UPnPClient.ssdpAddress.address, equals('239.255.255.250'));
+      expect(UPnPClient.ssdpPort, equals(1900));
+      expect(UPnPClient.ssdpMx, equals('3'));
+      expect(UPnPClient.ssdpSt, contains('InternetGatewayDevice'));
     });
 
     test('M-SEARCH request format', () {

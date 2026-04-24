@@ -21,11 +21,11 @@ import '../../proxy/proxy_manager.dart';
 import '../../ssl/ssl_config.dart';
 import '../../encryption/protocol_encryption.dart';
 
-const MAX_ACTIVE_PEERS = 50;
+const maxActivePeers = 50;
 
-const MAX_WRITE_BUFFER_SIZE = 10 * 1024 * 1024;
+const maxPeerWriteBufferSize = 10 * 1024 * 1024;
 
-const MAX_UPLOADED_NOTIFY_SIZE = 1024 * 1024 * 10; // 10 mb
+const maxUploadedNotifySize = 1024 * 1024 * 10; // 10 mb
 
 var _log = Logger('PeersManager');
 
@@ -42,7 +42,7 @@ typedef _PausedRemoteRequest = ({
 /// TODO:
 /// - The external Suggest Piece/Fast Allow requests are not handled.
 class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
-  final List<InternetAddress> IGNORE_IPS = [
+  final List<InternetAddress> ignoreIps = [
     InternetAddress.tryParse('0.0.0.0')!,
     InternetAddress.tryParse('127.0.0.1')!
   ];
@@ -281,7 +281,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     _log.fine('registering extensions for peer ${peer.address}');
     peer.registerExtend('ut_pex');
     peer.registerExtend('ut_holepunch');
-    peer.registerExtend(EXTENSION_LT_DONTHAVE);
+    peer.registerExtend(extensionLtDontHave);
   }
 
   void _unHookPeer(Peer peer) {
@@ -322,13 +322,13 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
         } catch (e) {
           return;
         }
-        if (IGNORE_IPS.contains(myIp)) return;
+        if (ignoreIps.contains(myIp)) return;
         localExternalIP = InternetAddress.fromRawAddress(yourIpBytes);
       }
     }
   }
 
-  /// Add a new peer [address] , the default [type] is `PeerType.TCP`,
+  /// Add a new peer [address] , the default [type] is `PeerType.tcp`,
   /// [socket] is null.
   ///
   /// Usually [socket] is null , unless this peer was incoming connection, but
@@ -336,7 +336,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   void addNewPeerAddress(CompactAddress? address, PeerSource source,
       {PeerType? type, Object? socket}) {
     if (address == null) return;
-    if (IGNORE_IPS.contains(address.address)) return;
+    if (ignoreIps.contains(address.address)) return;
     if (address.address == localExternalIP) return;
 
     // Check IP filter
@@ -357,7 +357,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     // _peersAddress.remove(address);
     if (_peersAddress.add(address)) {
       Peer? peer;
-      if (type == null || type == PeerType.TCP) {
+      if (type == null || type == PeerType.tcp) {
         if (_metaInfo.pieces == null) {
           _log.warning(
               'Cannot create peer: torrent has no pieces (v2-only torrent?)');
@@ -374,7 +374,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
           protocolEncryptionConfig: _protocolEncryptionConfig,
         );
       }
-      if (type == PeerType.UTP) {
+      if (type == PeerType.utp) {
         if (_metaInfo.pieces == null) {
           _log.warning(
               'Cannot create peer: torrent has no pieces (v2-only torrent?)');
@@ -414,7 +414,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
         _uploaded += block.length;
         _uploadedNotifySize += block.length;
       }
-      if (_uploadedNotifySize >= MAX_UPLOADED_NOTIFY_SIZE) {
+      if (_uploadedNotifySize >= maxUploadedNotifySize) {
         _uploadedNotifySize = 0;
         events.emit(UpdateUploaded(_uploaded));
       }
@@ -439,12 +439,12 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
     if (disposeEvent.reason is TCPConnectException) {
       // print('TCPConnectException');
-      // addNewPeerAddress(peer.address, PeerType.UTP);
+      // addNewPeerAddress(peer.address, PeerType.utp);
       return;
     }
 
     if (reconnect) {
-      if (_activePeers.length < MAX_ACTIVE_PEERS && !isDisposed) {
+      if (_activePeers.length < maxActivePeers && !isDisposed) {
         addNewPeerAddress(
           disposeEvent.peer.address,
           disposeEvent.peer.source,
@@ -621,12 +621,12 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   @override
   void holePunchConnect(CompactAddress ip) {
     _log.info("holePunch connect $ip");
-    addNewPeerAddress(ip, PeerSource.holepunch, type: PeerType.UTP);
+    addNewPeerAddress(ip, PeerSource.holepunch, type: PeerType.utp);
   }
 
   int get utpPeerCount {
     return _activePeers.fold(0, (previousValue, element) {
-      if (element.type == PeerType.UTP) {
+      if (element.type == PeerType.utp) {
         previousValue += 1;
       }
       return previousValue;
@@ -635,7 +635,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   double get utpDownloadSpeed {
     return _activePeers.fold(0.0, (previousValue, element) {
-      if (element.type == PeerType.UTP) {
+      if (element.type == PeerType.utp) {
         previousValue += element.currentDownloadSpeed;
       }
       return previousValue;
@@ -644,7 +644,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   double get utpUploadSpeed {
     return _activePeers.fold(0.0, (previousValue, element) {
-      if (element.type == PeerType.UTP) {
+      if (element.type == PeerType.utp) {
         previousValue += element.averageUploadSpeed;
       }
       return previousValue;

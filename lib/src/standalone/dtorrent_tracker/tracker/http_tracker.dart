@@ -95,7 +95,7 @@ class HttpTracker extends Tracker with HttpTrackerBase {
     if (event != null) {
       params['event'] = event;
     } else {
-      params['event'] = EVENT_STARTED;
+      params['event'] = eventStarted;
     }
 
     // De-facto compatibility fields used by real trackers.

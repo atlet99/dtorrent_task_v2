@@ -453,7 +453,7 @@ Future<Uint8List> _readPieceDataFromFiles(TorrentModel torrent, String savePath,
         offset += bytes.length;
         await access.close();
       } else {
-        throw Exception('File not found: $filePath');
+        throw FileSystemException('File not found', filePath);
       }
     }
   }

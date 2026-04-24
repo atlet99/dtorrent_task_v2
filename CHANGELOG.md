@@ -1,3 +1,27 @@
+## 0.5.3
+
+- add initial WebTorrent tracker support with `WebSocketTracker` for `ws://`/`wss://` announce signalling and regression tests
+- extend magnet parsing for WebTorrent-style links with `ws://`/`wss://` trackers and `xs` exact-source URLs
+- add Sintel and Big Buck Bunny WebTorrent magnet fixtures covering UDP/WSS trackers, web seeds, and exact sources
+- refine standalone tracker event/error models by replacing untyped payload fields with explicit `Object?` contracts and immutable announce event DTOs
+- refactor tracker retry scheduler internals to typed record storage (`timer`, `retryTimes`) instead of untyped timer lists
+- harden scrape/tracker API signatures with explicit return types (`Future<void>`, `Future<ScrapeEvent?>`) and null-safe error paths in HTTP scrape flow
+- replace remaining parser/tracker helper `dynamic` usages (`Object?`-based retry/external-ip/compact-peer parsing and typed required-option extraction)
+- optimize `Makefile` quality gates: run `dart fix` once through analyzer context, keep `check-all` focused on fixes/format/analyze, and make `test-all` a single coverage run
+- clean coverage output before test coverage generation and expose `COVERAGE_DIR`/`DART_FIX_TARGET` for local customization
+- align analyzer excludes with generated/non-project folders (`build/**`, `doc/api/**`, `example/bttest/**`) so `dart fix`/analysis skip local artifacts consistently
+- update padding-file regression tests to use real `StateFileV2` instead of an outdated fake state file, matching the current `DownloadFileManager` contract
+- document `0.5.3` WebTorrent compatibility in README, including WebSocket trackers, `ws` web seeds, and `xs` exact-source magnet URLs
+- expand `example/example.dart` with a runnable WebTorrent-style magnet section for WSS trackers, web seeds, and current WebRTC scope
+- improve WebTorrent regression coverage for binary tracker responses, update announces, signalling payload variants, invalid peer IDs, `xs` round-trips, numbered exact sources, and invalid scheme filtering
+- fix pub.dev static-analysis score issues by renaming legacy ALL_CAPS constants/fields to lowerCamelCase and re-enabling identifier-name lints locally
+- exclude generated coverage output and internal `example/test_*.dart` smoke files from the publish archive via `.pubignore`
+- tighten LSD/piece/scrape internals with typed futures, `Object?` scrape payloads, and precise `StateError`/`ArgumentError` failures instead of broad `Exception`
+- harden SOCKS5 proxy reads with a buffered socket reader and typed `Socks5Exception` errors
+- normalize `FileValidator` torrent file path resolution and replace missing-file generic exceptions with `FileSystemException` in validator/example flows
+- update README snippets to import public `dtorrent_task_v2.dart` API instead of package-internal `src/` paths
+- expose documented LSD, NAT/port-forwarding, and standalone announce tracker helpers through the public barrel API so published examples no longer depend on package-internal imports
+
 ## 0.5.2
 
 - refactor streaming isolate request/response pipeline to use single listener with request correlation IDs (removes ReceivePort re-listen conflicts and stabilizes concurrent metadata/playlist requests)
@@ -9,10 +33,6 @@
 - replace dynamic state-file casts in `DownloadFileManager`/`TorrentTask` with typed `StateFile`/`StateFileV2` pattern matching for safer resume/path/update operations
 - tighten peer extension typing (`ExtendedProcessor`, `Peer`, `PeersManager`, `MetadataDownloader`, `PEX`) with explicit payload guards for `handshake`/`ut_pex`/`ut_holepunch` flows
 - refactor standalone tracker and DHT internals to stronger typed contracts (UDP/HTTP tracker response paths, socket error signatures, typed options maps, decoded datagram handling)
-- refine standalone tracker event/error models by replacing untyped payload fields with explicit `Object?` contracts and immutable announce event DTOs
-- refactor tracker retry scheduler internals to typed record storage (`timer`, `retryTimes`) instead of untyped timer lists
-- harden scrape/tracker API signatures with explicit return types (`Future<void>`, `Future<ScrapeEvent?>`) and null-safe error paths in HTTP scrape flow
-- replace remaining parser/tracker helper `dynamic` usages (`Object?`-based retry/external-ip/compact-peer parsing and typed required-option extraction)
 - remove remaining analyzer noise after refactor (including tracker extension test cast cleanup) and keep full `dart analyze` green
 - improve local developer quality gates:
   - fix `NO_COLOR` warning in `Makefile`

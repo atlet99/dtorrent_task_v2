@@ -240,7 +240,7 @@ void main() {
 
       clientListener.on<PeerChokeChanged>((event) {
         if (!event.choked) {
-          event.peer.sendRequest(0, 0, DEFAULT_REQUEST_LENGTH);
+          event.peer.sendRequest(0, 0, defaultRequestLength);
         }
       });
 
@@ -260,7 +260,7 @@ void main() {
           reason: 'Reject Request should be received');
       expect(rejectedIndex, equals(0), reason: 'Rejected index should match');
       expect(rejectedBegin, equals(0), reason: 'Rejected begin should match');
-      expect(rejectedLength, equals(DEFAULT_REQUEST_LENGTH),
+      expect(rejectedLength, equals(defaultRequestLength),
           reason: 'Rejected length should match');
 
       await clientPeer.dispose();
@@ -446,7 +446,7 @@ void main() {
 
       // Request an allowed fast piece
       final allowedFastIndex = clientPeer.remoteAllowFastPieces.first;
-      clientPeer.sendRequest(allowedFastIndex, 0, DEFAULT_REQUEST_LENGTH);
+      clientPeer.sendRequest(allowedFastIndex, 0, defaultRequestLength);
 
       await completer.future.timeout(const Duration(seconds: 5));
 

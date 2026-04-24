@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:args/args.dart';
-import 'package:dtorrent_task_v2/src/nat/port_forwarding_manager.dart';
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 
 /// Example demonstrating UPnP and NAT-PMP port forwarding functionality
 ///

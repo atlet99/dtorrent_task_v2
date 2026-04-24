@@ -259,7 +259,7 @@ class ScrapeClient {
         final infoHashHex = _infoHashToHex(infoHash);
 
         // Try to find stats by binary info hash (20-byte string as per BEP 48)
-        dynamic fileData = files[infoHash];
+        Object? fileData = files[infoHash];
 
         // If not found, try as Uint8List key (some implementations)
         if (fileData == null) {
