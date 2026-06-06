@@ -114,10 +114,10 @@ This package no longer requires the external `dtorrent_parser` dependency (built
 
 ```yaml
 dependencies:
-  dtorrent_task_v2: ^0.5.3
+  dtorrent_task_v2: ^0.5.4
 ```
 
-Current documented release: `0.5.3`.
+Current documented release: `0.5.4`.
 
 This release focuses on WebTorrent-style magnet compatibility (`ws://`/`wss://`
 trackers and `xs` exact-source URLs), safer standalone tracker internals, and
@@ -219,7 +219,7 @@ Release flow:
 1. Update `version` in `pubspec.yaml`.
 2. Commit changes to default branch.
 3. Push tag matching the version:
-   `git tag v0.5.3 && git push origin v0.5.3`
+   `git tag v0.5.4 && git push origin v0.5.4`
 4. Check workflow run in GitHub Actions and audit log on pub.dev.
 
 ## Local Quality Gates

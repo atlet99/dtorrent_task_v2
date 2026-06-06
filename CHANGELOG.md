@@ -1,3 +1,13 @@
+## 0.5.4
+
+- fix magnet metadata downloads when peers advertise Fast Extension before torrent piece count is known - issue #36
+- add explicit metadata-only peer factories (`Peer.newTCPMetadataPeer`, `Peer.newUTPMetadataPeer`) so metadata download peers no longer rely on hardcoded zero piece counts
+- add `PeerMode` plus `isMetadataOnly`/`hasKnownPieces` peer state helpers for clearer piece-dependent protocol invariants
+- harden Allowed Fast set generation by skipping peers with unknown piece count and limiting generated pieces to the available piece count
+- reject negative peer piece counts with `ArgumentError` instead of creating invalid bitfields
+- update metadata downloader peer creation to use explicit metadata-only peer mode and keep Fast Extension disabled until metadata is available
+- add Fast Extension regression coverage for metadata-only peers, unknown piece counts, and invalid negative piece counts
+
 ## 0.5.3
 
 - add initial WebTorrent tracker support with `WebSocketTracker` for `ws://`/`wss://` announce signalling and regression tests
