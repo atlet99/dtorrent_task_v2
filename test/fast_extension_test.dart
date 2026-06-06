@@ -24,6 +24,32 @@ void main() {
       serverSocket = null;
     });
 
+    test('Metadata peer mode is explicit and disables Fast Extension', () {
+      final peer = Peer.newTCPMetadataPeer(
+        CompactAddress(InternetAddress('127.0.0.1'), 6881),
+        infoHash,
+        null,
+        PeerSource.manual,
+      );
+
+      expect(peer.isMetadataOnly, isTrue);
+      expect(peer.hasKnownPieces, isFalse);
+      expect(peer.localEnableFastPeer, isFalse);
+    });
+
+    test('rejects negative piece count', () {
+      expect(
+        () => Peer.newTCPPeer(
+          CompactAddress(InternetAddress('127.0.0.1'), 6881),
+          infoHash,
+          -1,
+          null,
+          PeerSource.manual,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
     test('Have All message replaces bitfield completely', () async {
       final completer = Completer<void>();
       bool haveAllReceived = false;
