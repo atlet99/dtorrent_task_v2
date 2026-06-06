@@ -98,6 +98,8 @@ const maxInt32 = 0x7FFFFFFF;
 
 enum PeerType { tcp, utp }
 
+enum PeerMode { regular, metadataOnly }
+
 /// 30 Seconds
 const defaultConnectTimeout = 30;
 
@@ -200,6 +202,12 @@ abstract class Peer
   /// Am I interested in the resources of the other party, the default is false
   bool interestedRemote = false;
 
+  final PeerMode mode;
+
+  bool get isMetadataOnly => mode == PeerMode.metadataOnly;
+
+  bool get hasKnownPieces => _piecesNum > 0;
+
   /// Debug use
   // ignore: unused_field
   dynamic _disposeReason;
@@ -300,7 +308,12 @@ abstract class Peer
       {this.type = PeerType.tcp,
       this.localEnableFastPeer = true,
       this.localEnableExtended = true,
+      this.mode = PeerMode.regular,
       this.reqq = 100}) {
+    if (_piecesNum < 0) {
+      throw ArgumentError.value(
+          _piecesNum, 'piecesNum', 'must not be negative');
+    }
     _remoteBitfield = Bitfield.createEmptyBitfield(_piecesNum);
   }
 
@@ -308,12 +321,29 @@ abstract class Peer
       int piecesNum, Socket? socket, PeerSource source,
       {bool enableExtend = true,
       bool enableFast = true,
+      PeerMode mode = PeerMode.regular,
       ProxyManager? proxyManager,
       SSLConfig? sslConfig,
       ProtocolEncryptionConfig? protocolEncryptionConfig}) {
     return _TCPPeer(address, infoHashBuffer, piecesNum, socket, source,
         enableExtend: enableExtend,
         enableFast: enableFast,
+        mode: mode,
+        proxyManager: proxyManager,
+        sslConfig: sslConfig,
+        protocolEncryptionConfig: protocolEncryptionConfig);
+  }
+
+  factory Peer.newTCPMetadataPeer(CompactAddress address,
+      List<int> infoHashBuffer, Socket? socket, PeerSource source,
+      {bool enableExtend = true,
+      ProxyManager? proxyManager,
+      SSLConfig? sslConfig,
+      ProtocolEncryptionConfig? protocolEncryptionConfig}) {
+    return Peer.newTCPPeer(address, infoHashBuffer, 0, socket, source,
+        enableExtend: enableExtend,
+        enableFast: false,
+        mode: PeerMode.metadataOnly,
         proxyManager: proxyManager,
         sslConfig: sslConfig,
         protocolEncryptionConfig: protocolEncryptionConfig);
@@ -323,10 +353,23 @@ abstract class Peer
       int piecesNum, UTPSocket? socket, PeerSource source,
       {bool enableExtend = true,
       bool enableFast = true,
+      PeerMode mode = PeerMode.regular,
       ProtocolEncryptionConfig? protocolEncryptionConfig}) {
     return _UTPPeer(address, infoHashBuffer, piecesNum, socket, source,
         enableExtend: enableExtend,
         enableFast: enableFast,
+        mode: mode,
+        protocolEncryptionConfig: protocolEncryptionConfig);
+  }
+
+  factory Peer.newUTPMetadataPeer(CompactAddress address,
+      List<int> infoHashBuffer, UTPSocket? socket, PeerSource source,
+      {bool enableExtend = true,
+      ProtocolEncryptionConfig? protocolEncryptionConfig}) {
+    return Peer.newUTPPeer(address, infoHashBuffer, 0, socket, source,
+        enableExtend: enableExtend,
+        enableFast: false,
+        mode: PeerMode.metadataOnly,
         protocolEncryptionConfig: protocolEncryptionConfig);
   }
 
@@ -1823,6 +1866,13 @@ abstract class Peer
   void _generateAndSendAllowedFastSet() {
     const k = 10; // Default number of allowed fast pieces (per BEP 6)
     try {
+      if (_piecesNum <= 0) {
+        _log.fine(
+            'Cannot generate Allowed Fast set: piece count is unknown for peer $address');
+        return;
+      }
+      final targetPieces = _piecesNum < k ? _piecesNum : k;
+
       // Extract IP address from peer address
       final ipAddress = address.address;
 
@@ -1864,14 +1914,14 @@ abstract class Peer
 
       // Step 3: Iteratively generate hashes until we have k unique pieces
       final allowedPieces = <int>{};
-      while (allowedPieces.length < k) {
+      while (allowedPieces.length < targetPieces) {
         // Compute SHA-1 hash
         final hash = sha1.convert(x);
         final hashBytes = Uint8List.fromList(hash.bytes);
 
         // Step 4: Extract 5 piece indices from this 20-byte hash
         // Each index is 4 bytes (big-endian)
-        for (var i = 0; i < 5 && allowedPieces.length < k; i++) {
+        for (var i = 0; i < 5 && allowedPieces.length < targetPieces; i++) {
           final j = i * 4;
           if (j + 4 > hashBytes.length) break;
 
@@ -1988,6 +2038,7 @@ class _TCPPeer extends Peer {
       this._socket, PeerSource source,
       {bool enableExtend = true,
       bool enableFast = true,
+      PeerMode mode = PeerMode.regular,
       ProxyManager? proxyManager,
       SSLConfig? sslConfig,
       ProtocolEncryptionConfig? protocolEncryptionConfig})
@@ -1996,7 +2047,8 @@ class _TCPPeer extends Peer {
         super(address, infoHashBuffer, piecesNum, source,
             type: PeerType.tcp,
             localEnableExtended: enableExtend,
-            localEnableFastPeer: enableFast) {
+            localEnableFastPeer: enableFast,
+            mode: mode) {
     setProtocolEncryptionConfig(protocolEncryptionConfig);
   }
 
@@ -2077,11 +2129,13 @@ class _UTPPeer extends Peer {
     PeerSource source, {
     bool enableExtend = true,
     bool enableFast = true,
+    PeerMode mode = PeerMode.regular,
     ProtocolEncryptionConfig? protocolEncryptionConfig,
   }) : super(address, infoHashBuffer, piecesNum, source,
             type: PeerType.utp,
             localEnableExtended: enableExtend,
-            localEnableFastPeer: enableFast) {
+            localEnableFastPeer: enableFast,
+            mode: mode) {
     setProtocolEncryptionConfig(protocolEncryptionConfig);
     // Initialize uTP with optimized congestion window for better performance
     initializeUtpCwnd();

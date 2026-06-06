@@ -24,6 +24,32 @@ void main() {
       serverSocket = null;
     });
 
+    test('Metadata peer mode is explicit and disables Fast Extension', () {
+      final peer = Peer.newTCPMetadataPeer(
+        CompactAddress(InternetAddress('127.0.0.1'), 6881),
+        infoHash,
+        null,
+        PeerSource.manual,
+      );
+
+      expect(peer.isMetadataOnly, isTrue);
+      expect(peer.hasKnownPieces, isFalse);
+      expect(peer.localEnableFastPeer, isFalse);
+    });
+
+    test('rejects negative piece count', () {
+      expect(
+        () => Peer.newTCPPeer(
+          CompactAddress(InternetAddress('127.0.0.1'), 6881),
+          infoHash,
+          -1,
+          null,
+          PeerSource.manual,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
     test('Have All message replaces bitfield completely', () async {
       final completer = Completer<void>();
       bool haveAllReceived = false;
@@ -339,6 +365,67 @@ void main() {
         expect(index, lessThan(piecesNum),
             reason: 'Piece index should be valid');
       }
+
+      await clientPeer.dispose();
+      await clientSocket.close();
+    });
+
+    test('Allowed Fast set is skipped when piece count is unknown', () async {
+      final handshakeCompleter = Completer<void>();
+      final allowedFastPieces = <int>{};
+
+      serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
+      serverPort = serverSocket!.port;
+
+      serverSocket!.listen((socket) async {
+        final peer = Peer.newTCPPeer(
+          CompactAddress(socket.address, socket.port),
+          infoHash,
+          0,
+          socket,
+          PeerSource.incoming,
+        );
+        final peerListener = peer.createListener();
+
+        peerListener.on<PeerConnected>((event) {
+          event.peer.sendHandShake(_normalizePeerId('SERVER'));
+        });
+
+        try {
+          await peer.connect();
+        } catch (e) {
+          // Ignore connection errors in tests
+        }
+      });
+
+      final clientSocket = await Socket.connect('127.0.0.1', serverPort);
+      final clientPeer = Peer.newTCPPeer(
+        CompactAddress(InternetAddress('127.0.0.1'), serverPort),
+        infoHash,
+        0,
+        clientSocket,
+        PeerSource.manual,
+      );
+      final clientListener = clientPeer.createListener();
+
+      clientListener
+        ..on<PeerConnected>((event) {
+          event.peer.sendHandShake(_normalizePeerId('CLIENT'));
+        })
+        ..on<PeerHandshakeEvent>((event) {
+          if (!handshakeCompleter.isCompleted) {
+            handshakeCompleter.complete();
+          }
+        })
+        ..on<PeerAllowFast>((event) {
+          allowedFastPieces.add(event.index);
+        });
+
+      await clientPeer.connect();
+      await handshakeCompleter.future.timeout(const Duration(seconds: 5));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      expect(allowedFastPieces, isEmpty);
 
       await clientPeer.dispose();
       await clientSocket.close();

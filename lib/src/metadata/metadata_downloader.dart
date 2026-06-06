@@ -411,19 +411,17 @@ class MetadataDownloader
     if (_peersAddress.add(address)) {
       Peer? peer;
       if (type == PeerType.tcp) {
-        peer = Peer.newTCPPeer(
+        peer = Peer.newTCPMetadataPeer(
           address,
           _infoHashBuffer,
-          0,
           socket is Socket ? socket : null,
           source,
         );
       }
       if (type == PeerType.utp) {
-        peer = Peer.newUTPPeer(
+        peer = Peer.newUTPMetadataPeer(
           address,
           _infoHashBuffer,
-          0,
           socket is UTPSocket ? socket : null,
           source,
         );
