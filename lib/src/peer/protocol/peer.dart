@@ -1823,6 +1823,13 @@ abstract class Peer
   void _generateAndSendAllowedFastSet() {
     const k = 10; // Default number of allowed fast pieces (per BEP 6)
     try {
+      if (_piecesNum <= 0) {
+        _log.fine(
+            'Cannot generate Allowed Fast set: piece count is unknown for peer $address');
+        return;
+      }
+      final targetPieces = _piecesNum < k ? _piecesNum : k;
+
       // Extract IP address from peer address
       final ipAddress = address.address;
 
@@ -1864,14 +1871,14 @@ abstract class Peer
 
       // Step 3: Iteratively generate hashes until we have k unique pieces
       final allowedPieces = <int>{};
-      while (allowedPieces.length < k) {
+      while (allowedPieces.length < targetPieces) {
         // Compute SHA-1 hash
         final hash = sha1.convert(x);
         final hashBytes = Uint8List.fromList(hash.bytes);
 
         // Step 4: Extract 5 piece indices from this 20-byte hash
         // Each index is 4 bytes (big-endian)
-        for (var i = 0; i < 5 && allowedPieces.length < k; i++) {
+        for (var i = 0; i < 5 && allowedPieces.length < targetPieces; i++) {
           final j = i * 4;
           if (j + 4 > hashBytes.length) break;
 

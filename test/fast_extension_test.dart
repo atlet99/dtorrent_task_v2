@@ -344,6 +344,67 @@ void main() {
       await clientSocket.close();
     });
 
+    test('Allowed Fast set is skipped when piece count is unknown', () async {
+      final handshakeCompleter = Completer<void>();
+      final allowedFastPieces = <int>{};
+
+      serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
+      serverPort = serverSocket!.port;
+
+      serverSocket!.listen((socket) async {
+        final peer = Peer.newTCPPeer(
+          CompactAddress(socket.address, socket.port),
+          infoHash,
+          0,
+          socket,
+          PeerSource.incoming,
+        );
+        final peerListener = peer.createListener();
+
+        peerListener.on<PeerConnected>((event) {
+          event.peer.sendHandShake(_normalizePeerId('SERVER'));
+        });
+
+        try {
+          await peer.connect();
+        } catch (e) {
+          // Ignore connection errors in tests
+        }
+      });
+
+      final clientSocket = await Socket.connect('127.0.0.1', serverPort);
+      final clientPeer = Peer.newTCPPeer(
+        CompactAddress(InternetAddress('127.0.0.1'), serverPort),
+        infoHash,
+        0,
+        clientSocket,
+        PeerSource.manual,
+      );
+      final clientListener = clientPeer.createListener();
+
+      clientListener
+        ..on<PeerConnected>((event) {
+          event.peer.sendHandShake(_normalizePeerId('CLIENT'));
+        })
+        ..on<PeerHandshakeEvent>((event) {
+          if (!handshakeCompleter.isCompleted) {
+            handshakeCompleter.complete();
+          }
+        })
+        ..on<PeerAllowFast>((event) {
+          allowedFastPieces.add(event.index);
+        });
+
+      await clientPeer.connect();
+      await handshakeCompleter.future.timeout(const Duration(seconds: 5));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      expect(allowedFastPieces, isEmpty);
+
+      await clientPeer.dispose();
+      await clientSocket.close();
+    });
+
     test('Allowed Fast pieces can be downloaded when choked', () async {
       final completer = Completer<void>();
       var pieceReceived = false;

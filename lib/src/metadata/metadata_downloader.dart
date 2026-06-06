@@ -417,6 +417,7 @@ class MetadataDownloader
           0,
           socket is Socket ? socket : null,
           source,
+          enableFast: false,
         );
       }
       if (type == PeerType.utp) {
@@ -426,6 +427,7 @@ class MetadataDownloader
           0,
           socket is UTPSocket ? socket : null,
           source,
+          enableFast: false,
         );
       }
       if (peer != null) _hookPeer(peer);
