@@ -1970,8 +1970,8 @@ class _TorrentTask
   double get progress {
     var d = downloaded;
     if (d == null) return 0.0;
-    var l = _metaInfo.length;
-    if (l == null) return 0.0;
+    var l = _metaInfo.totalSize;
+    if (l == 0) return 0.0;
     return d / l;
   }
 

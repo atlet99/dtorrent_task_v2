@@ -70,6 +70,9 @@ class _FakeDHTDriver implements StandaloneDHTDriver {
   }
 
   @override
+  void clearBootstrapNodes() {}
+
+  @override
   Future<void> stop() async {
     stopCalls++;
     if (!_events.isClosed) {
