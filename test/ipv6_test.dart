@@ -45,6 +45,9 @@ class _IPv6FakeDriver implements StandaloneDHTDriver {
   Future<void> addBootstrapNode(Uri url) async {}
 
   @override
+  void clearBootstrapNodes() {}
+
+  @override
   Future<void> stop() async {
     await _events.close();
   }

@@ -97,6 +97,8 @@ abstract class StandaloneDHTDriver {
 
   Future<void> addBootstrapNode(Uri url);
 
+  void clearBootstrapNodes();
+
   Future<void> stop();
 }
 
@@ -212,7 +214,28 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
     return _preferredSocket()?.port;
   }
 
-  bool get _hasAnySocket => _socketV4 != null || _socketV6 != null;
+  bool get _hasAnySocket {
+    _dropDeadSockets();
+    return _socketV4 != null || _socketV6 != null;
+  }
+
+  void _dropDeadSockets() {
+    if (_socketV4 != null && !_isSocketAlive(_socketV4!)) {
+      _disposeSockets();
+    }
+    if (_socketV6 != null && !_isSocketAlive(_socketV6!)) {
+      _disposeSockets();
+    }
+  }
+
+  bool _isSocketAlive(RawDatagramSocket socket) {
+    try {
+      socket.port;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   RawDatagramSocket? _preferredSocket() {
     if (_addressFamilyMode == StandaloneDHTAddressFamilyMode.ipv6Only) {
@@ -395,6 +418,20 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
     }
   }
 
+  @override
+  void clearBootstrapNodes() {
+    _bootstrapNodes.clear();
+  }
+
+  static final Set<String> _unroutableAddresses = {
+    InternetAddress.anyIPv4.address,
+    InternetAddress.anyIPv6.address,
+    '255.255.255.255',
+  };
+
+  bool _isRoutableAddress(InternetAddress address) =>
+      !_unroutableAddresses.contains(address.address);
+
   Future<void> _bootstrapViaNode(Uri url) async {
     final host = url.host;
     final port = url.hasPort ? url.port : 6881;
@@ -402,7 +439,7 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
     try {
       final ip = InternetAddress.tryParse(host);
       if (ip != null) {
-        if (_isFamilyEnabled(ip.type)) {
+        if (_isFamilyEnabled(ip.type) && _isRoutableAddress(ip)) {
           _sendFindNode(CompactAddress(ip, port));
         }
         return;
@@ -410,7 +447,7 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
 
       final ips = await InternetAddress.lookup(host);
       for (final resolved in ips) {
-        if (_isFamilyEnabled(resolved.type)) {
+        if (_isFamilyEnabled(resolved.type) && _isRoutableAddress(resolved)) {
           _sendFindNode(CompactAddress(resolved, port));
         }
       }
@@ -541,8 +578,19 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
   @override
   Future<void> stop() async {
     _stopped = true;
-    await _socketSubV4?.cancel();
-    await _socketSubV6?.cancel();
+    _disposeSockets();
+    _nodes.clear();
+    _pendingQueries.clear();
+    _tokensByNodeAndInfoHash.clear();
+    _announcePorts.clear();
+    if (!_controller.isClosed) {
+      await _controller.close();
+    }
+  }
+
+  void _disposeSockets() {
+    unawaited(_socketSubV4?.cancel());
+    unawaited(_socketSubV6?.cancel());
     _socketSubV4 = null;
     _socketSubV6 = null;
     _socketV4?.close();
@@ -552,10 +600,6 @@ class InRepoStandaloneDHTDriver implements StandaloneDHTDriver {
     _nodes.clear();
     _pendingQueries.clear();
     _tokensByNodeAndInfoHash.clear();
-    _announcePorts.clear();
-    if (!_controller.isClosed) {
-      await _controller.close();
-    }
   }
 }
 
@@ -578,6 +622,8 @@ abstract class StandaloneDHT with EventsEmittable<StandaloneDHTEvent> {
   void requestPeers(String infoHash);
 
   Future<void> addBootstrapNode(Uri url);
+
+  void clearBootstrapNodes();
 
   Future<void> stop();
 }
@@ -763,6 +809,11 @@ class BittorrentDHTAdapter extends StandaloneDHT {
   @override
   Future<void> addBootstrapNode(Uri url) {
     return _driver.addBootstrapNode(url);
+  }
+
+  @override
+  void clearBootstrapNodes() {
+    _driver.clearBootstrapNodes();
   }
 
   @override

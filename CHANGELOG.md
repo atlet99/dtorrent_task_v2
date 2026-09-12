@@ -1,3 +1,13 @@
+## Unreleased
+
+- skip unroutable DHT bootstrap addresses (`0.0.0.0`, `::`, broadcast) in standalone driver instead of sending `find_node` datagrams to them
+- drop dead UDP sockets in standalone DHT driver so the next bootstrap binds fresh ones instead of reusing closed socket references across retries
+- add `clearBootstrapNodes()` to standalone DHT driver, facade, and adapter so callers can replace the built-in router list when one of its hosts goes away
+- fix multi-file torrent progress reporting flat zero by dividing downloaded bytes by `totalSize` (falls back to the sum of file sizes) instead of single-file-only `length`
+- add DHT bootstrap regression coverage for unroutable nodes, dead sockets, built-in list replacement, and facade delegation (`test/dht_bootstrap_regression_test.dart`)
+- add multi-file torrent progress regression coverage (`test/multi_file_progress_test.dart`)
+- add DHT bootstrap and multi-file progress examples (`example/dht_bootstrap_regression_example.dart`, `example/multi_file_progress_example.dart`)
+
 ## 0.5.4
 
 - fix magnet metadata downloads when peers advertise Fast Extension before torrent piece count is known - issue #36
