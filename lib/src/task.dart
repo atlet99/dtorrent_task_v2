@@ -1064,7 +1064,17 @@ class _TorrentTask
     if (state == TaskState.paused) return;
     state = TaskState.paused;
     _peersManager?.pause();
+    // Flush batched resume data without blocking (pause is sync).
+    unawaited(_fileManager?.saveResumeData());
     events.emit(TaskPaused());
+  }
+
+  /// Persist accumulated resume data immediately.
+  ///
+  /// Bitfield updates accumulate in memory and are flushed in batches; call
+  /// this for durability now (pause/stop call it internally).
+  Future<void> saveResumeData() async {
+    await _fileManager?.saveResumeData();
   }
 
   @override
@@ -1855,6 +1865,8 @@ class _TorrentTask
   Future<void> dispose() async {
     await _flushFiles(_flushIndicesBuffer);
     _flushIndicesBuffer.clear();
+    // Final-flush batched resume data before the state file is closed.
+    await _fileManager?.saveResumeData();
     events.dispose();
     _dhtRepeatTimer?.cancel();
     _dhtRepeatTimer = null;

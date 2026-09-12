@@ -66,6 +66,14 @@ class StateFileV2 {
   bool _sparse = false;
   int _compressionLevel = 6; // Default zlib compression level
 
+  /// Pending changes are flushed in batches (see saveResumeData).
+  ///
+  /// Bitfield updates accumulate in memory and are persisted as a single
+  /// header/bitfield/footer pass on a timer ([persistInterval]), on explicit
+  /// [saveResumeData], and on [close]. This avoids a header/footer/flush
+  /// triplet per accepted piece.
+  static const Duration editInterval = Duration(seconds: 5);
+
   /// File priorities (only non-normal priorities are stored)
   Map<int, FilePriority> _filePriorities = {};
 
@@ -82,6 +90,9 @@ class StateFileV2 {
     // Remove normal priorities (they're default)
     _filePriorities
         .removeWhere((index, priority) => priority == FilePriority.normal);
+    // Priorities live in the footer, so they need a batched persist too.
+    // Before init() there is nothing to persist: init writes them itself.
+    if (_bitfieldFile != null) _markDirty();
   }
 
   bool get isClosed => _closed;
@@ -89,7 +100,26 @@ class StateFileV2 {
   int get version => _version;
   DateTime? get lastModified => _lastModified;
 
-  StateFileV2(this.metainfo);
+  /// Interval between automatic batched persists of pending changes.
+  final Duration _persistInterval;
+
+  /// Whether in-memory state has changes not yet persisted to disk.
+  bool _dirty = false;
+
+  /// Timer driving automatic batched persists. Null when idle.
+  Timer? _persistTimer;
+
+  /// Number of completed batched persist passes (header/bitfield/footer).
+  int _persistCount = 0;
+
+  /// Whether there are changes not yet persisted to disk.
+  bool get hasPendingChanges => _dirty;
+
+  /// Number of completed batched persist passes. Exposed for tests.
+  int get persistCount => _persistCount;
+
+  StateFileV2(this.metainfo, {Duration persistInterval = editInterval})
+      : _persistInterval = persistInterval;
 
   /// Get state file with automatic migration from old format
   static Future<StateFileV2> getStateFile(
@@ -780,8 +810,14 @@ class StateFileV2 {
   }
 
   /// Update piece bitfield
+  ///
+  /// The change is applied to the in-memory bitfield immediately and
+  /// persisted to disk in batches (see [saveResumeData]). Returns false when
+  /// the state file is closed or nothing changed.
   Future<bool> update(int index, {bool have = true, int uploaded = 0}) async {
+    if (_closed) return false;
     _access = await getAccess();
+    if (_closed) return false;
     var completer = Completer<bool>();
     _streamController?.add({
       'type': 'single',
@@ -793,6 +829,10 @@ class StateFileV2 {
     return completer.future;
   }
 
+  /// Apply a queued update to the in-memory state and mark it dirty.
+  ///
+  /// Disk I/O happens later in [_persistBatch], so N accepted pieces cost one
+  /// header/bitfield/footer pass instead of N.
   Future<void> _update(Map<String, dynamic> event) async {
     int index = event['index'];
     int uploaded = event['uploaded'];
@@ -804,60 +844,89 @@ class StateFileV2 {
         return;
       }
       _bitfield.setBit(index, have);
-
-      // Check if we should switch storage format
-      final completedCount = _bitfield.completedPieces.length;
-      final totalPieces = _bitfield.piecesNum;
-      final completionRatio =
-          totalPieces > 0 ? completedCount / totalPieces : 0.0;
-
-      // Switch to/from sparse format if needed
-      final shouldBeSparse =
-          completionRatio < sparseThreshold && completedCount > 0;
-      if (shouldBeSparse != _sparse) {
-        _log.info(
-            'Switching bitfield storage format (sparse: $shouldBeSparse)');
-        _sparse = shouldBeSparse;
-        // Rewrite entire bitfield
-        await _rewriteBitfield();
-      }
     } else {
-      if (_uploaded == uploaded) return;
+      if (_uploaded == uploaded) {
+        c.complete(false);
+        return;
+      }
     }
     _uploaded = uploaded;
     _lastModified = DateTime.now();
-    try {
-      var access = await getAccess();
+    _markDirty();
+    c.complete(true);
+  }
 
-      if (index != -1 && !_sparse) {
-        // For full bitfield, update individual byte
-        var i = index ~/ 8;
-        // Calculate offset: header (72) + optional compression size + bitfield offset
-        var bitfieldOffset = 72;
-        if (_compressed) {
-          bitfieldOffset += 4; // Skip compressed size
-        }
-        bitfieldOffset += i;
-        await access?.setPosition(bitfieldOffset);
-        await access?.writeByte(_bitfield.buffer[i]);
-      } else if (index != -1 && _sparse) {
-        // For sparse format, need to rewrite entire sparse section
-        await _rewriteBitfield();
+  /// Mark in-memory state as changed and schedule a batched persist.
+  void _markDirty() {
+    if (_closed) return;
+    _dirty = true;
+    _schedulePersist();
+  }
+
+  void _schedulePersist() {
+    if (_closed || _persistTimer != null) return;
+    _persistTimer = Timer(_persistInterval, () {
+      _persistTimer = null;
+      if (_closed || !_dirty) return;
+      final controller = _streamController;
+      if (controller == null || controller.isClosed) {
+        // No write queue exists yet (e.g. only priorities changed), so no
+        // queued update can interleave: persist directly.
+        unawaited(_persistBatch());
+      } else {
+        // Go through the queue to stay serialized with pending updates.
+        controller.add({
+          'type': 'persist',
+          'completer': Completer<void>(),
+        });
       }
+    });
+  }
 
-      // Update uploaded in footer
-      await _updateFooter();
-
-      // Update header uploaded and timestamp
+  /// Persist accumulated changes in a single header/bitfield/footer pass.
+  ///
+  /// Called on a timer, from [saveResumeData], and from [close]. No-op when
+  /// nothing changed. Must only run serialized with [_update] (via the write
+  /// queue or after it is drained in [close]).
+  Future<void> _persistBatch() async {
+    _persistTimer?.cancel();
+    _persistTimer = null;
+    if (!_dirty || _bitfieldFile == null) return;
+    _dirty = false;
+    try {
+      // Rewrite the whole bitfield section at once (handles sparse switch
+      // internally and refreshes the footer), then refresh the header.
+      await _rewriteBitfield();
       await _updateHeader();
-
+      var access = await getAccess();
       await access?.flush();
-      c.complete(true);
+      _persistCount++;
     } catch (e) {
-      _log.warning(
-          'Update bitfield piece:[$index],uploaded:$uploaded error :', e);
-      c.complete(false);
+      _dirty = true;
+      _schedulePersist();
+      _log.warning('Batched persist of state file failed', e);
     }
+  }
+
+  /// Persist accumulated resume data immediately.
+  ///
+  /// Used for pause/stop paths and by callers that need durability now
+  /// (libtorrent `save_resume_data` equivalent). No-op when clean.
+  Future<void> saveResumeData() async {
+    if (_closed || !_dirty) return;
+    _access = await getAccess();
+    if (_closed) return;
+    final controller = _streamController;
+    if (controller == null || controller.isClosed) {
+      await _persistBatch();
+      return;
+    }
+    var completer = Completer<void>();
+    controller.add({
+      'type': 'persist',
+      'completer': completer,
+    });
+    await completer.future;
   }
 
   /// Rewrite entire bitfield section (used when switching formats or sparse updates)
@@ -1044,9 +1113,21 @@ class StateFileV2 {
     try {
       if (event['type'] == 'single') {
         await _update(event);
+      } else if (event['type'] == 'persist') {
+        await _persistBatch();
+        (event['completer'] as Completer<void>).complete();
+      } else if (event['type'] == 'drain') {
+        (event['completer'] as Completer<void>).complete();
       }
     } catch (e, stackTrace) {
       _log.warning('State file v2 request processing failed', e, stackTrace);
+      try {
+        if (event['type'] == 'single') {
+          (event['completer'] as Completer<bool>).complete(false);
+        } else {
+          (event['completer'] as Completer<void>).complete();
+        }
+      } catch (_) {}
     } finally {
       _streamSubscription?.resume();
     }
@@ -1065,7 +1146,21 @@ class StateFileV2 {
   Future<void> close() async {
     if (isClosed) return;
     _closed = true;
+    _persistTimer?.cancel();
+    _persistTimer = null;
     try {
+      // Drain queued in-memory updates first, then final-flush the batch so
+      // no accepted piece is lost (pause/stop durability point).
+      final controller = _streamController;
+      if (controller != null && !controller.isClosed) {
+        var drained = Completer<void>();
+        controller.add({
+          'type': 'drain',
+          'completer': drained,
+        });
+        await drained.future;
+      }
+      await _persistBatch();
       await _streamSubscription?.cancel();
       await _streamController?.close();
       await _access?.flush();

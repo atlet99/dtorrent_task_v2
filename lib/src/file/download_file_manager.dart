@@ -129,6 +129,17 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     return updated;
   }
 
+  /// Persist accumulated resume data immediately (batched state writes).
+  ///
+  /// Called on task pause/stop. Legacy [StateFile] writes through on every
+  /// update, so there is nothing to flush there.
+  Future<void> saveResumeData() async {
+    final stateFile = _stateFile;
+    if (stateFile is StateFileV2) {
+      await stateFile.saveResumeData();
+    }
+  }
+
   // Future<bool> updateBitfields(List<int> indices, [List<bool> haves]) {
   //   return _stateFile.updateBitfields(indices, haves);
   // }
