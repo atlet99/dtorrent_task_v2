@@ -7,6 +7,11 @@
 - add DHT bootstrap regression coverage for unroutable nodes, dead sockets, built-in list replacement, and facade delegation (`test/dht_bootstrap_regression_test.dart`)
 - add multi-file torrent progress regression coverage (`test/multi_file_progress_test.dart`)
 - add DHT bootstrap and multi-file progress examples (`example/dht_bootstrap_regression_example.dart`, `example/multi_file_progress_example.dart`)
+- batch `StateFileV2` bitfield updates in memory and persist header/bitfield/footer in a single pass on a timer (every 5s), on explicit `saveResumeData()`, and on pause/stop/close instead of a header/footer/flush triplet per accepted piece - issue #48
+- add `saveResumeData()` to `StateFileV2`, `DownloadFileManager`, and task for on-demand resume-data durability (libtorrent `save_resume_data` equivalent)
+- expose `hasPendingChanges`/`persistCount` and configurable `persistInterval` on `StateFileV2` for batching observability and tests
+- fix `updateUploaded` no-change path hanging forever by completing with `false` when nothing changed
+- add batched-persist regression coverage for single-pass batch save, timer auto-persist, and final flush in `close()` (`test/fast_resume_test.dart`)
 
 ## 0.5.4
 
