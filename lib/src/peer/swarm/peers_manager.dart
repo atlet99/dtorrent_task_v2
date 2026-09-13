@@ -38,6 +38,85 @@ typedef _PausedRemoteRequest = ({
   int length,
 });
 
+/// Snapshot of a peer's choke-relevant state for tit-for-tat selection.
+class ChokeCandidate {
+  const ChokeCandidate({
+    required this.id,
+    required this.interested,
+    required this.disposed,
+    required this.unchoked,
+    required this.downloadScore,
+    required this.uploadScore,
+  });
+
+  /// Peer identity (compared with `==`).
+  final Object id;
+
+  /// Whether the remote peer wants data from us.
+  final bool interested;
+
+  final bool disposed;
+
+  /// Whether the peer is currently unchoked (anti-fibrillation tiebreak).
+  final bool unchoked;
+
+  /// Reciprocal download rate from this peer (leecher tit-for-tat).
+  final double downloadScore;
+
+  /// Upload rate to this peer (seed tit-for-tat, fastest-upload first).
+  final double uploadScore;
+}
+
+/// BEP 3 style tit-for-tat selection of peers to unchoke.
+///
+/// Returns at most [slots] winners: the fastest interested peers by
+/// reciprocal speed ([ChokeCandidate.downloadScore] while leeching,
+/// [ChokeCandidate.uploadScore] while seeding), plus the optimistic peer
+/// ([optimisticId]) when it is still eligible. One slot is reserved for the
+/// optimistic peer, mirroring webtorrent/libtorrent rechoke behavior.
+List<ChokeCandidate> selectUnchokedCandidates({
+  required List<ChokeCandidate> candidates,
+  required int slots,
+  required bool seeding,
+  Object? optimisticId,
+}) {
+  final interested =
+      candidates.where((c) => c.interested && !c.disposed).toList();
+  double score(ChokeCandidate c) => seeding ? c.uploadScore : c.downloadScore;
+  double tiebreak(ChokeCandidate c) =>
+      seeding ? c.downloadScore : c.uploadScore;
+  interested.sort((a, b) {
+    var result = score(b).compareTo(score(a));
+    if (result != 0) return result;
+    result = tiebreak(b).compareTo(tiebreak(a));
+    if (result != 0) return result;
+    if (a.unchoked != b.unchoked) return a.unchoked ? -1 : 1;
+    return a.id.toString().compareTo(b.id.toString());
+  });
+  final regularCount = slots < 1 ? 0 : slots - 1;
+  final winners = interested.take(regularCount).toList();
+  if (optimisticId != null && !winners.any((w) => w.id == optimisticId)) {
+    for (final candidate in interested) {
+      if (candidate.id == optimisticId) {
+        winners.add(candidate);
+        break;
+      }
+    }
+  }
+  return winners;
+}
+
+/// Round-robin pick of the next optimistic-unchoke candidate id.
+///
+/// Returns null when there is nobody to optimistically unchoke.
+Object? pickOptimisticCandidateId({
+  required List<ChokeCandidate> chokedInterested,
+  required int cursor,
+}) {
+  if (chokedInterested.isEmpty) return null;
+  return chokedInterested[cursor % chokedInterested.length].id;
+}
+
 ///
 /// TODO:
 /// - The external Suggest Piece/Fast Allow requests are not handled.
@@ -93,15 +172,69 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   TorrentVersion? _torrentVersion;
 
+  /// BEP 3 rechoke cadence: tit-for-tat unchoke cycle.
+  static const unchokeInterval = Duration(seconds: 10);
+
+  /// BEP 3 optimistic unchoke rotation cadence.
+  static const optimisticUnchokeInterval = Duration(seconds: 30);
+
+  /// Default upload slots (libretorrent `DEFAULT_UPLOADS_LIMIT_PER_TORRENT`).
+  /// Overridden at runtime via [maxUploadSlots] (future `SessionSettings`
+  /// threads `maxUploadsPerTorrent` through here).
+  static const defaultMaxUploadSlots = 4;
+
+  /// Maximum simultaneously unchoked peers, optimistic slot included.
+  int _maxUploadSlots = defaultMaxUploadSlots;
+
+  int get maxUploadSlots => _maxUploadSlots;
+
+  set maxUploadSlots(int value) {
+    _maxUploadSlots = value < 1 ? 1 : value;
+    _scheduleChokeReevaluation();
+  }
+
+  /// Whether the local client has the complete torrent (seed policy:
+  /// fastest-upload first instead of leecher tit-for-tat).
+  bool _seeding = false;
+
+  bool get seeding => _seeding;
+
+  set seeding(bool value) {
+    if (_seeding == value) return;
+    _seeding = value;
+    _scheduleChokeReevaluation();
+  }
+
+  /// Peer currently holding the rotating optimistic-unchoke slot.
+  Peer? _optimisticPeer;
+
+  /// Round-robin cursor for the optimistic slot.
+  int _optimisticCursor = 0;
+
+  Timer? _unchokeTimer;
+
+  Timer? _optimisticTimer;
+
+  bool _chokeReevaluateScheduled = false;
+
   PeersManager(
     this._localPeerId,
     this._metaInfo, {
     IPFilter? ipFilter,
+    int? maxUploadSlots,
+    bool? seeding,
   }) {
     _ipFilter = ipFilter;
+    if (maxUploadSlots != null) {
+      _maxUploadSlots = maxUploadSlots < 1 ? 1 : maxUploadSlots;
+    }
+    if (seeding != null) _seeding = seeding;
     _init();
     // Start pex interval
     startPEX();
+    _unchokeTimer = Timer.periodic(unchokeInterval, (_) => runUnchokeCycle());
+    _optimisticTimer = Timer.periodic(
+        optimisticUnchokeInterval, (_) => rotateOptimisticUnchoke());
   }
 
   /// Set torrent version for v2/hybrid support
@@ -433,6 +566,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     _peersAddress.remove(disposeEvent.peer.address);
     _incomingAddress.remove(disposeEvent.peer.address.address);
     _activePeers.remove(disposeEvent.peer);
+    if (identical(disposeEvent.peer, _optimisticPeer)) _optimisticPeer = null;
 
     _pausedRemoteRequest.remove(disposeEvent.peer.id);
     _pausedRequest.removeWhere((request) => request.peer == disposeEvent.peer);
@@ -496,10 +630,77 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   void _processInterestedChange(PeerInterestedChanged event) {
     if (event.interested) {
-      event.peer.sendChoke(false);
+      // No blind unchoke: the tit-for-tat cycle places the peer promptly.
+      _scheduleChokeReevaluation();
     } else {
       event.peer.sendChoke(true); // Choke it if not interested.
+      if (identical(event.peer, _optimisticPeer)) _optimisticPeer = null;
+      _scheduleChokeReevaluation();
     }
+  }
+
+  /// Re-run the unchoke cycle once, coalescing bursts of interest changes.
+  void _scheduleChokeReevaluation() {
+    if (_disposed || _chokeReevaluateScheduled) return;
+    _chokeReevaluateScheduled = true;
+    Timer.run(() {
+      _chokeReevaluateScheduled = false;
+      runUnchokeCycle();
+    });
+  }
+
+  ChokeCandidate _candidateOf(Peer peer) => ChokeCandidate(
+        id: peer,
+        interested: peer.interestedMe,
+        disposed: peer.isDisposed,
+        unchoked: !peer.chokeRemote,
+        downloadScore: peer.currentDownloadSpeed,
+        uploadScore: peer.averageUploadSpeed,
+      );
+
+  /// Periodic BEP 3 unchoke cycle: unchoke the fastest reciprocating peers
+  /// within [maxUploadSlots], plus the optimistic peer. Chokes the rest.
+  void runUnchokeCycle() {
+    if (_disposed || _activePeers.isEmpty) return;
+    final optimistic = _optimisticPeer;
+    if (optimistic != null &&
+        (optimistic.isDisposed || !optimistic.interestedMe)) {
+      _optimisticPeer = null;
+    }
+    final winners = selectUnchokedCandidates(
+      candidates: [for (final peer in _activePeers) _candidateOf(peer)],
+      slots: _maxUploadSlots,
+      seeding: _seeding,
+      optimisticId: _optimisticPeer,
+    ).map((c) => c.id).toSet();
+    for (final peer in _activePeers) {
+      if (peer.isDisposed) continue;
+      peer.sendChoke(!winners.contains(peer));
+    }
+  }
+
+  /// Rotate the single optimistic-unchoke slot round-robin among
+  /// interested-but-choked peers to discover better partners, then re-apply.
+  void rotateOptimisticUnchoke() {
+    if (_disposed) return;
+    final pool = _activePeers
+        .where((p) => !p.isDisposed && p.interestedMe && p.chokeRemote)
+        .toList();
+    if (pool.isEmpty) {
+      final current = _optimisticPeer;
+      if (current == null || current.isDisposed || !current.interestedMe) {
+        _optimisticPeer = null;
+      }
+      runUnchokeCycle();
+      return;
+    }
+    final id = pickOptimisticCandidateId(
+      chokedInterested: [for (final peer in pool) _candidateOf(peer)],
+      cursor: _optimisticCursor,
+    );
+    _optimisticCursor++;
+    _optimisticPeer = id is Peer ? id : null;
+    runUnchokeCycle();
   }
 
   void _sendKeepAliveToAll() {
@@ -581,6 +782,12 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   Future<void> dispose() async {
     if (isDisposed) return;
     _disposed = true;
+    _unchokeTimer?.cancel();
+    _unchokeTimer = null;
+    _optimisticTimer?.cancel();
+    _optimisticTimer = null;
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = null;
     events.dispose();
     clearHolepunch();
     clearPEX();
