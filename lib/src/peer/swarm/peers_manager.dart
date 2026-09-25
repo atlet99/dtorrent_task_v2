@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dart_ipify/dart_ipify.dart';
@@ -73,15 +74,21 @@ class ChokeCandidate {
 /// reciprocal speed ([ChokeCandidate.downloadScore] while leeching,
 /// [ChokeCandidate.uploadScore] while seeding), plus the optimistic peer
 /// ([optimisticId]) when it is still eligible. One slot is reserved for the
-/// optimistic peer, mirroring webtorrent/libtorrent rechoke behavior.
+/// optimistic peer, mirroring webtorrent/libtorrent rechoke behavior. Fully
+/// tied candidates are ordered randomly (seed [random] for reproducibility).
 List<ChokeCandidate> selectUnchokedCandidates({
   required List<ChokeCandidate> candidates,
   required int slots,
   required bool seeding,
   Object? optimisticId,
+  Random? random,
 }) {
+  final rng = random ?? Random();
   final interested =
       candidates.where((c) => c.interested && !c.disposed).toList();
+  final randomRanks = <Object, double>{
+    for (final c in interested) c.id: rng.nextDouble(),
+  };
   double score(ChokeCandidate c) => seeding ? c.uploadScore : c.downloadScore;
   double tiebreak(ChokeCandidate c) =>
       seeding ? c.downloadScore : c.uploadScore;
@@ -91,7 +98,7 @@ List<ChokeCandidate> selectUnchokedCandidates({
     result = tiebreak(b).compareTo(tiebreak(a));
     if (result != 0) return result;
     if (a.unchoked != b.unchoked) return a.unchoked ? -1 : 1;
-    return a.id.toString().compareTo(b.id.toString());
+    return randomRanks[b.id]!.compareTo(randomRanks[a.id]!);
   });
   final regularCount = slots < 1 ? 0 : slots - 1;
   final winners = interested.take(regularCount).toList();
@@ -217,13 +224,16 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
 
   bool _chokeReevaluateScheduled = false;
 
+  final Random _random;
+
   PeersManager(
     this._localPeerId,
     this._metaInfo, {
     IPFilter? ipFilter,
     int? maxUploadSlots,
     bool? seeding,
-  }) {
+    Random? random,
+  }) : _random = random ?? Random() {
     _ipFilter = ipFilter;
     if (maxUploadSlots != null) {
       _maxUploadSlots = maxUploadSlots < 1 ? 1 : maxUploadSlots;
@@ -672,6 +682,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
       slots: _maxUploadSlots,
       seeding: _seeding,
       optimisticId: _optimisticPeer,
+      random: _random,
     ).map((c) => c.id).toSet();
     for (final peer in _activePeers) {
       if (peer.isDisposed) continue;

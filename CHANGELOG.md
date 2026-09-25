@@ -13,7 +13,7 @@
 - fix `updateUploaded` no-change path hanging forever by completing with `false` when nothing changed
 - add batched-persist regression coverage for single-pass batch save, timer auto-persist, and final flush in `close()` (`test/fast_resume_test.dart`)
 - replace 1:1 interest choke mapping in `PeersManager` with a BEP 3 rechoke cycle: tit-for-tat unchoke of fastest reciprocating peers every 10s, one rotating optimistic-unchoke slot every 30s, capped at `maxUploadSlots` (default 4) - issue #43
-- rank unchoke candidates by download speed while leeching and by upload speed (fastest-upload first) while seeding, with anti-fibrillation incumbency tiebreak
+- rank unchoke candidates by download speed while leeching and by upload speed (fastest-upload first) while seeding, with anti-fibrillation incumbency tiebreak and random final tiebreak (seedable `Random`)
 - add pure `selectUnchokedCandidates`/`pickOptimisticCandidateId` helpers plus `runUnchokeCycle()`/`rotateOptimisticUnchoke()` triggers and wire the seed policy from task completion state
 - add choke policy regression coverage for top-N speed picks, seed ranking, optimistic rotation, and slot caps (`test/choke_policy_test.dart`)
 

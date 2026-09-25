@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:test/test.dart';
 import 'test_helpers.dart';
@@ -110,9 +112,25 @@ void main() {
         ],
         slots: 4,
         seeding: false,
+        random: Random(1),
       );
 
       expect(_ids(winners), equals(['better-upload', 'incumbent', 'new']));
+    });
+
+    test('breaks fully tied peers randomly, reproducibly per seed', () {
+      List<String> withSeed(int seed) => _ids(selectUnchokedCandidates(
+            candidates: [_peer('a'), _peer('b'), _peer('c'), _peer('d')],
+            slots: 4,
+            seeding: false,
+            random: Random(seed),
+          ));
+
+      expect(withSeed(7), equals(withSeed(7)));
+      expect(
+        {for (var seed = 0; seed < 50; seed++) withSeed(seed).first}.length,
+        greaterThan(1),
+      );
     });
   });
 
