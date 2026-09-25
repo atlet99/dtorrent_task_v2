@@ -12,6 +12,12 @@
 - expose `hasPendingChanges`/`persistCount` and configurable `persistInterval` on `StateFileV2` for batching observability and tests
 - fix `updateUploaded` no-change path hanging forever by completing with `false` when nothing changed
 - add batched-persist regression coverage for single-pass batch save, timer auto-persist, and final flush in `close()` (`test/fast_resume_test.dart`)
+- fix losing queued bitfield updates during `StateFileV2.close()`: the file now rejects new updates via a `_closing` admission flag (instead of `_closed`, which made queued updates skip their dirty mark) and concurrent `close()` calls share one final-flush future
+- add regression coverage asserting the disk bitfield exactly matches the set of updates that reported success during a concurrent `close()` (`test/fast_resume_test.dart`)
+- replace 1:1 interest choke mapping in `PeersManager` with a BEP 3 rechoke cycle: tit-for-tat unchoke of fastest reciprocating peers every 10s, one rotating optimistic-unchoke slot every 30s, capped at `maxUploadSlots` (default 4) - issue #43
+- rank unchoke candidates by download speed while leeching and by upload speed (fastest-upload first) while seeding, with anti-fibrillation incumbency tiebreak and random final tiebreak (seedable `Random`)
+- add pure `selectUnchokedCandidates`/`pickOptimisticCandidateId` helpers plus `runUnchokeCycle()`/`rotateOptimisticUnchoke()` triggers and wire the seed policy from task completion state
+- add choke policy regression coverage for top-N speed picks, seed ranking, optimistic rotation, and slot caps (`test/choke_policy_test.dart`)
 
 ## 0.5.4
 
