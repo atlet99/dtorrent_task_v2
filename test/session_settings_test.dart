@@ -246,6 +246,22 @@ void main() {
         expect(peers.reserveDownloadBytes(1024), Duration.zero);
         expect(peers.reserveDownloadBytes(1024), greaterThan(Duration.zero));
 
+        task.addScheduleWindow(ScheduleWindow(
+          id: 'always',
+          weekdays: {DateTime.now().weekday},
+          start: Duration.zero,
+          end: const Duration(days: 1),
+          maxDownloadRate: 256,
+        ));
+        expect(task.scheduledMaxDownloadRate, 256);
+        expect(peers.reserveDownloadBytes(256), Duration.zero);
+        expect(peers.reserveDownloadBytes(1), greaterThan(Duration.zero));
+
+        task.clearScheduleWindows();
+        expect(task.scheduledMaxDownloadRate, isNull);
+        expect(task.sessionSettings.downloadRateLimit, 1024);
+        expect(peers.reserveDownloadBytes(1024), Duration.zero);
+
         task.applySessionSettings(
           settings.copyWith(maxConnections: 1, maxUploadsPerTorrent: 2),
         );

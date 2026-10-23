@@ -133,7 +133,8 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   ///
   /// Connection, incoming, and upload-slot limits take effect immediately;
   /// lowering a connection or incoming cap disconnects excess active peers
-  /// and rate limits pace piece requests and uploads.
+  /// and rate limits pace piece requests and uploads. Rate limits combine
+  /// with active [ScheduleWindow] caps; the most restrictive one wins.
   void applySessionSettings(SessionSettings settings);
 
   // The dht instance
@@ -502,19 +503,37 @@ class _TorrentTask
     _peersManager
       ?..maxConnections = settings.effectiveMaxConnectionsPerTorrent
       ..maxUploadSlots = settings.maxUploadsPerTorrent
-      ..setRateLimits(
-        downloadRateLimit: settings.downloadRateLimit,
-        uploadRateLimit: settings.uploadRateLimit,
-      )
       ..setConnectionBudget(
         settings.connectionBudget,
         sessionMaxConnections: settings.maxConnections,
       );
+    _applyEffectiveRateLimits();
     _log.info('Session settings applied: connections cap '
         '${settings.effectiveMaxConnectionsPerTorrent}, '
         'incoming cap ${settings.maxIncomingConnectionsPerTorrent}, '
         'upload slots ${settings.maxUploadsPerTorrent}');
     _enforceIncomingLimit(settings.maxIncomingConnectionsPerTorrent);
+  }
+
+  /// Smallest non-zero rate cap of [session] and [scheduled]; 0 = unlimited.
+  int _mostRestrictiveRate(int session, int? scheduled) {
+    if (scheduled == null || scheduled <= 0) return session;
+    if (session <= 0) return scheduled;
+    return scheduled < session ? scheduled : session;
+  }
+
+  /// Recompute rate limits from session settings and schedule windows.
+  void _applyEffectiveRateLimits() {
+    _peersManager?.setRateLimits(
+      downloadRateLimit: _mostRestrictiveRate(
+        _sessionSettings.downloadRateLimit,
+        _scheduledMaxDownloadRate,
+      ),
+      uploadRateLimit: _mostRestrictiveRate(
+        _sessionSettings.uploadRateLimit,
+        _scheduledMaxUploadRate,
+      ),
+    );
   }
 
   /// Drop excess active incoming peers after the limit was lowered.
@@ -1015,6 +1034,7 @@ class _TorrentTask
   void _applyScheduledSpeedLimits({int? maxDownloadRate, int? maxUploadRate}) {
     _scheduledMaxDownloadRate = maxDownloadRate;
     _scheduledMaxUploadRate = maxUploadRate;
+    _applyEffectiveRateLimits();
     _log.info(
       'Scheduler speed caps updated: '
       'download=${maxDownloadRate ?? 'unlimited'} B/s, '

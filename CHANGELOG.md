@@ -20,7 +20,7 @@
 - add choke policy regression coverage for top-N speed picks, seed ranking, optimistic rotation, and slot caps (`test/choke_policy_test.dart`)
 - add `SessionSettings` (connection, incoming, upload-slot, and rate limits, libretorrent defaults) and expose it through `TorrentTask.newTask(..., sessionSettings)` - issue #45
 - apply connection, incoming, and upload-slot limits at task start and re-apply them at runtime via `TorrentTask.applySessionSettings`; lowering a connection or incoming cap disconnects excess active peers
-- enforce `downloadRateLimit`/`uploadRateLimit` with a token-bucket limiter that paces piece requests and upload sends
+- enforce `downloadRateLimit`/`uploadRateLimit` with a token-bucket limiter that paces piece requests and upload sends; scheduler window speed caps feed the same limiter (most restrictive wins)
 - add an optional `SessionConnectionBudget` shared through `SessionSettings` to enforce `maxConnections` across several tasks
 - replace the hardcoded `maxPeers`/`maxInPeers`/`maxActivePeers` constants with settings-driven limits (old constants kept as deprecated aliases)
 - add session settings regression coverage for defaults, cap resolution, `PeersManager` capping/trimming, cross-task budget sharing, runtime re-apply, and rate pacing (`test/session_settings_test.dart`)
