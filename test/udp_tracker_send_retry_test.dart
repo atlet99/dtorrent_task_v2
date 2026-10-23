@@ -13,42 +13,14 @@ void main() {
   });
 
   test('a successful announce keeps the tracker reusable', () async {
-    final server =
-        await RawDatagramSocket.bind(InternetAddress.loopbackIPv4, 0);
-    var received = 0;
-    server.listen((event) {
-      if (event != RawSocketEvent.read) return;
-      final datagram = server.receive();
-      if (datagram == null) return;
-      received++;
-      final view = ByteData.sublistView(datagram.data);
-      final action = view.getUint32(8);
-      final transactionId = view.getUint32(12);
-      final response = Uint8List(20);
-      final responseView = ByteData.sublistView(response);
-      responseView.setUint32(0, action);
-      responseView.setUint32(4, transactionId);
-      if (action == 1) {
-        responseView.setUint32(8, 1800); // interval
-      }
-      server.send(response, datagram.address, datagram.port);
-    });
-
-    final tracker = UDPTracker(
-      Uri.parse('udp://127.0.0.1:${server.port}/announce'),
-      Uint8List(20),
-    );
+    final announceEvents = <int>[];
+    final server = await _bindFakeTracker(announceEvents);
+    final tracker = _trackerFor(server);
     addTearDown(() async {
       await tracker.close();
       server.close();
     });
-    final options = <String, dynamic>{
-      'peerId': '-DT0201-123456789012',
-      'downloaded': 0,
-      'left': 0,
-      'uploaded': 0,
-      'port': 6881,
-    };
+    final options = _options();
 
     final first = await tracker
         .announce('started', options)
@@ -59,7 +31,37 @@ void main() {
 
     expect(first, isNotNull);
     expect(second, isNotNull);
-    expect(received, 4); // connect + announce for each of the two rounds
+    expect(announceEvents, [2, 2]); // 'started' twice
+  });
+
+  test('stop sends the stopped announce before closing', () async {
+    final announceEvents = <int>[];
+    final server = await _bindFakeTracker(announceEvents);
+    final tracker = _trackerFor(server)..provider = _OptionsProvider();
+    addTearDown(() async {
+      await tracker.close();
+      server.close();
+    });
+
+    final result = await tracker.stop().timeout(const Duration(seconds: 5));
+
+    expect(result, isNotNull);
+    expect(announceEvents, [3]); // 'stopped'
+  });
+
+  test('complete sends the completed announce before closing', () async {
+    final announceEvents = <int>[];
+    final server = await _bindFakeTracker(announceEvents);
+    final tracker = _trackerFor(server)..provider = _OptionsProvider();
+    addTearDown(() async {
+      await tracker.close();
+      server.close();
+    });
+
+    final result = await tracker.complete().timeout(const Duration(seconds: 5));
+
+    expect(result, isNotNull);
+    expect(announceEvents, [1]); // 'completed'
   });
 
   test('failed sends emit one error and stop retrying', () async {
@@ -83,4 +85,52 @@ void main() {
     expect(errors, hasLength(1));
     expect(errors.single, isA<SocketException>());
   });
+}
+
+UDPTracker _trackerFor(RawDatagramSocket server) {
+  return UDPTracker(
+    Uri.parse('udp://127.0.0.1:${server.port}/announce'),
+    Uint8List(20),
+  );
+}
+
+class _OptionsProvider implements AnnounceOptionsProvider {
+  @override
+  Future<Map<String, dynamic>> getOptions(Uri uri, String infoHash) async {
+    return _options();
+  }
+}
+
+Map<String, dynamic> _options() {
+  return <String, dynamic>{
+    'peerId': '-DT0201-123456789012',
+    'downloaded': 0,
+    'left': 0,
+    'uploaded': 0,
+    'port': 6881,
+  };
+}
+
+Future<RawDatagramSocket> _bindFakeTracker(List<int> announceEvents) async {
+  final server = await RawDatagramSocket.bind(InternetAddress.loopbackIPv4, 0);
+  server.listen((event) {
+    if (event != RawSocketEvent.read) return;
+    final datagram = server.receive();
+    if (datagram == null) return;
+    final view = ByteData.sublistView(datagram.data);
+    final action = view.getUint32(8);
+    final transactionId = view.getUint32(12);
+    if (action == 1) {
+      announceEvents.add(view.getUint32(80));
+    }
+    final response = Uint8List(20);
+    final responseView = ByteData.sublistView(response);
+    responseView.setUint32(0, action);
+    responseView.setUint32(4, transactionId);
+    if (action == 1) {
+      responseView.setUint32(8, 1800); // interval
+    }
+    server.send(response, datagram.address, datagram.port);
+  });
+  return server;
 }
