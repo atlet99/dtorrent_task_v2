@@ -20,10 +20,8 @@ const _bep41OptionUrlData = 2;
 /// UDP Tracker
 class UDPTracker extends Tracker with UDPTrackerBase {
   String? _currentEvent;
-  UDPTracker(Uri uri, Uint8List infoHashBuffer,
-      {AnnounceOptionsProvider? provider})
-      : super('udp:${uri.host}:${uri.port}', uri, infoHashBuffer,
-            provider: provider);
+  UDPTracker(Uri uri, Uint8List infoHashBuffer, {super.provider})
+      : super('udp:${uri.host}:${uri.port}', uri, infoHashBuffer);
   String? get currentEvent {
     return _currentEvent;
   }

@@ -18,10 +18,8 @@ var _log = Logger('HttpTracker');
 class HttpTracker extends Tracker with HttpTrackerBase {
   String? _trackerId;
   String? _currentEvent;
-  HttpTracker(Uri uri, Uint8List infoHashBuffer,
-      {AnnounceOptionsProvider? provider})
-      : super('http:${uri.host}:${uri.port}${uri.path}', uri, infoHashBuffer,
-            provider: provider);
+  HttpTracker(Uri uri, Uint8List infoHashBuffer, {super.provider})
+      : super('http:${uri.host}:${uri.port}${uri.path}', uri, infoHashBuffer);
 
   String? get currentTrackerId {
     return _trackerId;

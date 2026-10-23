@@ -22,10 +22,9 @@ class WebSocketTracker extends Tracker {
   WebSocketTracker(
     Uri uri,
     Uint8List infoHashBuffer, {
-    AnnounceOptionsProvider? provider,
+    super.provider,
   }) : super('${uri.scheme}:${uri.host}:${uri.port}${uri.path}', uri,
-            infoHashBuffer,
-            provider: provider);
+            infoHashBuffer);
 
   String? get currentEvent => _currentEvent;
 
