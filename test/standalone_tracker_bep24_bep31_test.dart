@@ -31,10 +31,8 @@ class _FakeTrackerGenerator implements TrackerGenerator {
 }
 
 class _FakeTracker extends Tracker {
-  _FakeTracker(Uri uri, Uint8List infoHashBuffer,
-      {AnnounceOptionsProvider? provider})
-      : super('fake:${uri.host}:${uri.port}', uri, infoHashBuffer,
-            provider: provider);
+  _FakeTracker(Uri uri, Uint8List infoHashBuffer, {super.provider})
+      : super('fake:${uri.host}:${uri.port}', uri, infoHashBuffer);
 
   @override
   Future<PeerEvent?> announce(
@@ -52,10 +50,8 @@ class _FakeTracker extends Tracker {
 }
 
 class _FakeWarningTracker extends Tracker {
-  _FakeWarningTracker(Uri uri, Uint8List infoHashBuffer,
-      {AnnounceOptionsProvider? provider})
-      : super('fake-warning:${uri.host}:${uri.port}', uri, infoHashBuffer,
-            provider: provider);
+  _FakeWarningTracker(Uri uri, Uint8List infoHashBuffer, {super.provider})
+      : super('fake-warning:${uri.host}:${uri.port}', uri, infoHashBuffer);
 
   @override
   Future<PeerEvent?> announce(
@@ -82,10 +78,8 @@ class _FakeWarningTrackerGenerator implements TrackerGenerator {
 }
 
 class _FakeErrorTracker extends Tracker {
-  _FakeErrorTracker(Uri uri, Uint8List infoHashBuffer,
-      {AnnounceOptionsProvider? provider})
-      : super('fake-error:${uri.host}:${uri.port}', uri, infoHashBuffer,
-            provider: provider);
+  _FakeErrorTracker(Uri uri, Uint8List infoHashBuffer, {super.provider})
+      : super('fake-error:${uri.host}:${uri.port}', uri, infoHashBuffer);
 
   @override
   Future<PeerEvent?> announce(

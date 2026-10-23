@@ -49,6 +49,8 @@ const int compressionThreshold = 1024; // 1KB
 class StateFileV2 {
   late Bitfield _bitfield;
   bool _closed = false;
+  bool _closing = false;
+  Future<void>? _closeFuture;
   int _uploaded = 0;
   final TorrentModel metainfo;
   RandomAccessFile? _access;
@@ -815,9 +817,9 @@ class StateFileV2 {
   /// persisted to disk in batches (see [saveResumeData]). Returns false when
   /// the state file is closed or nothing changed.
   Future<bool> update(int index, {bool have = true, int uploaded = 0}) async {
-    if (_closed) return false;
+    if (_closed || _closing) return false;
     _access = await getAccess();
-    if (_closed) return false;
+    if (_closed || _closing) return false;
     var completer = Completer<bool>();
     _streamController?.add({
       'type': 'single',
@@ -864,7 +866,7 @@ class StateFileV2 {
   }
 
   void _schedulePersist() {
-    if (_closed || _persistTimer != null) return;
+    if (_closed || _closing || _persistTimer != null) return;
     _persistTimer = Timer(_persistInterval, () {
       _persistTimer = null;
       if (_closed || !_dirty) return;
@@ -1143,14 +1145,17 @@ class StateFileV2 {
     return _access;
   }
 
-  Future<void> close() async {
-    if (isClosed) return;
-    _closed = true;
+  Future<void> close() => _closeFuture ??= _close();
+
+  Future<void> _close() async {
+    _closing = true;
     _persistTimer?.cancel();
     _persistTimer = null;
     try {
       // Drain queued in-memory updates first, then final-flush the batch so
-      // no accepted piece is lost (pause/stop durability point).
+      // no accepted piece is lost (pause/stop durability point). `_closing`
+      // (not `_closed`) is set here: queued updates must still mark the state
+      // dirty while they drain, otherwise the final flush would skip them.
       final controller = _streamController;
       if (controller != null && !controller.isClosed) {
         var drained = Completer<void>();
@@ -1168,6 +1173,8 @@ class StateFileV2 {
     } catch (e) {
       _log.warning('Error while closing the status file: ', e);
     } finally {
+      _closed = true;
+      _closing = false;
       _access = null;
       _streamSubscription = null;
       _streamController = null;

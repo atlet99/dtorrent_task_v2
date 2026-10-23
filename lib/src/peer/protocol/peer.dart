@@ -2034,21 +2034,20 @@ class _TCPPeer extends Peer {
   final ProxyManager? _proxyManager;
   final SSLConfig? _sslConfig;
 
-  _TCPPeer(CompactAddress address, List<int> infoHashBuffer, int piecesNum,
-      this._socket, PeerSource source,
+  _TCPPeer(super.address, super.infoHashBuffer, super.piecesNum, this._socket,
+      super.source,
       {bool enableExtend = true,
       bool enableFast = true,
-      PeerMode mode = PeerMode.regular,
+      super.mode,
       ProxyManager? proxyManager,
       SSLConfig? sslConfig,
       ProtocolEncryptionConfig? protocolEncryptionConfig})
       : _proxyManager = proxyManager,
         _sslConfig = sslConfig,
-        super(address, infoHashBuffer, piecesNum, source,
+        super(
             type: PeerType.tcp,
             localEnableExtended: enableExtend,
-            localEnableFastPeer: enableFast,
-            mode: mode) {
+            localEnableFastPeer: enableFast) {
     setProtocolEncryptionConfig(protocolEncryptionConfig);
   }
 
@@ -2122,20 +2121,19 @@ class _UTPPeer extends Peer {
   UTPSocketClient? _client;
   UTPSocket? _socket;
   _UTPPeer(
-    CompactAddress address,
-    List<int> infoHashBuffer,
-    int piecesNum,
+    super.address,
+    super.infoHashBuffer,
+    super.piecesNum,
     this._socket,
-    PeerSource source, {
+    super.source, {
     bool enableExtend = true,
     bool enableFast = true,
-    PeerMode mode = PeerMode.regular,
+    super.mode,
     ProtocolEncryptionConfig? protocolEncryptionConfig,
-  }) : super(address, infoHashBuffer, piecesNum, source,
+  }) : super(
             type: PeerType.utp,
             localEnableExtended: enableExtend,
-            localEnableFastPeer: enableFast,
-            mode: mode) {
+            localEnableFastPeer: enableFast) {
     setProtocolEncryptionConfig(protocolEncryptionConfig);
     // Initialize uTP with optimized congestion window for better performance
     initializeUtpCwnd();

@@ -136,6 +136,30 @@ void main() {
         await reloaded.close();
       }
     });
+
+    test('close() persists updates still in flight', () async {
+      final stateFile =
+          await StateFileV2.getStateFile(testDir.path, testTorrent);
+      final piecesNum = stateFile.bitfield.piecesNum;
+      final updates = <Future<bool>>[
+        for (var i = 0; i < piecesNum; i++) stateFile.updateBitfield(i, true),
+      ];
+      await stateFile.close();
+      final results = await Future.wait(updates);
+      final accepted = <int>[
+        for (var i = 0; i < results.length; i++)
+          if (results[i]) i,
+      ];
+
+      final reloaded =
+          await StateFileV2.getStateFile(testDir.path, testTorrent);
+      try {
+        expect(reloaded.bitfield.completedPieces, equals(accepted));
+        expect(reloaded.validate(), completion(isTrue));
+      } finally {
+        await reloaded.close();
+      }
+    });
   });
 
   group('FileValidator', () {

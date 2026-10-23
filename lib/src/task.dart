@@ -721,6 +721,7 @@ class _TorrentTask
     _fileManager ??= await DownloadFileManager.createFileManager(
         model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
     _peersManager ??= PeersManager(_peerId, model, ipFilter: _ipFilter);
+    _peersManager?.seeding = _fileManager!.isAllComplete;
     _peersManager?.setSSLConfig(_sslConfig);
     _peersManager?.setProtocolEncryptionConfig(_encryptionConfig);
     _advancedSelector?.setLocalPeerEndpoint(
@@ -1489,6 +1490,8 @@ class _TorrentTask
     await _flushFiles(_flushIndicesBuffer);
     if (_fileManager!.isAllComplete) {
       events.emit(AllComplete());
+      // Switch choke policy to the seed (fastest-upload) strategy.
+      _peersManager?.seeding = true;
       _whenTaskDownloadComplete();
 
       // Enable superseeding if it was requested but we weren't a seeder yet
