@@ -51,9 +51,13 @@ import 'file/file_priority.dart';
 import 'file/file_priority_manager.dart';
 import 'file/auto_move_manager.dart';
 import 'schedule/scheduler.dart';
+import 'settings/session_settings.dart';
 
-const maxPeers = 50;
-const maxInPeers = 10;
+@Deprecated('Use SessionSettings.maxConnectionsPerTorrent')
+const maxPeers = SessionSettings.defaultMaxConnectionsPerTorrent;
+
+@Deprecated('Use SessionSettings.maxIncomingConnectionsPerTorrent')
+const maxInPeers = SessionSettings.defaultMaxIncomingConnectionsPerTorrent;
 
 enum TaskState { running, paused, stopped }
 
@@ -92,6 +96,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
     bool partialSeedingEnabled = false,
     SSLConfig? sslConfig,
     ProtocolEncryptionConfig? encryptionConfig,
+    SessionSettings? sessionSettings,
   ]) {
     return _TorrentTask(
       metaInfo,
@@ -104,6 +109,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
       partialSeedingEnabled: partialSeedingEnabled,
       sslConfig: sslConfig,
       encryptionConfig: encryptionConfig,
+      sessionSettings: sessionSettings,
     );
   }
   void startAnnounceUrl(Uri url, Uint8List infoHash);
@@ -119,6 +125,17 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
 
   /// The peers manager
   PeersManager? get peersManager;
+
+  /// Session limits currently used by this task.
+  SessionSettings get sessionSettings;
+
+  /// Apply [settings] to this task.
+  ///
+  /// Connection, incoming, and upload-slot limits take effect immediately;
+  /// lowering a connection or incoming cap disconnects excess active peers
+  /// and rate limits pace piece requests and uploads. Rate limits combine
+  /// with active [ScheduleWindow] caps; the most restrictive one wins.
+  void applySessionSettings(SessionSettings settings);
 
   // The dht instance
 
@@ -477,6 +494,60 @@ class _TorrentTask
   @override
   PeersManager? get peersManager => _peersManager;
 
+  @override
+  SessionSettings get sessionSettings => _sessionSettings;
+
+  @override
+  void applySessionSettings(SessionSettings settings) {
+    _sessionSettings = settings;
+    _peersManager
+      ?..maxConnections = settings.effectiveMaxConnectionsPerTorrent
+      ..maxUploadSlots = settings.maxUploadsPerTorrent
+      ..setConnectionBudget(
+        settings.connectionBudget,
+        sessionMaxConnections: settings.maxConnections,
+      );
+    _applyEffectiveRateLimits();
+    _log.info('Session settings applied: connections cap '
+        '${settings.effectiveMaxConnectionsPerTorrent}, '
+        'incoming cap ${settings.maxIncomingConnectionsPerTorrent}, '
+        'upload slots ${settings.maxUploadsPerTorrent}');
+    _enforceIncomingLimit(settings.maxIncomingConnectionsPerTorrent);
+  }
+
+  /// Smallest non-zero rate cap of [session] and [scheduled]; 0 = unlimited.
+  int _mostRestrictiveRate(int session, int? scheduled) {
+    if (scheduled == null || scheduled <= 0) return session;
+    if (session <= 0) return scheduled;
+    return scheduled < session ? scheduled : session;
+  }
+
+  /// Recompute rate limits from session settings and schedule windows.
+  void _applyEffectiveRateLimits() {
+    _peersManager?.setRateLimits(
+      downloadRateLimit: _mostRestrictiveRate(
+        _sessionSettings.downloadRateLimit,
+        _scheduledMaxDownloadRate,
+      ),
+      uploadRateLimit: _mostRestrictiveRate(
+        _sessionSettings.uploadRateLimit,
+        _scheduledMaxUploadRate,
+      ),
+    );
+  }
+
+  /// Drop excess active incoming peers after the limit was lowered.
+  void _enforceIncomingLimit(int limit) {
+    if (limit <= 0) return;
+    final incoming = _peersManager?.activePeers
+        .where((peer) => peer.source == PeerSource.incoming)
+        .toList();
+    if (incoming == null || incoming.length <= limit) return;
+    for (final peer in incoming.take(incoming.length - limit)) {
+      unawaited(peer.dispose('Incoming connection limit lowered'));
+    }
+  }
+
   StreamingServer? _streamingServer;
 
   bool stream;
@@ -520,6 +591,12 @@ class _TorrentTask
   TaskScheduler? _scheduler;
   int? _scheduledMaxDownloadRate;
   int? _scheduledMaxUploadRate;
+
+  /// Session-wide peer and rate limits.
+  SessionSettings _sessionSettings;
+
+  /// Delayed piece requests waiting on the download rate limiter.
+  final Set<Timer> _rateLimitedRequestTimers = {};
 
   /// The maximum size of the disk write cache.
   final int _maxWriteBufferSize = maxPeerWriteBufferSize;
@@ -584,11 +661,13 @@ class _TorrentTask
       ProxyConfig? proxyConfig,
       bool partialSeedingEnabled = false,
       SSLConfig? sslConfig,
-      ProtocolEncryptionConfig? encryptionConfig})
+      ProtocolEncryptionConfig? encryptionConfig,
+      SessionSettings? sessionSettings})
       : _webSeeds = webSeeds ?? [],
         _acceptableSources = acceptableSources ?? [],
         _sequentialConfig = sequentialConfig,
-        _partialSeedingEnabled = partialSeedingEnabled {
+        _partialSeedingEnabled = partialSeedingEnabled,
+        _sessionSettings = sessionSettings ?? const SessionSettings() {
     _sslConfig = sslConfig;
     _encryptionConfig = encryptionConfig;
     if (proxyConfig != null) {
@@ -720,7 +799,14 @@ class _TorrentTask
 
     _fileManager ??= await DownloadFileManager.createFileManager(
         model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
-    _peersManager ??= PeersManager(_peerId, model, ipFilter: _ipFilter);
+    _peersManager ??= PeersManager(
+      _peerId,
+      model,
+      ipFilter: _ipFilter,
+      maxConnections: _sessionSettings.effectiveMaxConnectionsPerTorrent,
+      maxUploadSlots: _sessionSettings.maxUploadsPerTorrent,
+    );
+    applySessionSettings(_sessionSettings);
     _peersManager?.seeding = _fileManager!.isAllComplete;
     _peersManager?.setSSLConfig(_sslConfig);
     _peersManager?.setProtocolEncryptionConfig(_encryptionConfig);
@@ -948,6 +1034,7 @@ class _TorrentTask
   void _applyScheduledSpeedLimits({int? maxDownloadRate, int? maxUploadRate}) {
     _scheduledMaxDownloadRate = maxDownloadRate;
     _scheduledMaxUploadRate = maxUploadRate;
+    _applyEffectiveRateLimits();
     _log.info(
       'Scheduler speed caps updated: '
       'download=${maxDownloadRate ?? 'unlimited'} B/s, '
@@ -1046,7 +1133,9 @@ class _TorrentTask
       socket.close();
       return;
     }
-    if (_comingIp.length >= maxInPeers || !_comingIp.add(socket.address)) {
+    final incomingLimit = _sessionSettings.maxIncomingConnectionsPerTorrent;
+    if ((incomingLimit > 0 && _comingIp.length >= incomingLimit) ||
+        !_comingIp.add(socket.address)) {
       socket.close();
       return;
     }
@@ -1547,6 +1636,9 @@ class _TorrentTask
   }
 
   void _processPeerDispose(PeerDisposeEvent event) {
+    if (event.peer.source == PeerSource.incoming) {
+      _comingIp.remove(event.peer.address.address);
+    }
     if (_pieceManager == null) return;
 
     // Clean up superseeding tracking for this peer
@@ -1844,16 +1936,37 @@ class _TorrentTask
 
     var subIndex = piece.popSubPiece();
     if (subIndex == null) return;
+    final targetPiece = piece;
     var size = defaultRequestLength; // Block size is calculated dynamically.
     var begin = subIndex * size;
-    if ((begin + size) > piece.byteLength) {
-      size = piece.byteLength - begin;
+    if ((begin + size) > targetPiece.byteLength) {
+      size = targetPiece.byteLength - begin;
     }
-    if (!peer.sendRequest(piece.index, begin, size)) {
-      piece.pushSubPiece(subIndex);
-    } else {
-      Timer.run(() => requestPieces(peer, pieceIndex));
+
+    void send() {
+      if (targetPiece.isCompleted) return;
+      if (peer.isDisposed) {
+        targetPiece.pushSubPiece(subIndex);
+        return;
+      }
+      if (!peer.sendRequest(targetPiece.index, begin, size)) {
+        targetPiece.pushSubPiece(subIndex);
+      } else {
+        Timer.run(() => requestPieces(peer, pieceIndex));
+      }
     }
+
+    final delay = _peersManager!.reserveDownloadBytes(size);
+    if (delay <= Duration.zero) {
+      send();
+      return;
+    }
+    late final Timer timer;
+    timer = Timer(delay, () {
+      _rateLimitedRequestTimers.remove(timer);
+      send();
+    });
+    _rateLimitedRequestTimers.add(timer);
   }
 
   @override
@@ -1901,6 +2014,10 @@ class _TorrentTask
     _lsd = null;
     _peerIds.clear();
     _comingIp.clear();
+    for (final timer in _rateLimitedRequestTimers) {
+      timer.cancel();
+    }
+    _rateLimitedRequestTimers.clear();
     _streamingServer?.stop();
 
     // Dispose web seed downloader

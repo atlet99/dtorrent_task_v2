@@ -53,6 +53,7 @@ export 'src/dht/dht_multiple_addresses.dart';
 export 'src/dht/dht_pubsub.dart';
 export 'src/dht/dht_indexing.dart';
 export 'src/schedule/scheduler.dart';
+export 'src/settings/session_settings.dart';
 export 'src/rss/rss_parser.dart';
 export 'src/rss/feed_filter.dart';
 export 'src/rss/rss_manager.dart';
