@@ -71,13 +71,19 @@ mixin UDPTrackerBase {
 
   int maxConnectRetryTimes = 3;
 
+  /// Number of retries after the initial failed send attempt.
+  int maxSendRetryTimes = 3;
+
+  /// Base delay for the exponential backoff between send attempts.
+  Duration sendRetryDelay = const Duration(milliseconds: 500);
+
   ///
   /// The first connection to the Remote communication
   /// When announcing and scrape communicate, this first step must be taken, which is fixed.
   /// The parameter completer is an instance of 'Completer'. Used to intercept exceptions that occur and intercept them through completeError
   ///
-  void _connect<T>(Map<String, dynamic> options, List<CompactAddress> address,
-      Completer<T?> completer) async {
+  Future<void> _connect<T>(Map<String, dynamic> options,
+      List<CompactAddress> address, Completer<T?> completer) async {
     if (isClosed) {
       if (!completer.isCompleted) completer.completeError('Tracker closed');
       return;
@@ -88,11 +94,10 @@ mixin UDPTrackerBase {
     list.addAll(transcationId!);
     var messageBytes = Uint8List.fromList(list);
     try {
-      _sendMessage(messageBytes, address);
+      await _sendMessage(messageBytes, address);
       return;
     } catch (e) {
       if (!completer.isCompleted) completer.completeError(e);
-      close();
     }
   }
 
@@ -102,31 +107,30 @@ mixin UDPTrackerBase {
     var completer = Completer<T?>();
     var adds = await addresses;
     if (adds == null || adds.isEmpty) {
-      close();
+      _closeSocket();
       if (!completer.isCompleted) {
         completer.completeError('InternetAddress cant be null');
       }
       return completer.future;
     }
-    _socket?.close();
+    _closeSocket();
     _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
     _socket?.listen((event) async {
       if (event == RawSocketEvent.read) {
         var datagram = _socket?.receive();
         if (datagram == null || datagram.data.length < 8) {
-          close();
+          _closeSocket();
           completer.completeError('Wrong datas');
           return;
         }
         _processAnnounceResponseData<T>(
             datagram.data, options, adds, completer);
       }
-    }, onError: (e) async {
-      close();
-      handleSocketError(e);
+    }, onError: (e) {
+      // Keep the socket alive: the announce retry policy decides whether to
+      // try again, and the next announce rebinds the socket anyway.
       if (!completer.isCompleted) completer.completeError(e);
     }, onDone: () {
-      handleSocketDone();
       if (!completer.isCompleted) completer.completeError('Socket closed');
     });
 
@@ -134,10 +138,6 @@ mixin UDPTrackerBase {
     _connect<T>(options, adds, completer);
     return completer.future;
   }
-
-  void handleSocketDone();
-
-  void handleSocketError(Object e);
 
   /// Process the data obtained from the remote after one communication.
   ///
@@ -161,7 +161,7 @@ mixin UDPTrackerBase {
     if (message.isEmpty) {
       throw 'The sent data cannot be empty';
     } else {
-      _sendMessage(message, addresses);
+      await _sendMessage(message, addresses);
     }
   }
 
@@ -186,8 +186,12 @@ mixin UDPTrackerBase {
       if (action == 0) {
         _connectionId = data.sublist(8,
             16); //The 8th to 16th bits of the returned information are the connection ID for the next connection
-        await _announce(
-            _connectionId!, options, address); // Continue, don't stop
+        try {
+          await _announce(
+              _connectionId!, options, address); // Continue, don't stop
+        } catch (e) {
+          if (!completer.isCompleted) completer.completeError(e);
+        }
         return;
       }
       // An error occurred.
@@ -201,7 +205,7 @@ mixin UDPTrackerBase {
         if (!completer.isCompleted) {
           completer.completeError(errorMsg);
         }
-        close();
+        _closeSocket();
         return;
       }
       // Announce receives the returned result
@@ -211,33 +215,61 @@ mixin UDPTrackerBase {
       } catch (e) {
         completer.completeError('Response Announce Result Data error');
       }
-      close();
+      _closeSocket();
     } else {
       if (!completer.isCompleted) {
         completer.completeError('Transacation ID incorrect');
       }
-      await close();
+      _closeSocket();
     }
+  }
+
+  /// Close the current socket but keep the tracker reusable.
+  void _closeSocket() {
+    var socket = _socket;
+    _socket = null;
+    socket?.close();
   }
 
   /// Close the connection and clear settings
   Future<void> close() {
     _closed = true;
-    _socket?.close();
-    _socket = null;
+    _closeSocket();
     return Future.wait([]);
   }
 
-  /// Send a data packet to a specific IP address
-  void _sendMessage(Uint8List message, List<CompactAddress> addresses) {
+  /// Send a data packet to a specific IP address.
+  ///
+  /// Failed sends are retried with a bounded exponential backoff and surface a
+  /// [SocketException] after the retry budget is exhausted.
+  Future<void> _sendMessage(
+      Uint8List message, List<CompactAddress> addresses) async {
+    for (var attempt = 0; attempt <= maxSendRetryTimes; attempt++) {
+      if (isClosed) return;
+      if (_trySendMessage(message, addresses)) return;
+      if (attempt == maxSendRetryTimes) break;
+      await Future<void>.delayed(sendRetryDelay * (1 << attempt));
+    }
     if (isClosed) return;
+    throw SocketException('Failed to send UDP tracker message to '
+        '${addresses.map((e) => '${e.address.address}:${e.port}').join(', ')}');
+  }
+
+  bool _trySendMessage(Uint8List message, List<CompactAddress> addresses) {
     var success = false;
     for (var element in addresses) {
-      var bytes = _socket?.send(message, element.address, element.port);
-      if (bytes != 0) success = true;
+      try {
+        final bytes = _socket?.send(message, element.address, element.port);
+        if (udpDatagramSent(bytes)) success = true;
+      } on SocketException {
+        // Try the remaining addresses; retry the whole message below.
+      }
     }
-    if (!success) {
-      Timer.run(() => _sendMessage(message, addresses));
-    }
+    return success;
   }
 }
+
+/// A datagram was sent only when the socket reported a positive byte count.
+///
+/// `null` means the socket is closed, and `0` means nothing was written.
+bool udpDatagramSent(int? bytes) => bytes != null && bytes > 0;

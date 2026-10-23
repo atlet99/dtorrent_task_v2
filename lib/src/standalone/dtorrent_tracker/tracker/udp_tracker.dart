@@ -133,28 +133,6 @@ class UDPTracker extends Tracker with UDPTrackerBase {
     return event;
   }
 
-  @override
-  Future<PeerEvent?> stop([bool force = false]) async {
-    await close();
-    return super.stop(force);
-  }
-
-  @override
-  Future<PeerEvent?> complete() async {
-    await close();
-    return super.complete();
-  }
-
-  @override
-  void handleSocketDone() {
-    dispose('Remote/Local close the socket');
-  }
-
-  @override
-  void handleSocketError(Object e) {
-    dispose(e);
-  }
-
   int _announceIpv4FromOption(Object? ipOption) {
     if (ipOption == null) return 0;
     try {

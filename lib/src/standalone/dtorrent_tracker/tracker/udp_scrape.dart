@@ -64,16 +64,6 @@ class UDPScrape extends Scrape with UDPTrackerBase {
   }
 
   @override
-  void handleSocketDone() async {
-    await close();
-  }
-
-  @override
-  void handleSocketError(Object e) {
-    close();
-  }
-
-  @override
   Future<List<CompactAddress>?> get addresses async {
     try {
       var ips = await InternetAddress.lookup(scrapeUrl.host);
