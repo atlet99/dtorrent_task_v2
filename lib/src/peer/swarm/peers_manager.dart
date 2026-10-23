@@ -19,9 +19,13 @@ import '../peer_priority.dart';
 import '../../torrent/torrent_version.dart';
 import '../../filter/ip_filter.dart';
 import '../../proxy/proxy_manager.dart';
+import '../../settings/rate_limiter.dart';
 import '../../settings/session_settings.dart';
 import '../../ssl/ssl_config.dart';
 import '../../encryption/protocol_encryption.dart';
+
+@Deprecated('Use SessionSettings.maxConnectionsPerTorrent')
+const maxActivePeers = SessionSettings.defaultMaxConnectionsPerTorrent;
 
 const maxPeerWriteBufferSize = 10 * 1024 * 1024;
 
@@ -205,7 +209,68 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   int get maxConnections => _maxConnections;
 
   set maxConnections(int value) {
-    _maxConnections = value < 0 ? 0 : value;
+    final limit = value < 0 ? 0 : value;
+    if (limit == _maxConnections) return;
+    _maxConnections = limit;
+    _enforceConnectionLimit();
+  }
+
+  /// Drop excess active peers after the limit was lowered at runtime.
+  void _enforceConnectionLimit() {
+    if (_maxConnections == 0) return;
+    final excess = _activePeers.length - _maxConnections;
+    if (excess <= 0) return;
+    final victims = _activePeers.take(excess).toList();
+    _log.info('Connection limit lowered to $_maxConnections, '
+        'disconnecting ${victims.length} peer(s)');
+    for (final peer in victims) {
+      unawaited(peer.dispose('Connection limit lowered'));
+    }
+  }
+
+  /// Download and upload rate limiters; null = unlimited.
+  RateLimiter? _downloadRateLimiter;
+  RateLimiter? _uploadRateLimiter;
+
+  /// Optional cross-task connection budget; null = per-task only.
+  SessionConnectionBudget? _connectionBudget;
+
+  /// Session-wide connection cap used with [_connectionBudget]; 0 falls back
+  /// to [_maxConnections].
+  int _sessionMaxConnections = 0;
+
+  /// Delayed upload sends waiting on the rate limiter.
+  final Set<Timer> _rateLimitedTimers = {};
+
+  /// Update bandwidth limits in bytes per second; 0 = unlimited.
+  void setRateLimits({int downloadRateLimit = 0, int uploadRateLimit = 0}) {
+    _downloadRateLimiter =
+        downloadRateLimit > 0 ? RateLimiter(downloadRateLimit) : null;
+    _uploadRateLimiter =
+        uploadRateLimit > 0 ? RateLimiter(uploadRateLimit) : null;
+  }
+
+  /// Reserve [bytes] of download budget.
+  ///
+  /// The returned delay must be honored before sending; reserving again after
+  /// the delay would double-charge the bucket.
+  Duration reserveDownloadBytes(int bytes) =>
+      _downloadRateLimiter?.reserve(bytes) ?? Duration.zero;
+
+  /// Share the [SessionSettings.maxConnections] cap with other managers.
+  ///
+  /// [sessionMaxConnections] is the session-wide cap (0 = use this manager's
+  /// [maxConnections]).
+  void setConnectionBudget(
+    SessionConnectionBudget? budget, {
+    int sessionMaxConnections = 0,
+  }) {
+    _sessionMaxConnections =
+        sessionMaxConnections < 0 ? 0 : sessionMaxConnections;
+    if (identical(budget, _connectionBudget)) return;
+    _connectionBudget?.removeOwner(this);
+    _connectionBudget = budget;
+    budget?.updateCount(this, _peersAddress.length);
   }
 
   /// Whether the local client has the complete torrent (seed policy:
@@ -503,6 +568,13 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
       _log.fine('Peer limit ($_maxConnections) reached, ignoring $address');
       return;
     }
+    final budget = _connectionBudget;
+    final globalCap =
+        _sessionMaxConnections > 0 ? _sessionMaxConnections : _maxConnections;
+    if (budget != null && globalCap > 0 && budget.total >= globalCap) {
+      _log.fine('Session peer limit ($globalCap) reached, ignoring $address');
+      return;
+    }
     if (socket != null) {
       // Indicates that it is an actively connected peer, and currently, only one IP address is allowed to connect at a time.
       if (!_incomingAddress.add(address.address)) {
@@ -515,6 +587,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     // _activePeers.removeWhere((p) => p.address == address);
     // _peersAddress.remove(address);
     if (_peersAddress.add(address)) {
+      _connectionBudget?.updateCount(this, _peersAddress.length);
       Peer? peer;
       if (type == null || type == PeerType.tcp) {
         if (_metaInfo.pieces == null) {
@@ -566,17 +639,32 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     final requestIndex = _remoteRequest.indexWhere(
       (request) => request.pieceIndex == pieceIndex && request.begin == begin,
     );
-    if (requestIndex >= 0) {
-      final request = _remoteRequest.removeAt(requestIndex);
-      final peer = request.peer;
-      if (!peer.isDisposed && peer.sendPiece(pieceIndex, begin, block)) {
-        _uploaded += block.length;
-        _uploadedNotifySize += block.length;
-      }
-      if (_uploadedNotifySize >= maxUploadedNotifySize) {
-        _uploadedNotifySize = 0;
-        events.emit(UpdateUploaded(_uploaded));
-      }
+    if (requestIndex < 0) return;
+
+    final request = _remoteRequest.removeAt(requestIndex);
+    final delay = _uploadRateLimiter?.reserve(block.length) ?? Duration.zero;
+    if (delay <= Duration.zero) {
+      _sendSubPiece(request.peer, pieceIndex, begin, block);
+      return;
+    }
+
+    late final Timer timer;
+    timer = Timer(delay, () {
+      _rateLimitedTimers.remove(timer);
+      _sendSubPiece(request.peer, pieceIndex, begin, block);
+    });
+    _rateLimitedTimers.add(timer);
+  }
+
+  void _sendSubPiece(Peer peer, int pieceIndex, int begin, List<int> block) {
+    if (isDisposed) return;
+    if (!peer.isDisposed && peer.sendPiece(pieceIndex, begin, block)) {
+      _uploaded += block.length;
+      _uploadedNotifySize += block.length;
+    }
+    if (_uploadedNotifySize >= maxUploadedNotifySize) {
+      _uploadedNotifySize = 0;
+      events.emit(UpdateUploaded(_uploaded));
     }
   }
 
@@ -590,6 +678,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     }
 
     _peersAddress.remove(disposeEvent.peer.address);
+    _connectionBudget?.updateCount(this, _peersAddress.length);
     _incomingAddress.remove(disposeEvent.peer.address.address);
     _activePeers.remove(disposeEvent.peer);
     if (identical(disposeEvent.peer, _optimisticPeer)) _optimisticPeer = null;
@@ -621,6 +710,12 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   }
 
   void _peerConnected(PeerConnected event) {
+    if (_maxConnections > 0 && _activePeers.length >= _maxConnections) {
+      _log.fine(
+          'Peer limit ($_maxConnections) reached, dropping ${event.peer.address}');
+      unawaited(event.peer.dispose('Connection limit reached'));
+      return;
+    }
     _startedTime ??= DateTime.now().millisecondsSinceEpoch;
     _endTime = null;
     _activePeers.add(event.peer);
@@ -810,12 +905,18 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   Future<void> dispose() async {
     if (isDisposed) return;
     _disposed = true;
+    _connectionBudget?.removeOwner(this);
+    _connectionBudget = null;
     _unchokeTimer?.cancel();
     _unchokeTimer = null;
     _optimisticTimer?.cancel();
     _optimisticTimer = null;
     _keepAliveTimer?.cancel();
     _keepAliveTimer = null;
+    for (final timer in _rateLimitedTimers) {
+      timer.cancel();
+    }
+    _rateLimitedTimers.clear();
     events.dispose();
     clearHolepunch();
     clearPEX();

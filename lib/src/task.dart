@@ -53,6 +53,12 @@ import 'file/auto_move_manager.dart';
 import 'schedule/scheduler.dart';
 import 'settings/session_settings.dart';
 
+@Deprecated('Use SessionSettings.maxConnectionsPerTorrent')
+const maxPeers = SessionSettings.defaultMaxConnectionsPerTorrent;
+
+@Deprecated('Use SessionSettings.maxIncomingConnectionsPerTorrent')
+const maxInPeers = SessionSettings.defaultMaxIncomingConnectionsPerTorrent;
+
 enum TaskState { running, paused, stopped }
 
 /// Partial seed state snapshot (BEP 21).
@@ -125,8 +131,9 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
 
   /// Apply [settings] to this task.
   ///
-  /// Connection and upload-slot limits take effect immediately for new
-  /// peers; rate limits are recorded and exposed via [sessionSettings].
+  /// Connection, incoming, and upload-slot limits take effect immediately;
+  /// lowering a connection or incoming cap disconnects excess active peers
+  /// and rate limits pace piece requests and uploads.
   void applySessionSettings(SessionSettings settings);
 
   // The dht instance
@@ -494,11 +501,32 @@ class _TorrentTask
     _sessionSettings = settings;
     _peersManager
       ?..maxConnections = settings.effectiveMaxConnectionsPerTorrent
-      ..maxUploadSlots = settings.maxUploadsPerTorrent;
+      ..maxUploadSlots = settings.maxUploadsPerTorrent
+      ..setRateLimits(
+        downloadRateLimit: settings.downloadRateLimit,
+        uploadRateLimit: settings.uploadRateLimit,
+      )
+      ..setConnectionBudget(
+        settings.connectionBudget,
+        sessionMaxConnections: settings.maxConnections,
+      );
     _log.info('Session settings applied: connections cap '
         '${settings.effectiveMaxConnectionsPerTorrent}, '
         'incoming cap ${settings.maxIncomingConnectionsPerTorrent}, '
         'upload slots ${settings.maxUploadsPerTorrent}');
+    _enforceIncomingLimit(settings.maxIncomingConnectionsPerTorrent);
+  }
+
+  /// Drop excess active incoming peers after the limit was lowered.
+  void _enforceIncomingLimit(int limit) {
+    if (limit <= 0) return;
+    final incoming = _peersManager?.activePeers
+        .where((peer) => peer.source == PeerSource.incoming)
+        .toList();
+    if (incoming == null || incoming.length <= limit) return;
+    for (final peer in incoming.take(incoming.length - limit)) {
+      unawaited(peer.dispose('Incoming connection limit lowered'));
+    }
   }
 
   StreamingServer? _streamingServer;
@@ -547,6 +575,9 @@ class _TorrentTask
 
   /// Session-wide peer and rate limits.
   SessionSettings _sessionSettings;
+
+  /// Delayed piece requests waiting on the download rate limiter.
+  final Set<Timer> _rateLimitedRequestTimers = {};
 
   /// The maximum size of the disk write cache.
   final int _maxWriteBufferSize = maxPeerWriteBufferSize;
@@ -1585,6 +1616,9 @@ class _TorrentTask
   }
 
   void _processPeerDispose(PeerDisposeEvent event) {
+    if (event.peer.source == PeerSource.incoming) {
+      _comingIp.remove(event.peer.address.address);
+    }
     if (_pieceManager == null) return;
 
     // Clean up superseeding tracking for this peer
@@ -1882,16 +1916,37 @@ class _TorrentTask
 
     var subIndex = piece.popSubPiece();
     if (subIndex == null) return;
+    final targetPiece = piece;
     var size = defaultRequestLength; // Block size is calculated dynamically.
     var begin = subIndex * size;
-    if ((begin + size) > piece.byteLength) {
-      size = piece.byteLength - begin;
+    if ((begin + size) > targetPiece.byteLength) {
+      size = targetPiece.byteLength - begin;
     }
-    if (!peer.sendRequest(piece.index, begin, size)) {
-      piece.pushSubPiece(subIndex);
-    } else {
-      Timer.run(() => requestPieces(peer, pieceIndex));
+
+    void send() {
+      if (targetPiece.isCompleted) return;
+      if (peer.isDisposed) {
+        targetPiece.pushSubPiece(subIndex);
+        return;
+      }
+      if (!peer.sendRequest(targetPiece.index, begin, size)) {
+        targetPiece.pushSubPiece(subIndex);
+      } else {
+        Timer.run(() => requestPieces(peer, pieceIndex));
+      }
     }
+
+    final delay = _peersManager!.reserveDownloadBytes(size);
+    if (delay <= Duration.zero) {
+      send();
+      return;
+    }
+    late final Timer timer;
+    timer = Timer(delay, () {
+      _rateLimitedRequestTimers.remove(timer);
+      send();
+    });
+    _rateLimitedRequestTimers.add(timer);
   }
 
   @override
@@ -1939,6 +1994,10 @@ class _TorrentTask
     _lsd = null;
     _peerIds.clear();
     _comingIp.clear();
+    for (final timer in _rateLimitedRequestTimers) {
+      timer.cancel();
+    }
+    _rateLimitedRequestTimers.clear();
     _streamingServer?.stop();
 
     // Dispose web seed downloader
