@@ -51,9 +51,7 @@ import 'file/file_priority.dart';
 import 'file/file_priority_manager.dart';
 import 'file/auto_move_manager.dart';
 import 'schedule/scheduler.dart';
-
-const maxPeers = 50;
-const maxInPeers = 10;
+import 'settings/session_settings.dart';
 
 enum TaskState { running, paused, stopped }
 
@@ -92,6 +90,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
     bool partialSeedingEnabled = false,
     SSLConfig? sslConfig,
     ProtocolEncryptionConfig? encryptionConfig,
+    SessionSettings? sessionSettings,
   ]) {
     return _TorrentTask(
       metaInfo,
@@ -104,6 +103,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
       partialSeedingEnabled: partialSeedingEnabled,
       sslConfig: sslConfig,
       encryptionConfig: encryptionConfig,
+      sessionSettings: sessionSettings,
     );
   }
   void startAnnounceUrl(Uri url, Uint8List infoHash);
@@ -119,6 +119,15 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
 
   /// The peers manager
   PeersManager? get peersManager;
+
+  /// Session limits currently used by this task.
+  SessionSettings get sessionSettings;
+
+  /// Apply [settings] to this task.
+  ///
+  /// Connection and upload-slot limits take effect immediately for new
+  /// peers; rate limits are recorded and exposed via [sessionSettings].
+  void applySessionSettings(SessionSettings settings);
 
   // The dht instance
 
@@ -477,6 +486,21 @@ class _TorrentTask
   @override
   PeersManager? get peersManager => _peersManager;
 
+  @override
+  SessionSettings get sessionSettings => _sessionSettings;
+
+  @override
+  void applySessionSettings(SessionSettings settings) {
+    _sessionSettings = settings;
+    _peersManager
+      ?..maxConnections = settings.effectiveMaxConnectionsPerTorrent
+      ..maxUploadSlots = settings.maxUploadsPerTorrent;
+    _log.info('Session settings applied: connections cap '
+        '${settings.effectiveMaxConnectionsPerTorrent}, '
+        'incoming cap ${settings.maxIncomingConnectionsPerTorrent}, '
+        'upload slots ${settings.maxUploadsPerTorrent}');
+  }
+
   StreamingServer? _streamingServer;
 
   bool stream;
@@ -520,6 +544,9 @@ class _TorrentTask
   TaskScheduler? _scheduler;
   int? _scheduledMaxDownloadRate;
   int? _scheduledMaxUploadRate;
+
+  /// Session-wide peer and rate limits.
+  SessionSettings _sessionSettings;
 
   /// The maximum size of the disk write cache.
   final int _maxWriteBufferSize = maxPeerWriteBufferSize;
@@ -584,11 +611,13 @@ class _TorrentTask
       ProxyConfig? proxyConfig,
       bool partialSeedingEnabled = false,
       SSLConfig? sslConfig,
-      ProtocolEncryptionConfig? encryptionConfig})
+      ProtocolEncryptionConfig? encryptionConfig,
+      SessionSettings? sessionSettings})
       : _webSeeds = webSeeds ?? [],
         _acceptableSources = acceptableSources ?? [],
         _sequentialConfig = sequentialConfig,
-        _partialSeedingEnabled = partialSeedingEnabled {
+        _partialSeedingEnabled = partialSeedingEnabled,
+        _sessionSettings = sessionSettings ?? const SessionSettings() {
     _sslConfig = sslConfig;
     _encryptionConfig = encryptionConfig;
     if (proxyConfig != null) {
@@ -720,7 +749,14 @@ class _TorrentTask
 
     _fileManager ??= await DownloadFileManager.createFileManager(
         model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
-    _peersManager ??= PeersManager(_peerId, model, ipFilter: _ipFilter);
+    _peersManager ??= PeersManager(
+      _peerId,
+      model,
+      ipFilter: _ipFilter,
+      maxConnections: _sessionSettings.effectiveMaxConnectionsPerTorrent,
+      maxUploadSlots: _sessionSettings.maxUploadsPerTorrent,
+    );
+    applySessionSettings(_sessionSettings);
     _peersManager?.seeding = _fileManager!.isAllComplete;
     _peersManager?.setSSLConfig(_sslConfig);
     _peersManager?.setProtocolEncryptionConfig(_encryptionConfig);
@@ -1046,7 +1082,9 @@ class _TorrentTask
       socket.close();
       return;
     }
-    if (_comingIp.length >= maxInPeers || !_comingIp.add(socket.address)) {
+    final incomingLimit = _sessionSettings.maxIncomingConnectionsPerTorrent;
+    if ((incomingLimit > 0 && _comingIp.length >= incomingLimit) ||
+        !_comingIp.add(socket.address)) {
       socket.close();
       return;
     }

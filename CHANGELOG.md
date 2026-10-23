@@ -18,6 +18,10 @@
 - rank unchoke candidates by download speed while leeching and by upload speed (fastest-upload first) while seeding, with anti-fibrillation incumbency tiebreak and random final tiebreak (seedable `Random`)
 - add pure `selectUnchokedCandidates`/`pickOptimisticCandidateId` helpers plus `runUnchokeCycle()`/`rotateOptimisticUnchoke()` triggers and wire the seed policy from task completion state
 - add choke policy regression coverage for top-N speed picks, seed ranking, optimistic rotation, and slot caps (`test/choke_policy_test.dart`)
+- add `SessionSettings` (connection, incoming, upload-slot, and rate limits, libretorrent defaults) and expose it through `TorrentTask.newTask(..., sessionSettings)` - issue #45
+- apply connection, incoming, and upload-slot limits at task start and re-apply them at runtime via `TorrentTask.applySessionSettings`; rate limits are recorded in `sessionSettings`
+- replace the hardcoded `maxPeers`/`maxInPeers`/`maxActivePeers` constants with the settings-driven limits
+- add session settings regression coverage for defaults, cap resolution, `PeersManager` capping, and runtime re-apply (`test/session_settings_test.dart`)
 
 ## 0.5.4
 

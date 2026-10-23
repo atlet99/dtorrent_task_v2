@@ -19,10 +19,9 @@ import '../peer_priority.dart';
 import '../../torrent/torrent_version.dart';
 import '../../filter/ip_filter.dart';
 import '../../proxy/proxy_manager.dart';
+import '../../settings/session_settings.dart';
 import '../../ssl/ssl_config.dart';
 import '../../encryption/protocol_encryption.dart';
-
-const maxActivePeers = 50;
 
 const maxPeerWriteBufferSize = 10 * 1024 * 1024;
 
@@ -186,9 +185,9 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   static const optimisticUnchokeInterval = Duration(seconds: 30);
 
   /// Default upload slots (libretorrent `DEFAULT_UPLOADS_LIMIT_PER_TORRENT`).
-  /// Overridden at runtime via [maxUploadSlots] (future `SessionSettings`
-  /// threads `maxUploadsPerTorrent` through here).
-  static const defaultMaxUploadSlots = 4;
+  /// Overridden via [SessionSettings.maxUploadsPerTorrent].
+  static const defaultMaxUploadSlots =
+      SessionSettings.defaultMaxUploadsPerTorrent;
 
   /// Maximum simultaneously unchoked peers, optimistic slot included.
   int _maxUploadSlots = defaultMaxUploadSlots;
@@ -198,6 +197,15 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   set maxUploadSlots(int value) {
     _maxUploadSlots = value < 1 ? 1 : value;
     _scheduleChokeReevaluation();
+  }
+
+  /// Maximum known peer addresses; 0 = unlimited.
+  int _maxConnections = SessionSettings.defaultMaxConnectionsPerTorrent;
+
+  int get maxConnections => _maxConnections;
+
+  set maxConnections(int value) {
+    _maxConnections = value < 0 ? 0 : value;
   }
 
   /// Whether the local client has the complete torrent (seed policy:
@@ -231,12 +239,16 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     this._metaInfo, {
     IPFilter? ipFilter,
     int? maxUploadSlots,
+    int? maxConnections,
     bool? seeding,
     Random? random,
   }) : _random = random ?? Random() {
     _ipFilter = ipFilter;
     if (maxUploadSlots != null) {
       _maxUploadSlots = maxUploadSlots < 1 ? 1 : maxUploadSlots;
+    }
+    if (maxConnections != null) {
+      _maxConnections = maxConnections < 0 ? 0 : maxConnections;
     }
     if (seeding != null) _seeding = seeding;
     _init();
@@ -487,6 +499,10 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
       _log.fine('Peer ${address.address} blocked by IP filter');
       return;
     }
+    if (_maxConnections > 0 && _peersAddress.length >= _maxConnections) {
+      _log.fine('Peer limit ($_maxConnections) reached, ignoring $address');
+      return;
+    }
     if (socket != null) {
       // Indicates that it is an actively connected peer, and currently, only one IP address is allowed to connect at a time.
       if (!_incomingAddress.add(address.address)) {
@@ -588,7 +604,8 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     }
 
     if (reconnect) {
-      if (_activePeers.length < maxActivePeers && !isDisposed) {
+      if ((_maxConnections == 0 || _activePeers.length < _maxConnections) &&
+          !isDisposed) {
         addNewPeerAddress(
           disposeEvent.peer.address,
           disposeEvent.peer.source,
