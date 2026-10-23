@@ -1,5 +1,9 @@
 ## Unreleased
 
+- fix UDP tracker reporting failed datagram sends as success: `null` and `0` byte sends now count as failures, retries use bounded exponential backoff, and an exhausted retry budget surfaces a `SocketException` - issue #40
+- keep UDP sockets alive on socket errors so `TrackerAnnounceErrorEvent` reaches the announce retry policy instead of being emitted after the tracker was disposed
+- keep UDP trackers reusable after a response: per-round socket closes no longer set the permanent closed flag or dispose the tracker, so interval announces and subsequent scrapes keep working
+- add UDP send failure and tracker reuse regression coverage (`test/udp_tracker_send_retry_test.dart`)
 - skip unroutable DHT bootstrap addresses (`0.0.0.0`, `::`, broadcast) in standalone driver instead of sending `find_node` datagrams to them
 - drop dead UDP sockets in standalone DHT driver so the next bootstrap binds fresh ones instead of reusing closed socket references across retries
 - add `clearBootstrapNodes()` to standalone DHT driver, facade, and adapter so callers can replace the built-in router list when one of its hosts goes away
