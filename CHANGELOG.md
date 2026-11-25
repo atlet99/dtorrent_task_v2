@@ -1,4 +1,4 @@
-## Unreleased
+## 0.6.0
 
 - add per-address peer reconnect backoff (1s, 5s, 15s) and a three-retry cap, including failed TCP connections and repeated tracker/DHT/PEX discovery - issue #42
 - cancel pending reconnect timers on swarm disposal and reset retry attempts after a successful peer handshake
