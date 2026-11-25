@@ -229,6 +229,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
         validatePath: _validateFilePath,
         secureRead: _secureReadFile,
         secureDelete: _secureDeleteFile,
+        secureOpen: _secureOpenFile,
       );
 
       for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
@@ -279,7 +280,8 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
           symlinkPath: fileInfo.symlinkPath,
           validatePath: _validateFilePath,
           secureRead: _secureReadFile,
-          secureDelete: _secureDeleteFile);
+          secureDelete: _secureDeleteFile,
+          secureOpen: _secureOpenFile);
 
       for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
         var downloadFileList = _piece2fileMap?[pieceIndex];
@@ -325,6 +327,11 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   void _secureDeleteFile(String path) {
     final (root, relative) = _secureFileLocation(path);
     unlinkBeneath(root, relative);
+  }
+
+  PosixSecureWriter _secureOpenFile(String path, int length) {
+    final (root, relative) = _secureFileLocation(path);
+    return PosixSecureWriter.open(root, relative, length);
   }
 
   (String, String) _secureFileLocation(String path) {

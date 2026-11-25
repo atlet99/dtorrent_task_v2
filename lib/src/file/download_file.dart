@@ -6,6 +6,7 @@ import 'package:collection/collection.dart';
 import 'package:dtorrent_task_v2/src/file/download_file_requests.dart';
 import 'package:dtorrent_task_v2/src/file/file_attributes.dart';
 import 'package:dtorrent_task_v2/src/file/utils.dart';
+import 'package:dtorrent_task_v2/src/file/posix_secure_read.dart';
 import 'package:dtorrent_task_v2/src/piece/piece_base.dart';
 import 'package:logging/logging.dart';
 
@@ -32,6 +33,7 @@ class DownloadFile {
   final Future<void> Function(String path)? validatePath;
   final List<int> Function(String path, int position, int length)? secureRead;
   final void Function(String path)? secureDelete;
+  final PosixSecureWriter Function(String path, int length)? secureOpen;
   bool get isSymlinkFile =>
       (attributes?.isSymlink ?? false) || symlinkPath != null;
   bool get isVirtualFile => isPaddingFile || isSymlinkFile;
@@ -52,6 +54,7 @@ class DownloadFile {
   RandomAccessFile? _writeAccess;
 
   RandomAccessFile? _readAccess;
+  PosixSecureWriter? _secureWriter;
 
   StreamController<FileRequest>? _streamController;
 
@@ -72,7 +75,8 @@ class DownloadFile {
       this.symlinkPath,
       this.validatePath,
       this.secureRead,
-      this.secureDelete}) {
+      this.secureDelete,
+      this.secureOpen}) {
     for (var piece in pieces) {
       if (piece.isCompletelyWritten) {
         var blockPosition = blockToDownloadFilePosition(
@@ -101,6 +105,19 @@ class DownloadFile {
       downloadedBytes += end - start;
       _bytesRequestController.add(null);
       return true;
+    }
+    if (secureOpen case final open?) {
+      final writer = _secureWriter ??= open(filePath, length);
+      _file = File(filePath);
+      try {
+        writer.write(position, block, start, end);
+        downloadedBytes += end - start;
+        _bytesRequestController.add(null);
+        return true;
+      } catch (e) {
+        _log.warning('Write file error:', e);
+        return false;
+      }
     }
     _writeAccess ??= await _getRandomAccessFile(FileRequestType.write);
     var completer = Completer<bool>();
@@ -262,6 +279,17 @@ class DownloadFile {
   /// Request to write the buffer to disk.
   Future<bool> requestFlush() async {
     if (isVirtualFile) return true;
+    if (secureOpen case final open?) {
+      final writer = _secureWriter ??= open(filePath, length);
+      _file = File(filePath);
+      try {
+        writer.flush();
+        return true;
+      } catch (e) {
+        _log.warning('Flush error:', e);
+        return false;
+      }
+    }
     _writeAccess ??= await _getRandomAccessFile(FileRequestType.write);
     var completer = Completer<bool>();
     _streamController?.add(FlushRequest(completer: completer));
@@ -341,6 +369,7 @@ class DownloadFile {
     if (isClosed) return;
     _closed = true;
     try {
+      _closeSecureWriter();
       await _streamSubscription?.cancel();
       await _streamController?.close();
       await _writeAccess?.flush();
@@ -367,6 +396,7 @@ class DownloadFile {
   /// after path update.
   Future<void> prepareForMove() async {
     if (isVirtualFile) return;
+    _closeSecureWriter();
     try {
       await _streamSubscription?.cancel();
       await _streamController?.close();
@@ -381,6 +411,17 @@ class DownloadFile {
       _streamSubscription = null;
       _streamController = null;
       _closed = false;
+    }
+  }
+
+  void _closeSecureWriter() {
+    final writer = _secureWriter;
+    if (writer == null) return;
+    _secureWriter = null;
+    try {
+      writer.flush();
+    } finally {
+      writer.close();
     }
   }
 

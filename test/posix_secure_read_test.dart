@@ -11,15 +11,69 @@ Future<void> swapDirectory(List<Object> args) async {
   final port = args[2] as SendPort;
   port.send('ready');
   for (var i = 0; i < 500; i++) {
-    await Directory('$root/dir').rename('$root/held');
-    await Link('$root/dir').create(outside);
-    await Link('$root/dir').delete();
-    await Directory('$root/held').rename('$root/dir');
+    final held = '$root/held$i';
+    try {
+      await Directory('$root/dir').rename(held);
+    } on FileSystemException {
+      continue;
+    }
+    try {
+      await Link('$root/dir').create(outside);
+      await Link('$root/dir').delete();
+    } on FileSystemException {
+      // A concurrent writer may legitimately recreate the directory.
+    }
+    try {
+      await Directory(held).rename('$root/dir');
+    } on FileSystemException {
+      // Keep the parked copy; the writer owns the recreated directory now.
+    }
   }
   port.send('done');
 }
 
 void main() {
+  test('secure writer creates and updates without following links', () async {
+    if (!Platform.isMacOS && !Platform.isLinux) return;
+    final root = await Directory.systemTemp.createTemp('secure_write_');
+    final outside = await Directory.systemTemp.createTemp('secure_outside_');
+    addTearDown(() async {
+      await root.delete(recursive: true);
+      await outside.delete(recursive: true);
+    });
+    await File('${outside.path}/data').writeAsString('outside');
+    final writer = PosixSecureWriter.open(root.path, 'dir/data', 8);
+    writer.write(2, [1, 2, 3], 0, 3);
+    writer.flush();
+    writer.close();
+    expect(await File('${root.path}/dir/data').readAsBytes(),
+        [0, 0, 1, 2, 3, 0, 0, 0]);
+    final existing = PosixSecureWriter.open(root.path, 'dir/data', 1);
+    existing.close();
+    expect(await File('${root.path}/dir/data').length(), 8);
+    final held = PosixSecureWriter.open(root.path, 'dir/data', 8);
+    await File('${root.path}/dir/data').rename('${root.path}/dir/original');
+    await Link('${root.path}/dir/data').create('${outside.path}/data');
+    held.write(0, [7], 0, 1);
+    held.flush();
+    held.close();
+    expect((await File('${root.path}/dir/original').readAsBytes()).first, 7);
+    expect(await File('${outside.path}/data').readAsString(), 'outside');
+    await Link('${root.path}/link').create(outside.path);
+    expect(() => PosixSecureWriter.open(root.path, 'link/data', 8),
+        throwsA(isA<FileSystemException>()));
+    expect(await File('${outside.path}/data').readAsString(), 'outside');
+    await Link('${root.path}/leaf').create('${outside.path}/data');
+    expect(() => PosixSecureWriter.open(root.path, 'leaf', 8),
+        throwsA(isA<FileSystemException>()));
+    expect(() => PosixSecureWriter.open(root.path, '../data', 8),
+        throwsFormatException);
+    final fifo = await Process.run('mkfifo', ['${root.path}/pipe']);
+    expect(fifo.exitCode, 0);
+    expect(() => PosixSecureWriter.open(root.path, 'pipe', 8),
+        throwsA(isA<FileSystemException>()));
+  });
+
   test('unlink stays beneath root and never follows parent symlinks', () async {
     if (!Platform.isMacOS && !Platform.isLinux) return;
     final root = await Directory.systemTemp.createTemp('secure_unlink_');
@@ -47,6 +101,8 @@ void main() {
   test('unsupported platforms fail closed', () {
     if (Platform.isWindows) {
       expect(() => readBeneath('.', 'file', 0, 1), throwsUnsupportedError);
+      expect(
+          () => PosixSecureWriter.open('.', 'file', 1), throwsUnsupportedError);
     }
   });
 
@@ -109,9 +165,23 @@ void main() {
         } on FileSystemException {
           // It may already be deleted, absent, or replaced by a link.
         }
+        if (i < 40) {
+          try {
+            final writer = PosixSecureWriter.open(root.path, 'dir/data', 6);
+            try {
+              writer.write(0, 'inside'.codeUnits, 0, 6);
+              writer.flush();
+            } finally {
+              writer.close();
+            }
+          } on FileSystemException {
+            // A path temporarily absent or replaced by a link must fail closed.
+          }
+        }
       }
       await done.future.timeout(const Duration(seconds: 20));
       expect(await File('${outside.path}/deletable').readAsString(), 'outside');
+      expect(await File('${outside.path}/data').readAsString(), 'secret');
     } finally {
       isolate.kill();
       port.close();

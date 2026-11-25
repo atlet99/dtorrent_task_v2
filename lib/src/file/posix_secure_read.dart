@@ -25,6 +25,159 @@ final _close =
 final _unlinkAt = _libc.lookupFunction<
     Int32 Function(Int32, Pointer<Utf8>, Int32),
     int Function(int, Pointer<Utf8>, int)>('unlinkat');
+final _openAtCreate = _libc.lookupFunction<
+    Int32 Function(Int32, Pointer<Utf8>, Int32, VarArgs<(Uint32,)>),
+    int Function(int, Pointer<Utf8>, int, int)>('openat');
+final _mkdirAt = _libc.lookupFunction<
+    Int32 Function(Int32, Pointer<Utf8>, Uint32),
+    int Function(int, Pointer<Utf8>, int)>('mkdirat');
+final _truncate =
+    _libc.lookupFunction<Int32 Function(Int32, Int64), int Function(int, int)>(
+        'ftruncate');
+final _pwrite = _libc.lookupFunction<
+    IntPtr Function(Int32, Pointer<Uint8>, IntPtr, Int64),
+    int Function(int, Pointer<Uint8>, int, int)>('pwrite');
+final _fsync =
+    _libc.lookupFunction<Int32 Function(Int32), int Function(int)>('fsync');
+
+/// A regular file opened without following links beneath a trusted directory.
+final class PosixSecureWriter {
+  PosixSecureWriter._(this._fd, this._parentFd, this.path, this._errno);
+
+  int _fd;
+  int _parentFd;
+  final String path;
+  final Pointer<Int32> Function() _errno;
+
+  static PosixSecureWriter open(String root, String relative, int length) {
+    final abi = Abi.current();
+    final apple =
+        abi == Abi.macosArm64 || abi == Abi.macosX64 || abi == Abi.iosArm64;
+    final android = abi == Abi.androidArm64;
+    final arm64 = abi == Abi.linuxArm64 || android;
+    if (!apple && !arm64 && abi != Abi.linuxX64) {
+      throw UnsupportedError('Secure file writes are unavailable on $abi');
+    }
+    if (length < 0) throw ArgumentError.value(length, 'length');
+    final parts = relative.split('/');
+    for (final part in parts) {
+      validateTorrentPathComponent(part);
+    }
+    final directory = apple ? 0x100000 : (arm64 ? 0x4000 : 0x10000);
+    final nofollow = apple ? 0x100 : (arm64 ? 0x8000 : 0x20000);
+    final cloexec = apple ? 0x1000000 : 0x80000;
+    final nonblock = apple ? 0x4 : 0x800;
+    final create = apple ? 0x200 : 0x40;
+    final exclusive = apple ? 0x800 : 0x80;
+    return using((arena) {
+      final errno = _libc
+          .lookupFunction<Pointer<Int32> Function(), Pointer<Int32> Function()>(
+              apple ? '__error' : (android ? '__errno' : '__errno_location'));
+      Never fail(String message) => throw FileSystemException(
+          message, relative, OSError('', errno().value));
+      var parent =
+          _open(root.toNativeUtf8(allocator: arena), directory | cloexec);
+      if (parent < 0) fail('Cannot open download root');
+      try {
+        for (final part in parts.take(parts.length - 1)) {
+          final name = part.toNativeUtf8(allocator: arena);
+          var next = _openAt(parent, name, directory | nofollow | cloexec);
+          if (next < 0 && errno().value == 2) {
+            final result = _mkdirAt(parent, name, 493);
+            if (result != 0) {
+              if (errno().value != 17) fail('Cannot create torrent directory');
+            } else if (_fsync(parent) != 0) {
+              fail('Cannot sync parent directory');
+            }
+            next = _openAt(parent, name, directory | nofollow | cloexec);
+          }
+          if (next < 0) fail('Cannot open torrent directory');
+          _close(parent);
+          parent = next;
+        }
+        final name = parts.last.toNativeUtf8(allocator: arena);
+        final flags = 2 | nofollow | cloexec | nonblock;
+        var fd = _openAtCreate(parent, name, flags | create | exclusive, 420);
+        final created = fd >= 0;
+        if (fd < 0 && errno().value == 17) fd = _openAt(parent, name, flags);
+        if (fd < 0) fail('Cannot open torrent file for writing');
+        try {
+          final stat = arena<Uint8>(512);
+          if (_fstat(fd, stat.cast()) != 0) fail('Cannot stat torrent file');
+          final modeOffset = apple ? 4 : (abi == Abi.linuxX64 ? 24 : 16);
+          final mode = apple
+              ? (stat + modeOffset).cast<Uint16>().value
+              : (stat + modeOffset).cast<Uint32>().value;
+          if (mode & 0xf000 != 0x8000) {
+            throw FileSystemException(
+                'Torrent path is not a regular file', relative);
+          }
+          if (created && _truncate(fd, length) != 0) {
+            fail('Cannot allocate torrent file');
+          }
+          final writer = PosixSecureWriter._(fd, parent, relative, errno);
+          parent = -1;
+          return writer;
+        } catch (_) {
+          _close(fd);
+          rethrow;
+        }
+      } finally {
+        if (parent >= 0) _close(parent);
+      }
+    });
+  }
+
+  void write(int offset, List<int> data, int start, int end) {
+    if (_fd < 0) throw StateError('File is closed');
+    if (offset < 0 || start < 0 || end < start || end > data.length) {
+      throw RangeError('Invalid write range');
+    }
+    using((arena) {
+      final count = end - start;
+      final buffer = arena<Uint8>(count == 0 ? 1 : count);
+      buffer.asTypedList(count).setAll(0, data.skip(start).take(count));
+      var written = 0;
+      while (written < count) {
+        final result =
+            _pwrite(_fd, buffer + written, count - written, offset + written);
+        if (result < 0 && _errno().value == 4) continue;
+        if (result <= 0) {
+          throw FileSystemException(
+              'Cannot write torrent file', path, OSError('', _errno().value));
+        }
+        written += result;
+      }
+    });
+  }
+
+  void flush() {
+    if (_fd < 0) throw StateError('File is closed');
+    if (_fsync(_fd) != 0) {
+      throw FileSystemException(
+          'Cannot flush torrent file', path, OSError('', _errno().value));
+    }
+    if (_fsync(_parentFd) != 0) {
+      throw FileSystemException(
+          'Cannot sync torrent directory', path, OSError('', _errno().value));
+    }
+  }
+
+  void close() {
+    if (_fd < 0) return;
+    final fd = _fd;
+    final parentFd = _parentFd;
+    _fd = -1;
+    _parentFd = -1;
+    final result = _close(fd);
+    final error = result == 0 ? 0 : _errno().value;
+    final parentResult = _close(parentFd);
+    if (result != 0 || parentResult != 0) {
+      throw FileSystemException('Cannot close torrent file', path,
+          OSError('', result != 0 ? error : _errno().value));
+    }
+  }
+}
 
 /// Unlinks one entry relative to no-follow directory descriptors.
 void unlinkBeneath(String root, String relative) {
