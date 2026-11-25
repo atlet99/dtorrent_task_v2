@@ -44,6 +44,12 @@ final _pwrite = _libc.lookupFunction<
     int Function(int, Pointer<Uint8>, int, int)>('pwrite');
 final _fsync =
     _libc.lookupFunction<Int32 Function(Int32), int Function(int)>('fsync');
+final _fchmod =
+    _libc.lookupFunction<Int32 Function(Int32, Uint32), int Function(int, int)>(
+        'fchmod');
+final _symlinkAt = _libc.lookupFunction<
+    Int32 Function(Pointer<Utf8>, Int32, Pointer<Utf8>),
+    int Function(Pointer<Utf8>, int, Pointer<Utf8>)>('symlinkat');
 
 /// A regular file opened without following links beneath a trusted directory.
 final class PosixSecureWriter implements SecureFileWriter {
@@ -436,6 +442,169 @@ Uint8List readBeneath(String root, String relative, int offset, int length) {
       return Uint8List.fromList(buffer.asTypedList(total));
     } finally {
       _close(fd);
+    }
+  });
+}
+
+/// Returns the size of one regular file beneath [root], or null if absent.
+int? sizeBeneath(String root, String relative) {
+  if (Platform.isWindows) return windowsSizeBeneath(root, relative);
+  final abi = Abi.current();
+  final apple =
+      abi == Abi.macosArm64 || abi == Abi.macosX64 || abi == Abi.iosArm64;
+  final android = abi == Abi.androidArm64;
+  final arm64 = abi == Abi.linuxArm64 || android;
+  if (!apple && !arm64 && abi != Abi.linuxX64) {
+    throw UnsupportedError('Secure file stats are unavailable on $abi');
+  }
+  final parts = relative.split('/');
+  for (final part in parts) {
+    validateTorrentPathComponent(part);
+  }
+  final directory = apple ? 0x100000 : (arm64 ? 0x4000 : 0x10000);
+  final nofollow = apple ? 0x100 : (arm64 ? 0x8000 : 0x20000);
+  final cloexec = apple ? 0x1000000 : 0x80000;
+  final nonblock = apple ? 0x4 : 0x800;
+  return using((arena) {
+    final errno = _libc
+        .lookupFunction<Pointer<Int32> Function(), Pointer<Int32> Function()>(
+            apple ? '__error' : (android ? '__errno' : '__errno_location'));
+    Never fail(String message) => throw FileSystemException(
+        message, relative, OSError('', errno().value));
+    var fd = _open(root.toNativeUtf8(allocator: arena), directory | cloexec);
+    if (fd < 0) fail('Cannot open download root');
+    try {
+      for (var i = 0; i < parts.length; i++) {
+        final last = i == parts.length - 1;
+        final next = _openAt(fd, parts[i].toNativeUtf8(allocator: arena),
+            nofollow | cloexec | (last ? nonblock : directory));
+        if (next < 0 && last && errno().value == 2) return null;
+        if (next < 0) fail('Cannot open torrent path');
+        _close(fd);
+        fd = next;
+      }
+      final stat = arena<Uint8>(512);
+      if (_fstat(fd, stat.cast()) != 0) fail('Cannot stat torrent file');
+      final modeOffset = apple ? 4 : (abi == Abi.linuxX64 ? 24 : 16);
+      final mode = apple
+          ? (stat + modeOffset).cast<Uint16>().value
+          : (stat + modeOffset).cast<Uint32>().value;
+      if (mode & 0xf000 != 0x8000) {
+        throw FileSystemException(
+            'Torrent path is not a regular file', relative);
+      }
+      return (stat + (apple ? 96 : 48)).cast<Int64>().value;
+    } finally {
+      _close(fd);
+    }
+  });
+}
+
+/// Adds execute permission to one regular file beneath [root].
+void setExecutableBeneath(String root, String relative) {
+  if (Platform.isWindows) return;
+  final abi = Abi.current();
+  final apple =
+      abi == Abi.macosArm64 || abi == Abi.macosX64 || abi == Abi.iosArm64;
+  final android = abi == Abi.androidArm64;
+  final arm64 = abi == Abi.linuxArm64 || android;
+  if (!apple && !arm64 && abi != Abi.linuxX64) {
+    throw UnsupportedError('Secure file modes are unavailable on $abi');
+  }
+  final parts = relative.split('/');
+  for (final part in parts) {
+    validateTorrentPathComponent(part);
+  }
+  final directory = apple ? 0x100000 : (arm64 ? 0x4000 : 0x10000);
+  final nofollow = apple ? 0x100 : (arm64 ? 0x8000 : 0x20000);
+  final cloexec = apple ? 0x1000000 : 0x80000;
+  final nonblock = apple ? 0x4 : 0x800;
+  using((arena) {
+    final errno = _libc
+        .lookupFunction<Pointer<Int32> Function(), Pointer<Int32> Function()>(
+            apple ? '__error' : (android ? '__errno' : '__errno_location'));
+    Never fail(String message) => throw FileSystemException(
+        message, relative, OSError('', errno().value));
+    var fd = _open(root.toNativeUtf8(allocator: arena), directory | cloexec);
+    if (fd < 0) fail('Cannot open download root');
+    try {
+      for (var i = 0; i < parts.length; i++) {
+        final last = i == parts.length - 1;
+        final next = _openAt(fd, parts[i].toNativeUtf8(allocator: arena),
+            nofollow | cloexec | (last ? nonblock : directory));
+        if (next < 0) fail('Cannot open torrent path');
+        _close(fd);
+        fd = next;
+      }
+      final stat = arena<Uint8>(512);
+      if (_fstat(fd, stat.cast()) != 0) fail('Cannot stat torrent file');
+      final modeOffset = apple ? 4 : (abi == Abi.linuxX64 ? 24 : 16);
+      final mode = apple
+          ? (stat + modeOffset).cast<Uint16>().value
+          : (stat + modeOffset).cast<Uint32>().value;
+      if (mode & 0xf000 != 0x8000) {
+        throw FileSystemException(
+            'Torrent path is not a regular file', relative);
+      }
+      if (_fchmod(fd, mode | 0x49) != 0) fail('Cannot set executable bit');
+    } finally {
+      _close(fd);
+    }
+  });
+}
+
+/// Restores one torrent symbolic link beneath [root] without following links.
+void symlinkBeneath(String root, String relative, String target) {
+  if (Platform.isWindows) {
+    throw UnsupportedError(
+        'Secure symlink creation is unavailable on ${Abi.current()}');
+  }
+  final abi = Abi.current();
+  final apple =
+      abi == Abi.macosArm64 || abi == Abi.macosX64 || abi == Abi.iosArm64;
+  final android = abi == Abi.androidArm64;
+  final arm64 = abi == Abi.linuxArm64 || android;
+  if (!apple && !arm64 && abi != Abi.linuxX64) {
+    throw UnsupportedError('Secure symlinks are unavailable on $abi');
+  }
+  final parts = relative.split('/');
+  for (final part in [...parts, ...target.split('/')]) {
+    validateTorrentPathComponent(part);
+  }
+  final directory = apple ? 0x100000 : (arm64 ? 0x4000 : 0x10000);
+  final nofollow = apple ? 0x100 : (arm64 ? 0x8000 : 0x20000);
+  final cloexec = apple ? 0x1000000 : 0x80000;
+  using((arena) {
+    final errno = _libc
+        .lookupFunction<Pointer<Int32> Function(), Pointer<Int32> Function()>(
+            apple ? '__error' : (android ? '__errno' : '__errno_location'));
+    Never fail(String message) => throw FileSystemException(
+        message, relative, OSError('', errno().value));
+    var parent =
+        _open(root.toNativeUtf8(allocator: arena), directory | cloexec);
+    if (parent < 0) fail('Cannot open download root');
+    try {
+      for (final part in parts.take(parts.length - 1)) {
+        final name = part.toNativeUtf8(allocator: arena);
+        var next = _openAt(parent, name, directory | nofollow | cloexec);
+        if (next < 0 && errno().value == 2) {
+          final result = _mkdirAt(parent, name, 493);
+          if (result != 0 && errno().value != 17) {
+            fail('Cannot create torrent directory');
+          }
+          next = _openAt(parent, name, directory | nofollow | cloexec);
+        }
+        if (next < 0) fail('Cannot open torrent directory');
+        _close(parent);
+        parent = next;
+      }
+      final result = _symlinkAt(target.toNativeUtf8(allocator: arena), parent,
+          parts.last.toNativeUtf8(allocator: arena));
+      if (result != 0 && errno().value != 17) {
+        fail('Cannot restore torrent symlink');
+      }
+    } finally {
+      _close(parent);
     }
   });
 }

@@ -80,6 +80,7 @@ const _fileBegin = 0;
 const _fileRenameInformation = 10;
 const _fileDispositionInformation = 13;
 const _fileAttributeTagInfo = 9;
+const _fileStandardInfo = 1;
 const _directoryAccess = 0x1000A1;
 const _readAccess = 0x120089;
 const _writeAccess = 0x120196;
@@ -225,6 +226,35 @@ Uint8List windowsReadBeneath(
         total += count.value;
       }
       return Uint8List.fromList(buffer.asTypedList(total));
+    } finally {
+      if (handle >= 0) _closeHandle(handle);
+      _closeHandle(parent);
+    }
+  });
+}
+
+/// Returns the size of one regular file beneath [root], or null if absent.
+int? windowsSizeBeneath(String root, String relative) {
+  _ensureWindowsSupport();
+  final parts = _checkedParts(relative);
+  return using((arena) {
+    final parent = _openParent(arena, root, parts);
+    var handle = -1;
+    try {
+      final (status, opened) = _ntOpenRaw(
+          arena, parent, parts.last, _readAccess, _fileOpen, _fileOptions,
+          dontReparse: false);
+      if (status == _statusObjectNameNotFound) return null;
+      if (status < 0) throw _winError(status, relative);
+      handle = opened;
+      _ensureRegularFile(arena, handle, relative);
+      final buffer = arena<Uint8>(32)..asTypedList(32).fillRange(0, 32, 0);
+      if (_getFileInformationByHandleEx(
+              handle, _fileStandardInfo, buffer, 32) ==
+          0) {
+        throw _lastError(relative);
+      }
+      return (buffer + 8).cast<Int64>().value;
     } finally {
       if (handle >= 0) _closeHandle(handle);
       _closeHandle(parent);

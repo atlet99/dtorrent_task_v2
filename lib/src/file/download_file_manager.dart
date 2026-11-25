@@ -463,10 +463,12 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
           torrentFilePath, 'torrentFilePath', 'file not found in torrent'),
     );
     if (file.isVirtualFile) return true;
-    final ioFile = File(file.filePath);
-    if (!await ioFile.exists()) return false;
-    final stat = await ioFile.stat();
-    return stat.size == metainfo.files[index].length;
+    try {
+      final (root, relative) = _secureFileLocation(file.filePath);
+      return sizeBeneath(root, relative) == metainfo.files[index].length;
+    } on FileSystemException {
+      return false;
+    }
   }
 
   Future<void> _restoreFileAttributes() async {
@@ -484,11 +486,15 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     }
 
     await _validateFilePath(file.filePath);
-    final exists = await File(file.filePath).exists();
-    if (!exists) return;
-
-    if (file.attributes?.isExecutable == true) {
-      await _setExecutablePermission(file.filePath);
+    final (root, relative) = _secureFileLocation(file.filePath);
+    try {
+      if (sizeBeneath(root, relative) == null) return;
+      if (file.attributes?.isExecutable == true) {
+        setExecutableBeneath(root, relative);
+      }
+    } on FileSystemException catch (e, stackTrace) {
+      _log.warning('Failed to apply file attributes for ${file.filePath}', e,
+          stackTrace);
     }
   }
 
@@ -503,38 +509,13 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       return;
     }
 
-    final linkFile = File(file.filePath);
-    final parentDir = linkFile.parent;
     await _validateFilePath(file.filePath);
-    final target = resolveTorrentPath(parentDir.path, targetSegments.join('/'));
-    await _validateFilePath(target);
-    if (!await parentDir.exists()) {
-      await parentDir.create(recursive: true);
-    }
-
-    final link = Link(file.filePath);
     try {
-      if (await FileSystemEntity.type(file.filePath, followLinks: false) !=
-          FileSystemEntityType.notFound) {
-        return;
-      }
-      await link.create(targetSegments.join(Platform.pathSeparator));
+      final (root, relative) = _secureFileLocation(file.filePath);
+      symlinkBeneath(root, relative, targetSegments.join('/'));
     } catch (e, stackTrace) {
       _log.warning(
           'Failed to restore symlink for ${file.filePath}', e, stackTrace);
-    }
-  }
-
-  Future<void> _setExecutablePermission(String path) async {
-    if (Platform.isWindows) return;
-    try {
-      final result = await Process.run('chmod', <String>['+x', path]);
-      if (result.exitCode != 0) {
-        _log.warning('chmod failed for $path: ${result.stderr}');
-      }
-    } catch (e, stackTrace) {
-      _log.warning(
-          'Failed to apply executable attribute for $path', e, stackTrace);
     }
   }
 

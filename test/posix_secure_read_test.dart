@@ -74,6 +74,44 @@ void main() {
         throwsA(isA<FileSystemException>()));
   });
 
+  test('secure stats, modes and symlinks stay beneath root', () async {
+    if (!Platform.isMacOS && !Platform.isLinux) return;
+    final root = await Directory.systemTemp.createTemp('secure_meta_');
+    final outside = await Directory.systemTemp.createTemp('secure_meta_out_');
+    addTearDown(() async {
+      await root.delete(recursive: true);
+      await outside.delete(recursive: true);
+    });
+    await Directory('${root.path}/dir').create();
+    await File('${root.path}/dir/data').writeAsString('abcdef');
+    expect(sizeBeneath(root.path, 'dir/data'), 6);
+    expect(sizeBeneath(root.path, 'dir/missing'), isNull);
+    await File('${outside.path}/secret').writeAsString('secret');
+    await Link('${root.path}/link').create('${outside.path}/secret');
+    expect(() => sizeBeneath(root.path, 'link'),
+        throwsA(isA<FileSystemException>()));
+    expect(() => sizeBeneath(root.path, '../secret'), throwsFormatException);
+
+    setExecutableBeneath(root.path, 'dir/data');
+    final mode = (await File('${root.path}/dir/data').stat()).mode;
+    expect(mode & 0x49, 0x49);
+    expect(() => setExecutableBeneath(root.path, 'link'),
+        throwsA(isA<FileSystemException>()));
+
+    symlinkBeneath(root.path, 'leaf', 'dir/data');
+    expect(await Link('${root.path}/leaf').target(), 'dir/data');
+    expect(await File('${root.path}/leaf').readAsString(), 'abcdef');
+    symlinkBeneath(root.path, 'leaf', 'dir/data');
+    expect(await Link('${root.path}/leaf').target(), 'dir/data');
+    symlinkBeneath(root.path, 'new/nested/leaf', 'leaf');
+    expect(await Link('${root.path}/new/nested/leaf').target(), 'leaf');
+    expect(() => symlinkBeneath(root.path, '../leaf', 'dir/data'),
+        throwsFormatException);
+    expect(() => symlinkBeneath(root.path, 'leaf2', '../data'),
+        throwsFormatException);
+    expect(await File('${outside.path}/secret').exists(), isTrue);
+  });
+
   test('move stays beneath roots and never follows parent symlinks', () async {
     if (!Platform.isMacOS && !Platform.isLinux) return;
     final root = await Directory.systemTemp.createTemp('secure_move_');
