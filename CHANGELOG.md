@@ -6,6 +6,7 @@
 - use descriptor-relative no-follow reads for torrent files and piece validation on supported POSIX ABIs; unsupported platforms fail closed until a secure backend is available - issue #70
 - reject incomplete piece reads instead of filling missing file bytes with zeroes
 - delete torrent file entries relative to no-follow directory descriptors on supported POSIX ABIs; deletion fails closed on unsupported platforms
+- write torrent data through descriptor-relative no-follow POSIX handles, preserving existing files and synchronizing file and directory descriptors - issue #70
 
 ## 0.6.0
 
