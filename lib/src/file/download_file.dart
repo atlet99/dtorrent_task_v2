@@ -6,7 +6,7 @@ import 'package:collection/collection.dart';
 import 'package:dtorrent_task_v2/src/file/download_file_requests.dart';
 import 'package:dtorrent_task_v2/src/file/file_attributes.dart';
 import 'package:dtorrent_task_v2/src/file/utils.dart';
-import 'package:dtorrent_task_v2/src/file/posix_secure_read.dart';
+import 'package:dtorrent_task_v2/src/file/secure_file_writer.dart';
 import 'package:dtorrent_task_v2/src/piece/piece_base.dart';
 import 'package:logging/logging.dart';
 
@@ -33,7 +33,7 @@ class DownloadFile {
   final Future<void> Function(String path)? validatePath;
   final List<int> Function(String path, int position, int length)? secureRead;
   final void Function(String path)? secureDelete;
-  final PosixSecureWriter Function(String path, int length)? secureOpen;
+  final SecureFileWriter Function(String path, int length)? secureOpen;
   final void Function(String from, String to)? secureMove;
   bool get isSymlinkFile =>
       (attributes?.isSymlink ?? false) || symlinkPath != null;
@@ -55,7 +55,7 @@ class DownloadFile {
   RandomAccessFile? _writeAccess;
 
   RandomAccessFile? _readAccess;
-  PosixSecureWriter? _secureWriter;
+  SecureFileWriter? _secureWriter;
 
   StreamController<FileRequest>? _streamController;
 

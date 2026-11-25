@@ -16,6 +16,7 @@ import 'file_validator.dart';
 import 'state_file.dart';
 import 'state_file_v2.dart';
 import 'posix_secure_read.dart';
+import 'secure_file_writer.dart';
 import '../torrent/file_tree.dart';
 import '../torrent/torrent_version.dart';
 import '../torrent/safe_torrent_path.dart';
@@ -331,9 +332,9 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     unlinkBeneath(root, relative);
   }
 
-  PosixSecureWriter _secureOpenFile(String path, int length) {
+  SecureFileWriter _secureOpenFile(String path, int length) {
     final (root, relative) = _secureFileLocation(path);
-    return PosixSecureWriter.open(root, relative, length);
+    return openSecureWriter(root, relative, length);
   }
 
   void _secureMoveFile(String from, String to) {

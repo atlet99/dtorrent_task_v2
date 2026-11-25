@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import '../torrent/safe_torrent_path.dart';
+import 'secure_file_writer.dart';
+import 'win_secure_file.dart';
 
 final _libc = DynamicLibrary.process();
 final _open = _libc.lookupFunction<
@@ -44,7 +46,7 @@ final _fsync =
     _libc.lookupFunction<Int32 Function(Int32), int Function(int)>('fsync');
 
 /// A regular file opened without following links beneath a trusted directory.
-final class PosixSecureWriter {
+final class PosixSecureWriter implements SecureFileWriter {
   PosixSecureWriter._(this._fd, this._parentFd, this.path, this._errno);
 
   int _fd;
@@ -131,6 +133,7 @@ final class PosixSecureWriter {
     });
   }
 
+  @override
   void write(int offset, List<int> data, int start, int end) {
     if (_fd < 0) throw StateError('File is closed');
     if (offset < 0 || start < 0 || end < start || end > data.length) {
@@ -154,6 +157,7 @@ final class PosixSecureWriter {
     });
   }
 
+  @override
   void flush() {
     if (_fd < 0) throw StateError('File is closed');
     if (_fsync(_fd) != 0) {
@@ -166,6 +170,7 @@ final class PosixSecureWriter {
     }
   }
 
+  @override
   void close() {
     if (_fd < 0) return;
     final fd = _fd;
@@ -184,6 +189,10 @@ final class PosixSecureWriter {
 
 /// Unlinks one entry relative to no-follow directory descriptors.
 void unlinkBeneath(String root, String relative) {
+  if (Platform.isWindows) {
+    windowsUnlinkBeneath(root, relative);
+    return;
+  }
   final abi = Abi.current();
   final apple =
       abi == Abi.macosArm64 || abi == Abi.macosX64 || abi == Abi.iosArm64;
@@ -227,6 +236,11 @@ void unlinkBeneath(String root, String relative) {
 /// Moves one entry between no-follow directory descriptors.
 void moveBeneath(String sourceRoot, String sourceRelative,
     String destinationRoot, String destinationRelative) {
+  if (Platform.isWindows) {
+    windowsMoveBeneath(
+        sourceRoot, sourceRelative, destinationRoot, destinationRelative);
+    return;
+  }
   final abi = Abi.current();
   final apple =
       abi == Abi.macosArm64 || abi == Abi.macosX64 || abi == Abi.iosArm64;
@@ -356,6 +370,9 @@ void moveBeneath(String sourceRoot, String sourceRelative,
 
 /// Reads a range through no-follow directory descriptors on supported POSIX ABIs.
 Uint8List readBeneath(String root, String relative, int offset, int length) {
+  if (Platform.isWindows) {
+    return windowsReadBeneath(root, relative, offset, length);
+  }
   final abi = Abi.current();
   final apple =
       abi == Abi.macosArm64 || abi == Abi.macosX64 || abi == Abi.iosArm64;
@@ -421,4 +438,12 @@ Uint8List readBeneath(String root, String relative, int offset, int length) {
       _close(fd);
     }
   });
+}
+
+/// Opens a torrent file for writing on the current platform.
+SecureFileWriter openSecureWriter(String root, String relative, int length) {
+  if (Platform.isWindows) {
+    return WindowsSecureWriter.open(root, relative, length);
+  }
+  return PosixSecureWriter.open(root, relative, length);
 }
