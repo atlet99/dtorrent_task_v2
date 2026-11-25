@@ -25,6 +25,9 @@ final _close =
 final _unlinkAt = _libc.lookupFunction<
     Int32 Function(Int32, Pointer<Utf8>, Int32),
     int Function(int, Pointer<Utf8>, int)>('unlinkat');
+final _renameAt = _libc.lookupFunction<
+    Int32 Function(Int32, Pointer<Utf8>, Int32, Pointer<Utf8>),
+    int Function(int, Pointer<Utf8>, int, Pointer<Utf8>)>('renameat');
 final _openAtCreate = _libc.lookupFunction<
     Int32 Function(Int32, Pointer<Utf8>, Int32, VarArgs<(Uint32,)>),
     int Function(int, Pointer<Utf8>, int, int)>('openat');
@@ -217,6 +220,136 @@ void unlinkBeneath(String root, String relative) {
       }
     } finally {
       _close(fd);
+    }
+  });
+}
+
+/// Moves one entry between no-follow directory descriptors.
+void moveBeneath(String sourceRoot, String sourceRelative,
+    String destinationRoot, String destinationRelative) {
+  final abi = Abi.current();
+  final apple =
+      abi == Abi.macosArm64 || abi == Abi.macosX64 || abi == Abi.iosArm64;
+  final android = abi == Abi.androidArm64;
+  final arm64 = abi == Abi.linuxArm64 || android;
+  if (!apple && !arm64 && abi != Abi.linuxX64) {
+    throw UnsupportedError('Secure file moves are unavailable on $abi');
+  }
+  final sourceParts = sourceRelative.split('/');
+  final destinationParts = destinationRelative.split('/');
+  for (final part in [...sourceParts, ...destinationParts]) {
+    validateTorrentPathComponent(part);
+  }
+  final directory = apple ? 0x100000 : (arm64 ? 0x4000 : 0x10000);
+  final nofollow = apple ? 0x100 : (arm64 ? 0x8000 : 0x20000);
+  final cloexec = apple ? 0x1000000 : 0x80000;
+  final nonblock = apple ? 0x4 : 0x800;
+  final create = apple ? 0x200 : 0x40;
+  final truncate = apple ? 0x400 : 0x200;
+  using((arena) {
+    final errno = _libc
+        .lookupFunction<Pointer<Int32> Function(), Pointer<Int32> Function()>(
+            apple ? '__error' : (android ? '__errno' : '__errno_location'));
+    Never fail(String message) => throw FileSystemException(
+        message, sourceRelative, OSError('', errno().value));
+    int openParent(String root, List<String> parts) {
+      var fd = _open(root.toNativeUtf8(allocator: arena), directory | cloexec);
+      if (fd < 0) fail('Cannot open download directory');
+      try {
+        for (final part in parts.take(parts.length - 1)) {
+          final next = _openAt(fd, part.toNativeUtf8(allocator: arena),
+              directory | nofollow | cloexec);
+          if (next < 0) fail('Cannot open torrent directory');
+          _close(fd);
+          fd = next;
+        }
+        return fd;
+      } catch (_) {
+        _close(fd);
+        rethrow;
+      }
+    }
+
+    void syncDirectories(int sourceParent, int destinationParent) {
+      if (_fsync(sourceParent) != 0) fail('Cannot sync source directory');
+      if (_fsync(destinationParent) != 0) {
+        fail('Cannot sync destination directory');
+      }
+    }
+
+    void copyFile(int sourceParent, Pointer<Utf8> sourceName,
+        int destinationParent, Pointer<Utf8> destinationName) {
+      final source =
+          _openAt(sourceParent, sourceName, 2 | nofollow | cloexec | nonblock);
+      if (source < 0) fail('Cannot open torrent file');
+      var destination = -1;
+      try {
+        final stat = arena<Uint8>(512);
+        if (_fstat(source, stat.cast()) != 0) fail('Cannot stat torrent file');
+        final modeOffset = apple ? 4 : (abi == Abi.linuxX64 ? 24 : 16);
+        final mode = apple
+            ? (stat + modeOffset).cast<Uint16>().value
+            : (stat + modeOffset).cast<Uint32>().value;
+        if (mode & 0xf000 != 0x8000) {
+          throw FileSystemException(
+              'Torrent path is not a regular file', sourceRelative);
+        }
+        destination = _openAtCreate(destinationParent, destinationName,
+            1 | create | truncate | nofollow | cloexec, 420);
+        if (destination < 0) fail('Cannot create destination file');
+        final buffer = arena<Uint8>(65536);
+        var offset = 0;
+        while (true) {
+          final count = _pread(source, buffer, 65536, offset);
+          if (count < 0) {
+            if (errno().value == 4) continue;
+            fail('Cannot read torrent file');
+          }
+          if (count == 0) break;
+          var written = 0;
+          while (written < count) {
+            final result = _pwrite(destination, buffer + written,
+                count - written, offset + written);
+            if (result < 0 && errno().value == 4) continue;
+            if (result <= 0) fail('Cannot write destination file');
+            written += result;
+          }
+          offset += count;
+        }
+        if (_fsync(destination) != 0) fail('Cannot sync destination file');
+      } catch (_) {
+        if (destination >= 0) {
+          _unlinkAt(destinationParent, destinationName, 0);
+        }
+        rethrow;
+      } finally {
+        _close(source);
+        if (destination >= 0) _close(destination);
+      }
+    }
+
+    final sourceParent = openParent(sourceRoot, sourceParts);
+    var destinationParent = -1;
+    try {
+      destinationParent = openParent(destinationRoot, destinationParts);
+      final sourceName = sourceParts.last.toNativeUtf8(allocator: arena);
+      final destinationName =
+          destinationParts.last.toNativeUtf8(allocator: arena);
+      if (_renameAt(
+              sourceParent, sourceName, destinationParent, destinationName) ==
+          0) {
+        syncDirectories(sourceParent, destinationParent);
+        return;
+      }
+      if (errno().value != 18) fail('Cannot move torrent file');
+      copyFile(sourceParent, sourceName, destinationParent, destinationName);
+      if (_unlinkAt(sourceParent, sourceName, 0) != 0) {
+        fail('Cannot delete moved torrent file');
+      }
+      syncDirectories(sourceParent, destinationParent);
+    } finally {
+      _close(sourceParent);
+      if (destinationParent >= 0) _close(destinationParent);
     }
   });
 }

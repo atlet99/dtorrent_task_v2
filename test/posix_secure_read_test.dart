@@ -74,6 +74,55 @@ void main() {
         throwsA(isA<FileSystemException>()));
   });
 
+  test('move stays beneath roots and never follows parent symlinks', () async {
+    if (!Platform.isMacOS && !Platform.isLinux) return;
+    final root = await Directory.systemTemp.createTemp('secure_move_');
+    final outside = await Directory.systemTemp.createTemp('secure_move_out_');
+    addTearDown(() async {
+      await root.delete(recursive: true);
+      await outside.delete(recursive: true);
+    });
+    await File('${root.path}/source').writeAsString('payload');
+    await Directory('${root.path}/sub').create();
+    moveBeneath(root.path, 'source', root.path, 'sub/target');
+    expect(await File('${root.path}/sub/target').readAsString(), 'payload');
+    expect(await File('${root.path}/source').exists(), isFalse);
+    moveBeneath(root.path, 'sub/target', outside.path, 'moved');
+    expect(await File('${outside.path}/moved').readAsString(), 'payload');
+    await Link('${root.path}/link').create(outside.path);
+    expect(() => moveBeneath(root.path, 'link/moved', root.path, 'x'),
+        throwsA(isA<FileSystemException>()));
+    expect(() => moveBeneath(root.path, 'x', root.path, 'link/moved'),
+        throwsA(isA<FileSystemException>()));
+    moveBeneath(root.path, 'link', root.path, 'moved-link');
+    expect(await Link('${root.path}/moved-link').target(), outside.path);
+    expect(() => moveBeneath(root.path, '../moved', root.path, 'x'),
+        throwsFormatException);
+    expect(await File('${outside.path}/moved').readAsString(), 'payload');
+  });
+
+  test('cross-device move falls back to copy', () async {
+    if (!Platform.isLinux) return;
+    final shm = Directory('/dev/shm');
+    if (!await shm.exists()) return;
+    final root = await Directory.systemTemp.createTemp('secure_move_xdev_');
+    Directory? target;
+    try {
+      target = await shm.createTemp('dtorrent_move_');
+    } on FileSystemException {
+      await root.delete(recursive: true);
+      return;
+    }
+    addTearDown(() async {
+      await root.delete(recursive: true);
+      await target!.delete(recursive: true);
+    });
+    await File('${root.path}/payload').writeAsString('cross-device');
+    moveBeneath(root.path, 'payload', target.path, 'payload');
+    expect(await File('${target.path}/payload').readAsString(), 'cross-device');
+    expect(await File('${root.path}/payload').exists(), isFalse);
+  });
+
   test('unlink stays beneath root and never follows parent symlinks', () async {
     if (!Platform.isMacOS && !Platform.isLinux) return;
     final root = await Directory.systemTemp.createTemp('secure_unlink_');

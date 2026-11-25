@@ -34,6 +34,7 @@ class DownloadFile {
   final List<int> Function(String path, int position, int length)? secureRead;
   final void Function(String path)? secureDelete;
   final PosixSecureWriter Function(String path, int length)? secureOpen;
+  final void Function(String from, String to)? secureMove;
   bool get isSymlinkFile =>
       (attributes?.isSymlink ?? false) || symlinkPath != null;
   bool get isVirtualFile => isPaddingFile || isSymlinkFile;
@@ -76,7 +77,8 @@ class DownloadFile {
       this.validatePath,
       this.secureRead,
       this.secureDelete,
-      this.secureOpen}) {
+      this.secureOpen,
+      this.secureMove}) {
     for (var piece in pieces) {
       if (piece.isCompletelyWritten) {
         var blockPosition = blockToDownloadFilePosition(
@@ -436,17 +438,22 @@ class DownloadFile {
 
     await prepareForMove();
 
+    final move = secureMove;
     try {
-      if (await source.exists()) {
+      if (move != null) {
+        if (await source.exists()) {
+          move(filePath, newPath);
+        } else {
+          await _createEmptyShell(destination);
+        }
+      } else if (await source.exists()) {
         await source.rename(newPath);
       } else {
         // If file is not yet materialized, create an empty shell in new place.
-        await destination.create(recursive: true);
-        final access = await destination.open(mode: FileMode.writeOnly);
-        await access.truncate(length);
-        await access.close();
+        await _createEmptyShell(destination);
       }
     } on FileSystemException {
+      if (move != null) rethrow;
       // Cross-device fallback: copy+delete.
       if (await source.exists()) {
         await source.copy(newPath);
@@ -457,6 +464,17 @@ class DownloadFile {
     filePath = newPath;
     _file = destination;
     _closed = false;
+  }
+
+  Future<void> _createEmptyShell(File destination) async {
+    if (secureOpen case final open?) {
+      open(destination.path, length).close();
+      return;
+    }
+    await destination.create(recursive: true);
+    final access = await destination.open(mode: FileMode.writeOnly);
+    await access.truncate(length);
+    await access.close();
   }
 
   /// Rebind descriptor to an already moved file path without disk move.

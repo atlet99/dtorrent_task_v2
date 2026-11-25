@@ -230,6 +230,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
         secureRead: _secureReadFile,
         secureDelete: _secureDeleteFile,
         secureOpen: _secureOpenFile,
+        secureMove: _secureMoveFile,
       );
 
       for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
@@ -281,7 +282,8 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
           validatePath: _validateFilePath,
           secureRead: _secureReadFile,
           secureDelete: _secureDeleteFile,
-          secureOpen: _secureOpenFile);
+          secureOpen: _secureOpenFile,
+          secureMove: _secureMoveFile);
 
       for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
         var downloadFileList = _piece2fileMap?[pieceIndex];
@@ -332,6 +334,13 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   PosixSecureWriter _secureOpenFile(String path, int length) {
     final (root, relative) = _secureFileLocation(path);
     return PosixSecureWriter.open(root, relative, length);
+  }
+
+  void _secureMoveFile(String from, String to) {
+    final (sourceRoot, sourceRelative) = _secureFileLocation(from);
+    final (destinationRoot, destinationRelative) = _secureFileLocation(to);
+    moveBeneath(
+        sourceRoot, sourceRelative, destinationRoot, destinationRelative);
   }
 
   (String, String) _secureFileLocation(String path) {
@@ -505,7 +514,9 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     final link = Link(file.filePath);
     try {
       if (await FileSystemEntity.type(file.filePath, followLinks: false) !=
-          FileSystemEntityType.notFound) return;
+          FileSystemEntityType.notFound) {
+        return;
+      }
       await link.create(targetSegments.join(Platform.pathSeparator));
     } catch (e, stackTrace) {
       _log.warning(
