@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
+import 'package:dtorrent_task_v2/src/standalone/dtorrent_tracker/tracker/tracker.dart';
 import 'package:test/test.dart';
 import 'test_helpers.dart';
 
@@ -36,6 +37,35 @@ Future<void> _persistPartialState(
 
 void main() {
   group('Multi-file torrent progress regression', () {
+    test('tracker options remain safe while the server socket closes',
+        () async {
+      final torrent = await createTestTorrent();
+      final testDir = await getTestDownloadDirectory();
+      final task = TorrentTask.newTask(torrent, testDir.path);
+      final options = task as AnnounceOptionsProvider;
+      try {
+        final started = await task.start();
+        final uri = Uri.parse('http://localhost/announce');
+        final port = started['tcp_socket'];
+        expect(port, greaterThan(0));
+        expect((await options.getOptions(uri, torrent.infoHash))['port'], port);
+
+        final stopping = task.stop();
+        var stopped = false;
+        stopping.then((_) => stopped = true);
+        while (!stopped) {
+          await options.getOptions(uri, torrent.infoHash);
+          await Future<void>.delayed(Duration.zero);
+        }
+        await stopping;
+        expect(
+            (await options.getOptions(uri, torrent.infoHash))['port'], isNull);
+      } finally {
+        await task.dispose();
+        await cleanupTestDirectory(testDir);
+      }
+    });
+
     test('single-file torrent reports totalSize equal to length', () async {
       final torrent = await createTestTorrent();
 

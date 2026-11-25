@@ -1,5 +1,8 @@
 ## Unreleased
 
+- fix late `TorrentTask` callbacks accessing a closed server socket by caching the listening port and guarding DHT announce after shutdown - issue #41
+- remove port forwarding on shutdown, including mappings completed after the socket closes
+- add socket shutdown regression coverage and example (`test/multi_file_progress_test.dart`, `example/task_socket_shutdown_example.dart`)
 - fix UDP tracker reporting failed datagram sends as success: `null` and `0` byte sends now count as failures, retries use bounded exponential backoff, and an exhausted retry budget surfaces a `SocketException` - issue #40
 - keep UDP sockets alive on socket errors so `TrackerAnnounceErrorEvent` reaches the announce retry policy instead of being emitted after the tracker was disposed
 - keep UDP trackers reusable after a response: per-round socket closes no longer set the permanent closed flag or dispose the tracker, so interval announces and subsequent scrapes keep working
