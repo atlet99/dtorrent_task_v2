@@ -1,5 +1,8 @@
 ## Unreleased
 
+- add per-address peer reconnect backoff (1s, 5s, 15s) and a three-retry cap, including failed TCP connections and repeated tracker/DHT/PEX discovery - issue #42
+- cancel pending reconnect timers on swarm disposal and reset retry attempts after a successful peer handshake
+- add peer reconnect regression coverage and example (`test/peer_reconnect_test.dart`, `example/peer_reconnect_example.dart`)
 - fix late `TorrentTask` callbacks accessing a closed server socket by caching the listening port and guarding DHT announce after shutdown - issue #41
 - remove port forwarding on shutdown, including mappings completed after the socket closes
 - add socket shutdown regression coverage and example (`test/multi_file_progress_test.dart`, `example/task_socket_shutdown_example.dart`)
