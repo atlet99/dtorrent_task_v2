@@ -7,6 +7,7 @@ import 'package:logging/logging.dart';
 
 import '../piece/piece.dart';
 import '../torrent/safe_torrent_path.dart';
+import 'posix_secure_read.dart';
 
 var _log = Logger('FileValidator');
 
@@ -195,19 +196,12 @@ class FileValidator {
           continue;
         }
 
-        final filePath = _resolveTorrentFilePath(file.path);
-        await rejectSymlinks(savePath, filePath);
-        final fileObj = File(filePath);
-        if (await fileObj.exists()) {
-          final access = await fileObj.open(mode: FileMode.read);
-          await access.setPosition(readStart);
-          final bytes = await access.read(readLength);
-          data.setRange(offset, offset + bytes.length, bytes);
-          offset += bytes.length;
-          await access.close();
-        } else {
-          throw FileSystemException('File not found', filePath);
+        final bytes = readBeneath(savePath, file.path, readStart, readLength);
+        if (bytes.length != readLength) {
+          throw FileSystemException('Unexpected end of file', file.path);
         }
+        data.setRange(offset, offset + bytes.length, bytes);
+        offset += bytes.length;
       }
     }
 

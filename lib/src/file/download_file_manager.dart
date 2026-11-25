@@ -15,6 +15,7 @@ import 'download_file.dart';
 import 'file_validator.dart';
 import 'state_file.dart';
 import 'state_file_v2.dart';
+import 'posix_secure_read.dart';
 import '../torrent/file_tree.dart';
 import '../torrent/torrent_version.dart';
 import '../torrent/safe_torrent_path.dart';
@@ -226,6 +227,8 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
         isPaddingFile: file.isPaddingFile,
         symlinkPath: file.symlinkPath,
         validatePath: _validateFilePath,
+        secureRead: _secureReadFile,
+        secureDelete: _secureDeleteFile,
       );
 
       for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
@@ -274,7 +277,9 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
           attributes: fileInfo.attributes,
           isPaddingFile: fileInfo.isPaddingFile,
           symlinkPath: fileInfo.symlinkPath,
-          validatePath: _validateFilePath);
+          validatePath: _validateFilePath,
+          secureRead: _secureReadFile,
+          secureDelete: _secureDeleteFile);
 
       for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
         var downloadFileList = _piece2fileMap?[pieceIndex];
@@ -310,6 +315,26 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     // Explicitly moved files may live outside the original download directory.
     await rejectSymlinks(
         p.isWithin(root, absolute) ? root : p.dirname(absolute), absolute);
+  }
+
+  List<int> _secureReadFile(String path, int position, int length) {
+    final (root, relative) = _secureFileLocation(path);
+    return readBeneath(root, relative, position, length);
+  }
+
+  void _secureDeleteFile(String path) {
+    final (root, relative) = _secureFileLocation(path);
+    unlinkBeneath(root, relative);
+  }
+
+  (String, String) _secureFileLocation(String path) {
+    final base = _baseDirectory;
+    if (base == null) throw StateError('Download directory is not initialized');
+    final absolute = p.normalize(p.absolute(path));
+    final root = p.normalize(p.absolute(base));
+    final trustedRoot = p.isWithin(root, absolute) ? root : p.dirname(absolute);
+    final relative = p.split(p.relative(absolute, from: trustedRoot)).join('/');
+    return (trustedRoot, relative);
   }
 
   String? _resolvePathFromState(String torrentPath) {

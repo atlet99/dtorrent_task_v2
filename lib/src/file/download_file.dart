@@ -30,6 +30,8 @@ class DownloadFile {
   final bool isPaddingFile;
   final List<String>? symlinkPath;
   final Future<void> Function(String path)? validatePath;
+  final List<int> Function(String path, int position, int length)? secureRead;
+  final void Function(String path)? secureDelete;
   bool get isSymlinkFile =>
       (attributes?.isSymlink ?? false) || symlinkPath != null;
   bool get isVirtualFile => isPaddingFile || isSymlinkFile;
@@ -68,7 +70,9 @@ class DownloadFile {
       {this.attributes,
       this.isPaddingFile = false,
       this.symlinkPath,
-      this.validatePath}) {
+      this.validatePath,
+      this.secureRead,
+      this.secureDelete}) {
     for (var piece in pieces) {
       if (piece.isCompletelyWritten) {
         var blockPosition = blockToDownloadFilePosition(
@@ -114,6 +118,9 @@ class DownloadFile {
   Future<List<int>> requestRead(int position, int length) async {
     if (isVirtualFile) {
       return List<int>.filled(length, 0);
+    }
+    if (secureRead case final read?) {
+      return read(filePath, position, length);
     }
     _readAccess ??= await _getRandomAccessFile(FileRequestType.read);
     var completer = Completer<List<int>>();
@@ -429,9 +436,15 @@ class DownloadFile {
     try {
       await close();
       var temp = _file;
-      _file = null;
+      final delete = secureDelete;
+      if (temp != null && delete != null) {
+        delete(filePath);
+        _file = null;
+        return temp;
+      }
       // here we can get a FileSystemException
       var r = await temp?.delete();
+      _file = null;
       return r;
     } catch (e) {
       _log.warning('delete() error: ', e);

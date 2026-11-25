@@ -20,6 +20,7 @@ dependencies:
   path: ^1.9.1
   http: ^1.6.0
   xml: ^7.0.1
+  ffi: ^2.1.0
 
 dev_dependencies:
   lints: ^6.1.0

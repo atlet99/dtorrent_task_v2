@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
+import 'package:crypto/crypto.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart';
 import 'package:test/test.dart';
 
@@ -31,6 +32,22 @@ Map<String, dynamic> v2(String name) => {
     };
 
 void main() {
+  test('piece validation rejects short files instead of padding with zeroes',
+      () async {
+    final root = await Directory.systemTemp.createTemp('torrent_short_');
+    addTearDown(() => root.delete(recursive: true));
+    await Directory('${root.path}/root').create();
+    await File('${root.path}/root/data').writeAsBytes([1, 2]);
+    final digest = sha1.convert([1, 2, 0, 0]).bytes;
+    final info = v1(['data']);
+    (info['info'] as Map)['pieces'] = Uint8List.fromList(digest);
+    final torrent = TorrentParser.parseFromMap(info);
+    final hex = digest.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    final piece = Piece(hex, 0, 4, 0, isComplete: true);
+    final validator = FileValidator(torrent, [piece], root.path);
+    expect(await validator.validatePiece(0), isFalse);
+  });
+
   test('rejects unsafe v1 and v2 path components', () {
     for (final component in [
       '..',
@@ -102,5 +119,48 @@ void main() {
     await expectLater(manager.writeFile(0, 0, [1, 2, 3, 4]),
         throwsA(isA<FileSystemException>()));
     expect(await File('${outside.path}/data.bin').exists(), isFalse);
+  });
+
+  test('streaming read rejects a replaced parent directory', () async {
+    if (!Platform.isMacOS && !Platform.isLinux) return;
+    final root = await Directory.systemTemp.createTemp('torrent_read_');
+    final outside = await Directory.systemTemp.createTemp('torrent_outside_');
+    addTearDown(() async {
+      await root.delete(recursive: true);
+      await outside.delete(recursive: true);
+    });
+    final torrent = TorrentParser.parseFromMap(v1(['data.bin']));
+    final state = await StateFileV2.getStateFile(root.path, torrent);
+    final manager = await DownloadFileManager.createFileManager(
+        torrent, root.path, state, [Piece('00' * 20, 0, 4, 0)]);
+    addTearDown(manager.close);
+    expect(await manager.writeFile(0, 0, [1, 2, 3, 4]), isTrue);
+    await File('${outside.path}/data.bin').writeAsBytes([9, 9, 9, 9]);
+    await Directory('${root.path}/root').rename('${root.path}/held');
+    await Link('${root.path}/root').create(outside.path);
+    await expectLater(
+        manager.readFile(0, 0, 4), throwsA(isA<FileSystemException>()));
+  });
+
+  test('manager deletion does not follow a replaced parent directory',
+      () async {
+    if (!Platform.isMacOS && !Platform.isLinux) return;
+    final root = await Directory.systemTemp.createTemp('torrent_delete_');
+    final outside = await Directory.systemTemp.createTemp('torrent_outside_');
+    addTearDown(() async {
+      await root.delete(recursive: true);
+      await outside.delete(recursive: true);
+    });
+    final torrent = TorrentParser.parseFromMap(v1(['data.bin']));
+    final state = await StateFileV2.getStateFile(root.path, torrent);
+    final manager = await DownloadFileManager.createFileManager(
+        torrent, root.path, state, [Piece('00' * 20, 0, 4, 0)]);
+    expect(await manager.writeFile(0, 0, [1, 2, 3, 4]), isTrue);
+    await File('${outside.path}/data.bin').writeAsBytes([9, 9, 9, 9]);
+    await Directory('${root.path}/root').rename('${root.path}/held');
+    await Link('${root.path}/root').create(outside.path);
+    await manager.delete();
+    expect(await File('${outside.path}/data.bin').readAsBytes(), [9, 9, 9, 9]);
+    expect(await File('${root.path}/held/data.bin').exists(), isTrue);
   });
 }
