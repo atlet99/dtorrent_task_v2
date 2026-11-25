@@ -3,6 +3,9 @@
 - run a separate pinned `pana` quality gate before pub.dev publication and block release on lost pub points - issue #71
 - fix unresolved public API documentation references reported by dartdoc
 - reject unsafe torrent path components and block existing symlinks in download paths - issue #70
+- use descriptor-relative no-follow reads for torrent files and piece validation on supported POSIX ABIs; unsupported platforms fail closed until a secure backend is available - issue #70
+- reject incomplete piece reads instead of filling missing file bytes with zeroes
+- delete torrent file entries relative to no-follow directory descriptors on supported POSIX ABIs; deletion fails closed on unsupported platforms
 
 ## 0.6.0
 
