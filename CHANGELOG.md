@@ -9,6 +9,8 @@
 - write torrent data through descriptor-relative no-follow POSIX handles, preserving existing files and synchronizing file and directory descriptors - issue #70
 - move torrent files relative to no-follow directory descriptors with a synchronized copy fallback across devices - issue #70
 - add a 64-bit Windows backend that opens torrent paths relative to directory handles and rejects reparse points for reads, writes, moves and deletion - issue #70
+- read file sizes and apply executable bits through no-follow handles instead of path-based checks - issue #70
+- restore torrent symlinks relative to no-follow directory descriptors - issue #70
 
 ## 0.6.0
 

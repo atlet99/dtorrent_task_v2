@@ -174,18 +174,18 @@ And there are methods to control the `TorrentTask`:
 ## File path safety
 
 Torrent path components are validated and existing symbolic links in download
-paths are rejected. Piece validation, torrent file reads, writes, moves and
-deletion use descriptor-relative, no-follow directory opens on macOS
-(x64/arm64), iOS (arm64), Linux (x64/arm64), Android (arm64) and 64-bit Windows
-(NT relative opens that reject reparse points). These operations fail closed on
-other ABIs. Deletion removes a final symbolic link itself without following it.
+paths are rejected. Piece validation, torrent file reads, writes, moves,
+deletion, size checks, executable bits and symlink restoration use
+descriptor-relative, no-follow directory opens on macOS (x64/arm64), iOS
+(arm64), Linux (x64/arm64), Android (arm64) and 64-bit Windows (NT relative
+opens that reject reparse points). These operations fail closed on other ABIs.
+Deletion removes a final symbolic link itself without following it. Moves
+rename entries relative to no-follow descriptors and fall back to a synchronized
+copy across devices. Windows skips symlink restoration and does not synchronize
+directory entries.
 
-**Issue #70 remains open:** metadata checks and symlink restoration are not yet
-atomic against concurrent filesystem changes. Moves rename entries relative to
-no-follow descriptors and fall back to a synchronized copy across devices.
-Windows does not synchronize directory entries. The configured root is trusted;
-hard links, mount points, junctions and moving an already-open directory outside
-the root are outside the no-follow guarantee.
+The configured root is trusted; hard links, mount points, junctions and moving
+an already-open directory outside the root are outside the no-follow guarantee.
 
 ## Release quality checks
 
