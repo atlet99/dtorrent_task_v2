@@ -1,9 +1,9 @@
 ---
 name: Technical issue
 about: Code audit finding with concrete locations, impact, and a proposed fix
-title: "[ISSUE] - "
-labels: ""
-assignees: ""
+title: '[ISSUE] - '
+labels: ''
+assignees: ''
 ---
 
 <!-- One focused problem per issue: current behavior, why it is wrong, and
@@ -16,7 +16,7 @@ assignees: ""
 
 ### Proposed Fix
 
-- 
+-
 
 ### Additional Context
 
