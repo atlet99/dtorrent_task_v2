@@ -171,6 +171,29 @@ And there are methods to control the `TorrentTask`:
    task.resume();
 ```
 
+## Release quality checks
+
+Before publishing, run `make check` and `dart pub publish --dry-run`. The
+publication workflow also requires a separate `pana` job: it analyzes a copy of
+the tagged commit and fails if any available pub points are lost. The baseline
+for version 0.6.0 with pana 0.23.19 is 160/160 points, with native platform
+support and 46.8% API documentation coverage; Web is not supported.
+
+To reproduce the quality gate locally for the committed revision:
+
+```bash
+dart pub global activate pana 0.23.19
+package_dir="$(mktemp -d)"
+git archive HEAD | tar -x -C "$package_dir"
+dart pub global run pana --exit-code-threshold 0 "$package_dir"
+```
+
+The workflow pins the pana version; its report also depends on the current SDK
+and dependency ecosystem. Update the pinned version in
+`.github/workflows/publish.yml` and these instructions together after reviewing
+its score report. The check uses the committed revision; commit local changes
+before running it. `pana` runs on a copy because it may modify files.
+
 ## Examples
 
 For pub.dev and local onboarding, start from:

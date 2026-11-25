@@ -6,9 +6,28 @@ on:
       # Must align with the tag pattern configured on pub.dev: `v{{version}}`.
       - 'v*.*.*'
 
+permissions: {}
+
 jobs:
-  publish:
+  pana:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
+      - name: Check pub points
+        run: |
+          dart pub global activate pana 0.23.19
+          package_dir="$(mktemp -d)"
+          git archive HEAD | tar -x -C "$package_dir"
+          dart pub global run pana --exit-code-threshold 0 "$package_dir"
+
+  publish:
+    needs: pana
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       id-token: write
       contents: read
@@ -18,22 +37,22 @@ jobs:
     # environment: pub.dev
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Dart (attempt 1)
         id: setup_dart_attempt_1
         continue-on-error: true
-        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
+        uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
 
       - name: Setup Dart (attempt 2)
         if: steps.setup_dart_attempt_1.outcome == 'failure'
         id: setup_dart_attempt_2
         continue-on-error: true
-        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
+        uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
 
       - name: Setup Dart (attempt 3)
         if: steps.setup_dart_attempt_1.outcome == 'failure' && steps.setup_dart_attempt_2.outcome == 'failure'
-        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
+        uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
 
       - name: Validate tag matches pubspec version
         run: |

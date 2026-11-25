@@ -7,7 +7,7 @@ import 'dart:typed_data';
 class PeerPriority {
   /// Computes canonical peer priority between local and remote endpoints.
   ///
-  /// The returned value is an unsigned 32-bit integer in [0, 2^32-1].
+  /// The returned value is an unsigned 32-bit integer in `0..2^32-1`.
   static int canonicalPriority({
     required InternetAddress clientIp,
     required int clientPort,

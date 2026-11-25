@@ -23,7 +23,7 @@ class Bitfield {
   }
 
   ///
-  /// If [index] is not within the range [0 - piecesNum], no error will be thrown, and the method will return directly.
+  /// If [index] is not within the range `0 - piecesNum`, no error will be thrown, and the method will return directly.
   void setBit(int index, bool bit) {
     if (index < 0 || index >= piecesNum) return;
     if (getBit(index) == bit) return;
