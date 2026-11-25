@@ -145,6 +145,13 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   final Map<Peer, EventsListener<PeerEvent>> _peerListeners = {};
 
   final Set<CompactAddress> _peersAddress = {};
+  static const _reconnectDelays = [
+    Duration(seconds: 1),
+    Duration(seconds: 5),
+    Duration(seconds: 15),
+  ];
+  final Map<CompactAddress, int> _reconnectAttempts = {};
+  final Map<CompactAddress, Timer> _reconnectTimers = {};
 
   final Set<InternetAddress> _incomingAddress = {};
 
@@ -487,6 +494,9 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
       ..on<PeerDisposeEvent>(_processPeerDispose)
       ..on<PeerInterestedChanged>(_processInterestedChange)
       ..on<PeerConnected>(_peerConnected)
+      ..on<PeerHandshakeEvent>((event) {
+        _reconnectAttempts.remove(event.peer.address);
+      })
       ..on<PeerPieceEvent>(_processReceivePiece)
       ..on<PeerRequestEvent>(_processRemoteRequest)
       ..on<PeerSuggestPiece>(_processSuggestPiece)
@@ -555,7 +565,18 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   /// this type peer was managed by [TorrentTask] , user don't need to know that.
   void addNewPeerAddress(CompactAddress? address, PeerSource source,
       {PeerType? type, Object? socket}) {
-    if (address == null) return;
+    _addNewPeerAddress(address, source, type: type, socket: socket);
+  }
+
+  void _addNewPeerAddress(CompactAddress? address, PeerSource source,
+      {PeerType? type, Object? socket, bool retry = false}) {
+    if (isDisposed || address == null) return;
+    if (!retry &&
+        socket == null &&
+        (_reconnectTimers.containsKey(address) ||
+            (_reconnectAttempts[address] ?? 0) >= _reconnectDelays.length)) {
+      return;
+    }
     if (ignoreIps.contains(address.address)) return;
     if (address.address == localExternalIP) return;
 
@@ -582,6 +603,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
             'Incoming connection from ${address.address} is ignored, already connected, multiple connections from the same IP are not allowed.');
         return;
       }
+      _reconnectTimers.remove(address)?.cancel();
     }
     // TODO: should we allow reconnects?
     // _activePeers.removeWhere((p) => p.address == address);
@@ -686,25 +708,21 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     _pausedRemoteRequest.remove(disposeEvent.peer.id);
     _pausedRequest.removeWhere((request) => request.peer == disposeEvent.peer);
 
-    if (disposeEvent.reason is TCPConnectException) {
-      // print('TCPConnectException');
-      // addNewPeerAddress(peer.address, PeerType.utp);
-      return;
-    }
-
-    if (reconnect) {
-      if ((_maxConnections == 0 || _activePeers.length < _maxConnections) &&
-          !isDisposed) {
-        addNewPeerAddress(
-          disposeEvent.peer.address,
-          disposeEvent.peer.source,
-          type: disposeEvent.peer.type,
-        );
-      }
-    } else {
-      if (disposeEvent.peer.isSeeder && !isDisposed) {
-        addNewPeerAddress(disposeEvent.peer.address, disposeEvent.peer.source,
-            type: disposeEvent.peer.type);
+    if ((reconnect || disposeEvent.peer.isSeeder) && !isDisposed) {
+      final address = disposeEvent.peer.address;
+      final attempts = _reconnectAttempts[address] ?? 0;
+      if (attempts < _reconnectDelays.length &&
+          !_reconnectTimers.containsKey(address)) {
+        _reconnectAttempts[address] = attempts + 1;
+        _reconnectTimers[address] = Timer(_reconnectDelays[attempts], () {
+          _reconnectTimers.remove(address);
+          _addNewPeerAddress(
+            address,
+            disposeEvent.peer.source,
+            type: disposeEvent.peer.type,
+            retry: true,
+          );
+        });
       }
     }
   }
@@ -913,6 +931,11 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     _optimisticTimer = null;
     _keepAliveTimer?.cancel();
     _keepAliveTimer = null;
+    for (final timer in _reconnectTimers.values) {
+      timer.cancel();
+    }
+    _reconnectTimers.clear();
+    _reconnectAttempts.clear();
     for (final timer in _rateLimitedTimers) {
       timer.cancel();
     }
