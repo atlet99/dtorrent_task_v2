@@ -7,6 +7,7 @@
 - reject incomplete piece reads instead of filling missing file bytes with zeroes
 - delete torrent file entries relative to no-follow directory descriptors on supported POSIX ABIs; deletion fails closed on unsupported platforms
 - write torrent data through descriptor-relative no-follow POSIX handles, preserving existing files and synchronizing file and directory descriptors - issue #70
+- move torrent files relative to no-follow directory descriptors with a synchronized copy fallback across devices - issue #70
 
 ## 0.6.0
 
