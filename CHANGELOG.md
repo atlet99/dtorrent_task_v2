@@ -1,3 +1,8 @@
+## Unreleased
+
+- run a separate pinned `pana` quality gate before pub.dev publication and block release on lost pub points - issue #71
+- fix unresolved public API documentation references reported by dartdoc
+
 ## 0.6.0
 
 - add per-address peer reconnect backoff (1s, 5s, 15s) and a three-retry cap, including failed TCP connections and repeated tracker/DHT/PEX discovery - issue #42

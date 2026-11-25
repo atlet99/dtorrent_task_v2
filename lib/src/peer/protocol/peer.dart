@@ -293,7 +293,7 @@ abstract class Peer
   }
 
   /// [_id] is used to differentiate between different peers. It is different from
-  ///  [_localPeerId], which is the Peer_id in the BitTorrent protocol.
+  ///  `_localPeerId`, which is the Peer_id in the BitTorrent protocol.
   /// [address] is the remote peer's address and port, and subclasses can use this
   ///  value for remote connections.
   /// [_infoHashBuffer] is the infohash value from the torrent file,
@@ -1386,7 +1386,7 @@ abstract class Peer
   ///
   /// After sending the handshake message, this method will also proactively send the bitfield and have messages to the remote peer.
   /// For v2/hybrid torrents, uses v1 info hash (first 20 bytes) in handshake for compatibility.
-  /// Sets 4th bit (0x10) in reserved[7] for hybrid/v2 torrents to indicate v2 support (BEP 52).
+  /// Sets 4th bit (0x10) in `reserved[7]` for hybrid/v2 torrents to indicate v2 support (BEP 52).
   void sendHandShake(String localPeerId) {
     if (_handShaked) return;
     var message = <int>[];
@@ -1496,7 +1496,7 @@ abstract class Peer
   /// - [begin]: integer specifying the zero-based byte offset within the piece
   /// - [length]: integer specifying the requested length.
   /// - [timeout]: when send request to remote , after [timeout] of not getting response,
-  /// it will fire [requestTimeout] event
+  /// it will fire a request timeout event
   bool sendRequest(int index, int begin, [int length = defaultRequestLength]) {
     if (_chokeMe) {
       _log.fine(
