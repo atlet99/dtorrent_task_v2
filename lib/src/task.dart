@@ -620,6 +620,7 @@ class _TorrentTask
       _peerId; // This is the generated local peer ID, which is different from the ID used in the Peer class.
 
   ServerSocket? _serverSocket;
+  int? _serverPort;
 
   StreamSubscription<Socket>? _serverSocketListener;
   // ServerUTPSocket? _utpServer;
@@ -812,7 +813,7 @@ class _TorrentTask
     _peersManager?.setProtocolEncryptionConfig(_encryptionConfig);
     _advancedSelector?.setLocalPeerEndpoint(
       _peersManager?.localExternalIP,
-      port: _serverSocket?.port ?? 0,
+      port: _serverPort ?? 0,
     );
 
     // Initialize SuperSeeder if superseeding is enabled
@@ -1385,6 +1386,8 @@ class _TorrentTask
     state = TaskState.running;
     // Incoming peer:
     _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 0);
+    final serverSocket = _serverSocket;
+    _serverPort = serverSocket?.port;
     await _init(_metaInfo, _savePath);
     _serverSocketListener = _serverSocket?.listen(_hookInPeer);
 
@@ -1401,7 +1404,7 @@ class _TorrentTask
 
     final map = <String, dynamic>{};
     map['name'] = _metaInfo.name;
-    map['tcp_socket'] = _serverSocket?.port;
+    map['tcp_socket'] = _serverPort;
     map['complete_pieces'] = List<int>.from(bitfield.completedPieces);
     map['total_pieces_num'] = bitfield.piecesNum;
     map['downloaded'] = _stateDownloaded;
@@ -1445,7 +1448,7 @@ class _TorrentTask
       ?..on<PieceAccepted>((event) => processPieceAccepted(event.pieceIndex))
       ..on<PieceRejected>((event) => null);
     lsdListener?.on<LSDNewPeer>(_processLSDPeerEvent);
-    _lsd?.port = _serverSocket?.port;
+    _lsd?.port = _serverPort;
     try {
       await _lsd?.start();
     } catch (e) {
@@ -1465,16 +1468,23 @@ class _TorrentTask
       ..on<StandaloneDHTErrorEvent>(_processDHTError);
     try {
       final dhtPort = await _dht?.bootstrap();
-      if (dhtPort != null) {
+      final serverPort = _serverPort;
+      if (dhtPort != null &&
+          serverPort != null &&
+          identical(_serverSocket, serverSocket)) {
         _dht?.announce(
           String.fromCharCodes(_metaInfo.infoHashBuffer),
-          _serverSocket!.port,
+          serverPort,
         );
-      } else {
+      } else if (dhtPort == null) {
         _log.warning('DHT bootstrap returned null port, announce is skipped');
       }
     } catch (e, stackTrace) {
       _log.warning('DHT bootstrap failed', e, stackTrace);
+    }
+
+    if (!identical(_serverSocket, serverSocket) || _serverPort == null) {
+      return map;
     }
 
     if (_fileManager != null && _fileManager!.isAllComplete) {
@@ -1895,7 +1905,7 @@ class _TorrentTask
     if (_pieceManager == null || _peersManager == null) return;
     _advancedSelector?.setLocalPeerEndpoint(
       _peersManager?.localExternalIP,
-      port: _serverSocket?.port ?? 0,
+      port: _serverPort ?? 0,
     );
     if (_peersManager!.addPausedRequest(peer, pieceIndex)) return;
     Piece? piece;
@@ -2004,6 +2014,8 @@ class _TorrentTask
     _peersManager = null;
     _serverSocketListener?.cancel();
     _serverSocketListener = null;
+    final serverPort = _serverPort;
+    _serverPort = null;
     await _serverSocket?.close();
     _serverSocket = null;
     await _fileManager?.close();
@@ -2032,7 +2044,7 @@ class _TorrentTask
     _scheduledMaxUploadRate = null;
 
     // Remove port forwarding
-    await _removePortForwarding();
+    await _removePortForwarding(serverPort);
 
     state = TaskState.stopped;
     return;
@@ -2040,17 +2052,21 @@ class _TorrentTask
 
   /// Forward port if port forwarding is available
   Future<void> _forwardPortIfAvailable() async {
-    if (_serverSocket == null) return;
+    final port = _serverPort;
+    if (port == null) return;
+    final serverSocket = _serverSocket;
 
     try {
       _portForwardingManager ??= PortForwardingManager();
-      final port = _serverSocket!.port;
-
       if (port > 0) {
         _log.info('Attempting to forward port $port...');
         final result = await _portForwardingManager!.forwardPort(port: port);
 
         if (result.success) {
+          if (!identical(_serverSocket, serverSocket) || _serverPort != port) {
+            await _portForwardingManager?.removePortForwarding(port: port);
+            return;
+          }
           _log.info('Port $port forwarded successfully using ${result.method}');
           if (result.externalIP != null) {
             _log.info('External IP: ${result.externalIP}');
@@ -2065,11 +2081,10 @@ class _TorrentTask
   }
 
   /// Remove port forwarding
-  Future<void> _removePortForwarding() async {
-    if (_portForwardingManager == null || _serverSocket == null) return;
+  Future<void> _removePortForwarding(int? port) async {
+    if (_portForwardingManager == null || port == null) return;
 
     try {
-      final port = _serverSocket!.port;
       if (port > 0) {
         await _portForwardingManager!.removePortForwarding(port: port);
       }
@@ -2090,7 +2105,7 @@ class _TorrentTask
       'numwant': 50,
       'compact': 1,
       'peerId': _peerId,
-      'port': _serverSocket?.port
+      'port': _serverPort
     };
     return Future.value(map);
   }
