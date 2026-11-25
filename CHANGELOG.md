@@ -2,6 +2,7 @@
 
 - run a separate pinned `pana` quality gate before pub.dev publication and block release on lost pub points - issue #71
 - fix unresolved public API documentation references reported by dartdoc
+- reject unsafe torrent path components and block existing symlinks in download paths - issue #70
 
 ## 0.6.0
 
