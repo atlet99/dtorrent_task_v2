@@ -7,6 +7,7 @@ import 'package:dtorrent_task_v2/src/file/utils.dart';
 import 'package:dtorrent_task_v2/src/task_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
 import '../peer/peer_base.dart';
 
 import '../piece/piece.dart';
@@ -16,6 +17,7 @@ import 'state_file.dart';
 import 'state_file_v2.dart';
 import '../torrent/file_tree.dart';
 import '../torrent/torrent_version.dart';
+import '../torrent/safe_torrent_path.dart';
 
 var _log = Logger("DownloadFileManager");
 
@@ -106,6 +108,9 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     }
     _baseDirectory = directory;
     _initFileMap(directory);
+    for (final file in _files) {
+      await _validateFilePath(file.filePath);
+    }
     await detectMovedFiles();
     await _restoreFileAttributes();
     return this;
@@ -220,6 +225,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
         attributes: file.attributes,
         isPaddingFile: file.isPaddingFile,
         symlinkPath: file.symlinkPath,
+        validatePath: _validateFilePath,
       );
 
       for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
@@ -267,7 +273,8 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
           pieces,
           attributes: fileInfo.attributes,
           isPaddingFile: fileInfo.isPaddingFile,
-          symlinkPath: fileInfo.symlinkPath);
+          symlinkPath: fileInfo.symlinkPath,
+          validatePath: _validateFilePath);
 
       for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
         var downloadFileList = _piece2fileMap?[pieceIndex];
@@ -287,11 +294,22 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   }
 
   String _resolveInitialPath(String directory, String torrentPath) {
+    final initial = resolveTorrentPath(directory, torrentPath);
     final persisted = _resolvePathFromState(torrentPath);
     if (persisted != null && persisted.isNotEmpty) {
       return persisted;
     }
-    return directory + torrentPath;
+    return initial;
+  }
+
+  Future<void> _validateFilePath(String path) async {
+    final base = _baseDirectory;
+    if (base == null) throw StateError('Download directory is not initialized');
+    final absolute = p.normalize(p.absolute(path));
+    final root = p.normalize(p.absolute(base));
+    // Explicitly moved files may live outside the original download directory.
+    await rejectSymlinks(
+        p.isWithin(root, absolute) ? root : p.dirname(absolute), absolute);
   }
 
   String? _resolvePathFromState(String torrentPath) {
@@ -423,6 +441,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       return;
     }
 
+    await _validateFilePath(file.filePath);
     final exists = await File(file.filePath).exists();
     if (!exists) return;
 
@@ -434,6 +453,9 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   Future<void> _ensureSymlinkFile(DownloadFile file) async {
     final targetSegments = file.symlinkPath;
     if (targetSegments == null || targetSegments.isEmpty) return;
+    for (final segment in targetSegments) {
+      validateTorrentPathComponent(segment);
+    }
     if (Platform.isWindows) {
       _log.fine('Skip symlink restoration on Windows for ${file.filePath}');
       return;
@@ -441,19 +463,18 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
 
     final linkFile = File(file.filePath);
     final parentDir = linkFile.parent;
+    await _validateFilePath(file.filePath);
+    final target = resolveTorrentPath(parentDir.path, targetSegments.join('/'));
+    await _validateFilePath(target);
     if (!await parentDir.exists()) {
       await parentDir.create(recursive: true);
     }
 
     final link = Link(file.filePath);
     try {
-      if (await link.exists()) {
-        await link.delete();
-      } else if (await linkFile.exists()) {
-        await linkFile.delete();
-      }
-      final target = targetSegments.join(Platform.pathSeparator);
-      await link.create(target);
+      if (await FileSystemEntity.type(file.filePath, followLinks: false) !=
+          FileSystemEntityType.notFound) return;
+      await link.create(targetSegments.join(Platform.pathSeparator));
     } catch (e, stackTrace) {
       _log.warning(
           'Failed to restore symlink for ${file.filePath}', e, stackTrace);

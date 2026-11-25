@@ -6,6 +6,7 @@ import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:logging/logging.dart';
 
 import '../piece/piece.dart';
+import '../torrent/safe_torrent_path.dart';
 
 var _log = Logger('FileValidator');
 
@@ -195,6 +196,7 @@ class FileValidator {
         }
 
         final filePath = _resolveTorrentFilePath(file.path);
+        await rejectSymlinks(savePath, filePath);
         final fileObj = File(filePath);
         if (await fileObj.exists()) {
           final access = await fileObj.open(mode: FileMode.read);
@@ -245,6 +247,7 @@ class FileValidator {
           continue;
         }
         final filePath = _resolveTorrentFilePath(file.path);
+        await rejectSymlinks(savePath, filePath);
         final fileObj = File(filePath);
 
         if (!await fileObj.exists()) {
@@ -267,13 +270,6 @@ class FileValidator {
   }
 
   String _resolveTorrentFilePath(String torrentPath) {
-    final normalizedSavePath = savePath.endsWith(Platform.pathSeparator)
-        ? savePath
-        : '$savePath${Platform.pathSeparator}';
-    final relativePath = torrentPath
-        .replaceAll('\\', Platform.pathSeparator)
-        .replaceAll('/', Platform.pathSeparator)
-        .replaceFirst(RegExp(r'^[\\/]+'), '');
-    return '$normalizedSavePath$relativePath';
+    return resolveTorrentPath(savePath, torrentPath);
   }
 }

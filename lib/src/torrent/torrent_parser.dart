@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:crypto/crypto.dart';
@@ -6,6 +7,7 @@ import 'torrent_model.dart';
 import 'torrent_file_model.dart';
 import 'file_tree.dart';
 import 'torrent_version.dart';
+import 'safe_torrent_path.dart';
 import '../file/file_attributes.dart';
 import 'package:logging/logging.dart';
 
@@ -66,14 +68,15 @@ class TorrentParser {
     if (nameRaw is String) {
       name = nameRaw;
     } else if (nameRaw is Uint8List) {
-      name = String.fromCharCodes(nameRaw);
+      name = utf8.decode(nameRaw);
     } else if (nameRaw is List<int>) {
-      name = String.fromCharCodes(nameRaw);
+      name = utf8.decode(nameRaw);
     }
     if (name == null || name.isEmpty) {
       throw FormatException(
           'Invalid torrent file: missing name in info dictionary');
     }
+    validateTorrentPathComponent(name);
 
     // Parse piece length
     final pieceLength = info['piece length'] as int?;
@@ -367,15 +370,18 @@ class TorrentParser {
       String path;
       if (pathList != null && pathList.isNotEmpty) {
         path = pathList.map((p) {
+          String component;
           if (p is String) {
-            return p;
+            component = p;
           } else if (p is Uint8List) {
-            return String.fromCharCodes(p);
+            component = utf8.decode(p);
           } else if (p is List<int>) {
-            return String.fromCharCodes(p);
+            component = utf8.decode(p);
           } else {
-            return p.toString();
+            throw FormatException('Invalid torrent path component');
           }
+          validateTorrentPathComponent(component);
+          return component;
         }).join('/');
         if (basePath.isNotEmpty) {
           path = '$basePath/$path';
@@ -449,14 +455,17 @@ class TorrentParser {
       if (item is String) {
         if (item.isNotEmpty) segments.add(item);
       } else if (item is Uint8List) {
-        final decoded = String.fromCharCodes(item);
+        final decoded = utf8.decode(item);
         if (decoded.isNotEmpty) segments.add(decoded);
       } else if (item is List<int>) {
-        final decoded = String.fromCharCodes(item);
+        final decoded = utf8.decode(item);
         if (decoded.isNotEmpty) segments.add(decoded);
       }
     }
     if (segments.isEmpty) return null;
+    for (final segment in segments) {
+      validateTorrentPathComponent(segment);
+    }
     return segments;
   }
 

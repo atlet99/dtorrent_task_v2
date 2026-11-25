@@ -1,5 +1,7 @@
 import 'dart:typed_data';
+import 'dart:convert';
 import 'package:dtorrent_task_v2/src/file/file_attributes.dart';
+import 'safe_torrent_path.dart';
 
 /// Represents a file in v2 file tree structure (BEP 52)
 class FileTreeEntry {
@@ -80,6 +82,7 @@ class FileTreeHelper {
     for (var entry in treeData.entries) {
       final key = _decodeString(entry.key);
       if (key == null) continue;
+      validateTorrentPathComponent(key);
       final value = entry.value;
 
       if (value is Map) {
@@ -175,8 +178,8 @@ class FileTreeFile {
 
 String? _decodeString(dynamic value) {
   if (value is String) return value;
-  if (value is Uint8List) return String.fromCharCodes(value);
-  if (value is List<int>) return String.fromCharCodes(value);
+  if (value is Uint8List) return utf8.decode(value);
+  if (value is List<int>) return utf8.decode(value);
   return null;
 }
 
@@ -186,6 +189,7 @@ List<String>? _decodePathList(dynamic value) {
   for (final segment in value) {
     final str = _decodeString(segment);
     if (str == null || str.isEmpty) continue;
+    validateTorrentPathComponent(str);
     segments.add(str);
   }
   if (segments.isEmpty) return null;

@@ -29,6 +29,7 @@ class DownloadFile {
   final FileAttributes? attributes;
   final bool isPaddingFile;
   final List<String>? symlinkPath;
+  final Future<void> Function(String path)? validatePath;
   bool get isSymlinkFile =>
       (attributes?.isSymlink ?? false) || symlinkPath != null;
   bool get isVirtualFile => isPaddingFile || isSymlinkFile;
@@ -64,7 +65,10 @@ class DownloadFile {
 
   DownloadFile(this.filePath, this.offset, this.length, this.torrentFilePath,
       this.pieces,
-      {this.attributes, this.isPaddingFile = false, this.symlinkPath}) {
+      {this.attributes,
+      this.isPaddingFile = false,
+      this.symlinkPath,
+      this.validatePath}) {
     for (var piece in pieces) {
       if (piece.isCompletelyWritten) {
         var blockPosition = blockToDownloadFilePosition(
@@ -286,10 +290,12 @@ class DownloadFile {
     if (isVirtualFile) {
       return null;
     }
+    await validatePath?.call(filePath);
     _file ??= File(filePath);
     var exists = await _file?.exists();
     if (exists != null && !exists) {
       _file = await _file?.create(recursive: true);
+      await validatePath?.call(filePath);
       var access = await _file?.open(mode: FileMode.write);
       access = await access?.truncate(length);
       await access?.close();
